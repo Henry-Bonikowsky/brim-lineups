@@ -3,6 +3,37 @@
 //! screen to this image reproduces the aim (Valorant fixed 103 deg horizontal FOV).
 
 use crate::scene::{Scene, V3};
+use std::sync::OnceLock;
+
+/// (w, h, color top-down BGR, mask top-down) from cards/hud{,mask}.bmp, if present.
+fn hud_overlay() -> Option<&'static (usize, usize, Vec<u8>, Vec<u8>)> {
+    static HUD: OnceLock<Option<(usize, usize, Vec<u8>, Vec<u8>)>> = OnceLock::new();
+    HUD.get_or_init(|| {
+        let read = |p: &str| -> Option<(usize, usize, Vec<u8>)> {
+            let d = std::fs::read(p).ok()?;
+            if &d[0..2] != b"BM" {
+                return None;
+            }
+            let off = u32::from_le_bytes(d[10..14].try_into().unwrap()) as usize;
+            let w = i32::from_le_bytes(d[18..22].try_into().unwrap()) as usize;
+            let h = i32::from_le_bytes(d[22..26].try_into().unwrap()) as usize;
+            if u16::from_le_bytes(d[28..30].try_into().unwrap()) != 24 {
+                return None;
+            }
+            let row = (w * 3 + 3) & !3;
+            let mut px = vec![0u8; w * h * 3];
+            for y in 0..h {
+                let src = off + (h - 1 - y) * row;
+                px[y * w * 3..y * w * 3 + w * 3].copy_from_slice(&d[src..src + w * 3]);
+            }
+            Some((w, h, px))
+        };
+        let (w, h, hud) = read("cards/hud.bmp")?;
+        let (mw, mh, mask) = read("cards/hudmask.bmp")?;
+        (mw == w && mh == h).then_some((w, h, hud, mask))
+    })
+    .as_ref()
+}
 
 const DEF_W: usize = 960;
 const DEF_H: usize = 540;
@@ -260,35 +291,23 @@ fn render_ex(
         }
     }
 
-    // HUD ability-bar overlay (aim views only): box outlines at the measured
-    // positions of Henry's ability slots (Q, E, MB4, Z from a 1152x720 clip
-    // frame). Sky-pointing lineups are aimed by aligning skyline features
-    // against these boxes, exactly like using the real ability bar as UI ref.
+    // real HUD overlay (aim views only): the actual ability bar extracted from
+    // Henry's own gameplay (cards/hud.bmp + hudmask.bmp, 1152x720) - lineups
+    // are aimed by aligning world features against this static UI
     if mark.is_none() && !grid {
-        const SLOTS: [f32; 4] = [0.388, 0.468, 0.5295, 0.592]; // centers, x/W
-        const CY: f32 = 0.928; // centers, y/H
-        let (bw, bh) = ((46.0 / 1152.0 * W as f32) as i32, (46.0 / 720.0 * H as f32) as i32);
-        for cx_n in SLOTS {
-            let (cx, cy) = ((cx_n * W as f32) as i32, (CY * H as f32) as i32);
-            let mut put = |x: i32, y: i32| {
-                if x >= 0 && x < W as i32 && y >= 0 && y < H as i32 {
-                    let o = ((H - 1 - y as usize) * W + x as usize) * 3;
-                    px[o] = 200;
-                    px[o + 1] = 240;
-                    px[o + 2] = 200;
+        if let Some((hw, hh, hud, mask)) = hud_overlay() {
+            for y in 0..H {
+                let sy = y * hh / H;
+                for x in 0..W {
+                    let sx = x * hw / W;
+                    let si = (sy * hw + sx) * 3;
+                    if mask[si] > 0 {
+                        let o = ((H - 1 - y) * W + x) * 3;
+                        px[o] = hud[si];
+                        px[o + 1] = hud[si + 1];
+                        px[o + 2] = hud[si + 2];
+                    }
                 }
-            };
-            for dx in -bw / 2..=bw / 2 {
-                put(cx + dx, cy - bh / 2);
-                put(cx + dx, cy + bh / 2);
-            }
-            for dy in -bh / 2..=bh / 2 {
-                put(cx - bw / 2, cy + dy);
-                put(cx + bw / 2, cy + dy);
-            }
-            // center tick rising from the box top: the vertical players sight along
-            for dy in 1..=10 {
-                put(cx, cy - bh / 2 - dy);
             }
         }
     }
