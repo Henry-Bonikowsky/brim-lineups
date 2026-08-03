@@ -34,8 +34,13 @@ pub fn hand_origin(eye: V3, yaw_deg: f32, cfg: &Cfg) -> V3 {
 impl Default for Cfg {
     fn default() -> Self {
         Cfg {
-            speed: 2900.0,
-            gravity: 1100.0,
+            // s and g are jointly fitted: flight TIME pins s/g (frame-timed
+            // clip), initial-arc RANGE pins s^2/g (Henry: 1-2m short at
+            // s=2900/g=1100). Solving both: s=3000, g=1140. The file says
+            // ProjectileSpeed 2900, but ProjectileThrowTuning has a native
+            // SpeedScale default that plausibly supplies the extra ~3.5%.
+            speed: 3000.0,
+            gravity: 1140.0,
             // file DefaultBounciness is 0.35 but live walk-mode-vs-game
             // comparison (2026-08-03) shows real rebounds run hotter: the
             // measured restitution from the frame-timed clip was 0.38-0.40,
