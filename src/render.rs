@@ -10,6 +10,13 @@ use crate::scene::{Scene, V3};
 const DEF_W: usize = 960;
 const DEF_H: usize = 600;
 const HFOV_DEG: f32 = 103.0;
+/// Valorant holds VERTICAL FOV constant across aspect ratios (103 horizontal
+/// is only true at 16:9). tan of the half-vertical-FOV; horizontal derives
+/// from it per the render aspect.
+fn tan_vh(w: usize, h: usize) -> (f32, f32) {
+    let tan_v = (HFOV_DEG.to_radians() / 2.0).tan() * 9.0 / 16.0;
+    (tan_v * w as f32 / h as f32, tan_v)
+}
 /// world units per ground-texture repeat (planar mapping; no UVs in the dump)
 const GROUND_TILE: f32 = 400.0;
 
@@ -122,8 +129,7 @@ pub fn render_pov_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, w:
     let fwd = V3::new(cp * cy, cp * sy, sp);
     let right = V3::new(-sy, cy, 0.0);
     let up = fwd.cross(&right).normalize();
-    let tan_h = (HFOV_DEG.to_radians() / 2.0).tan();
-    let tan_v = tan_h * h as f32 / w as f32;
+    let (tan_h, tan_v) = tan_vh(w, h);
     let id = nalgebra::Isometry3::identity();
     let ntris = scene.mesh.indices().len() as u32;
     let mut px = vec![0u8; w * h * 3];
@@ -219,8 +225,7 @@ fn render_ex(
     let fwd = V3::new(cp * cy, cp * sy, sp);
     let right = V3::new(-sy, cy, 0.0);
     let up = fwd.cross(&right).normalize(); // screen-up: +Z when the camera is level
-    let tan_h = (HFOV_DEG.to_radians() / 2.0).tan();
-    let tan_v = tan_h * H as f32 / W as f32;
+    let (tan_h, tan_v) = tan_vh(W, H);
 
     let mut depth = vec![f32::INFINITY; W * H];
     let mut shade = vec![[0.55f32; 3]; W * H]; // rgb, sky-ish base
