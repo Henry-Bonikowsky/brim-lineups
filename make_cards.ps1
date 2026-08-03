@@ -62,10 +62,15 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
         # synthetic first-person screenshots, if rendered for this site
         $renders = Get-ChildItem "$root\cards\renders3\$($f.BaseName)_r*.bmp" -ErrorAction SilentlyContinue | Sort-Object Name
         if ($renders) {
-            $tables += "<details><summary>aim screenshots (match your screen to the image; green cross = crosshair)</summary>"
+            $tables += "<details><summary>aim + stand screenshots (left: match your screen, green cross = crosshair; right: top-down at the stand, cross = your feet, image-up = throw direction)</summary>"
             $i = 1
             foreach ($r in $renders) {
-                $tables += "<div>#$i</div><img src='renders3/$($r.Name)?v=$($r.LastWriteTime.Ticks)' style='width:640px;margin:4px 0'>"
+                $s = $r.FullName -replace "_r(\d+)\.bmp$", "_s`$1.bmp"
+                $tables += "<div>#$i</div><img src='renders3/$($r.Name)?v=$($r.LastWriteTime.Ticks)' style='width:520px;margin:4px 4px 4px 0'>"
+                if (Test-Path $s) {
+                    $sn = Split-Path $s -Leaf
+                    $tables += "<img src='renders3/$sn?v=$((Get-Item $s).LastWriteTime.Ticks)' style='width:520px;margin:4px 0'>"
+                }
                 $i++
             }
             $tables += "</details>"
