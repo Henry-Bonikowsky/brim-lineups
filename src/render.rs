@@ -13,7 +13,7 @@ pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) 
     let (sp, cp) = pitch_deg.to_radians().sin_cos();
     let fwd = V3::new(cp * cy, cp * sy, sp);
     let right = V3::new(-sy, cy, 0.0);
-    let up = right.cross(&fwd).normalize(); // true screen-up (right x forward)
+    let up = fwd.cross(&right).normalize(); // screen-up: +Z when the camera is level
     let tan_h = (HFOV_DEG.to_radians() / 2.0).tan();
     let tan_v = tan_h * H as f32 / W as f32;
 

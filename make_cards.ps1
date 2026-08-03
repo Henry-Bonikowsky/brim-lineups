@@ -60,12 +60,12 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
         }
         $tables += "</table>"
         # synthetic first-person screenshots, if rendered for this site
-        $renders = Get-ChildItem "$root\cards\renders2\$($f.BaseName)_r*.bmp" -ErrorAction SilentlyContinue | Sort-Object Name
+        $renders = Get-ChildItem "$root\cards\renders3\$($f.BaseName)_r*.bmp" -ErrorAction SilentlyContinue | Sort-Object Name
         if ($renders) {
             $tables += "<details><summary>aim screenshots (match your screen to the image; green cross = crosshair)</summary>"
             $i = 1
             foreach ($r in $renders) {
-                $tables += "<div>#$i</div><img src='renders2/$($r.Name)?v=$($r.LastWriteTime.Ticks)' style='width:640px;margin:4px 0'>"
+                $tables += "<div>#$i</div><img src='renders3/$($r.Name)?v=$($r.LastWriteTime.Ticks)' style='width:640px;margin:4px 0'>"
                 $i++
             }
             $tables += "</details>"
@@ -76,4 +76,5 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
 }
 $html | Out-File "$root\cards\index.html" -Encoding utf8
 Write-Host "wrote cards/index.html"
+
 
