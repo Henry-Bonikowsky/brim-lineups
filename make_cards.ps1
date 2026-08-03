@@ -3,6 +3,7 @@
 $root = $PSScriptRoot
 $cams = Get-Content "$root\cards\cameras.json" -Raw | ConvertFrom-Json
 $TOP = 12
+$NAMES = @{ Triad = "Haven"; Bonsai = "Split"; Canyon = "Fracture"; Duality = "Bind"; Foxtrot = "Breeze"; Infinity = "Abyss"; Jam = "Lotus"; Juliett = "Sunset"; Pitt = "Pearl"; Port = "Icebox"; Rook = "Corrode"; Plummet = "Summit"; Ascent = "Ascent" }
 
 function Project($cam, $x, $y) {
     $th = $cam.yaw * [math]::PI / 180.0
@@ -33,7 +34,8 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
     $map = $mapFile.Name
     $cam = $cams.$map
     if ($null -eq $cam -or -not (Test-Path "$root\cards\$map.png")) { continue }
-    $html += "<div class=map><h2>$map</h2><div class=wrap><img src='$map.png'><svg viewBox='0 0 1000 1000'>"
+    $disp = if ($NAMES[$map]) { $NAMES[$map] } else { $map }
+    $html += "<div class=map><h2>$disp</h2><div class=wrap><img src='$map.png'><svg viewBox='0 0 1000 1000'>"
     $tables = ""
     $siteIdx = 0
     $colors = @("#ffd166", "#66d1ff", "#ff8fa3", "#9dff8f")

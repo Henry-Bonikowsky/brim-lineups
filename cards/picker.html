@@ -16,9 +16,10 @@ covered lineup to it. Copy the command, or tell Claude the numbers.</p>
 <div id="results"></div>
 <script>
 const cams = { "Plummet": { "cx": 6375, "yaw": 0, "ortho": 13312, "cy": 6025 }, "Juliett": { "cx": 200, "yaw": 0, "ortho": 12800, "cy": 0 }, "Rook": { "cx": 0.004757, "yaw": 1033.3136, "ortho": 14336, "cy": -375 }, "Ascent": { "cx": 1050, "yaw": 0, "ortho": 14336, "cy": -4500 }, "Jam": { "cx": 5775, "yaw": 0, "ortho": 13824, "cy": 624.9979 }, "Foxtrot": { "cx": 4775, "yaw": 0, "ortho": 14336, "cy": 500 }, "Duality": { "cx": 7900, "yaw": 0, "ortho": 16896, "cy": -1300 }, "Pitt": { "cx": 5325, "yaw": 0, "ortho": 12800, "cy": 250 }, "Infinity": { "cx": 0, "yaw": 0, "ortho": 12400, "cy": 0 }, "Triad": { "cx": 1900, "yaw": 0, "ortho": 13312, "cy": -7900 }, "Bonsai": { "cx": 2529, "yaw": 0, "ortho": 12800, "cy": -4380 }, "Canyon": { "cx": 8395.34, "yaw": 0, "ortho": 12800, "cy": -728.98 }, "Port": { "cx": -2700, "yaw": 0, "ortho": 13824, "cy": 550 } } ;
+const NAMES = { Triad: 'Haven', Bonsai: 'Split', Canyon: 'Fracture', Duality: 'Bind', Foxtrot: 'Breeze', Infinity: 'Abyss', Jam: 'Lotus', Juliett: 'Sunset', Pitt: 'Pearl', Port: 'Icebox', Rook: 'Corrode', Plummet: 'Summit', Ascent: 'Ascent' };
 { const j = cams;
   const sel = document.getElementById('map');
-  Object.keys(j).sort().forEach(m => { const o = document.createElement('option'); o.value = o.textContent = m; sel.appendChild(o); });
+  Object.keys(j).sort((a, b) => (NAMES[a] || a).localeCompare(NAMES[b] || b)).forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = NAMES[m] || m; sel.appendChild(o); });
   sel.onchange = () => { document.getElementById('img').src = sel.value + '.png'; document.getElementById('dot').style.display = 'none'; };
   sel.onchange();
 }
