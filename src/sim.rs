@@ -59,7 +59,6 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
     const DT: f32 = 1.0 / 120.0;
     let mut p = origin;
     let mut v = dir * cfg.speed;
-    let mut bounciness = cfg.bounciness;
     let mut t = 0.0f32;
     let mut bounces = 0u32;
     if let Some(r) = record.as_deref_mut() {
@@ -80,9 +79,11 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
             t += DT * hit.time_of_impact / len;
             p += step * (hit.time_of_impact / len) + n * 0.5;
             // per-bounce deadening decoded from Projectile_BaseGrenade bytecode:
-            // bounciness *= lerp(0.5..1.0, degrees-from-straight-down / 90)
+            // bounciness = default * lerp(0.5..1.0, degrees-from-down / 90).
+            // NOT compounding: the native DefaultBounciness field exists to
+            // reset the value before each bounce's angle adjustment.
             let deg = (-v.z / v.norm()).clamp(-1.0, 1.0).acos().to_degrees();
-            bounciness *= 0.5 + 0.5 * (deg / 90.0).clamp(0.0, 1.0);
+            let bounciness = cfg.bounciness * (0.5 + 0.5 * (deg / 90.0).clamp(0.0, 1.0));
             let vn = v.dot(&n);
             let vt = v - n * vn;
             // tangential friction scales with impact steepness (grazing skips
