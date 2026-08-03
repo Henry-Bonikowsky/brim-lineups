@@ -3,37 +3,6 @@
 //! screen to this image reproduces the aim (Valorant fixed 103 deg horizontal FOV).
 
 use crate::scene::{Scene, V3};
-use std::sync::OnceLock;
-
-/// (w, h, color top-down BGR, mask top-down) from cards/hud{,mask}.bmp, if present.
-fn hud_overlay() -> Option<&'static (usize, usize, Vec<u8>, Vec<u8>)> {
-    static HUD: OnceLock<Option<(usize, usize, Vec<u8>, Vec<u8>)>> = OnceLock::new();
-    HUD.get_or_init(|| {
-        let read = |p: &str| -> Option<(usize, usize, Vec<u8>)> {
-            let d = std::fs::read(p).ok()?;
-            if &d[0..2] != b"BM" {
-                return None;
-            }
-            let off = u32::from_le_bytes(d[10..14].try_into().unwrap()) as usize;
-            let w = i32::from_le_bytes(d[18..22].try_into().unwrap()) as usize;
-            let h = i32::from_le_bytes(d[22..26].try_into().unwrap()) as usize;
-            if u16::from_le_bytes(d[28..30].try_into().unwrap()) != 24 {
-                return None;
-            }
-            let row = (w * 3 + 3) & !3;
-            let mut px = vec![0u8; w * h * 3];
-            for y in 0..h {
-                let src = off + (h - 1 - y) * row;
-                px[y * w * 3..y * w * 3 + w * 3].copy_from_slice(&d[src..src + w * 3]);
-            }
-            Some((w, h, px))
-        };
-        let (w, h, hud) = read("cards/hud.bmp")?;
-        let (mw, mh, mask) = read("cards/hudmask.bmp")?;
-        (mw == w && mh == h).then_some((w, h, hud, mask))
-    })
-    .as_ref()
-}
 
 const DEF_W: usize = 960;
 const DEF_H: usize = 540;
@@ -139,40 +108,6 @@ pub fn render_flight_sized(
 }
 
 #[allow(clippy::too_many_arguments)]
-/// Blend the real HUD (ability bar etc.) onto a BMP-ordered pixel buffer:
-/// bilinear-sampled with the feathered alpha mask, so it stays clean at any
-/// render size instead of nearest-neighbor pixelation.
-fn overlay_hud(px: &mut [u8], w: usize, h: usize) {
-    let Some((hw, hh, hud, mask)) = hud_overlay() else { return };
-    let (hw, hh) = (*hw, *hh);
-    let (hw_f, hh_f) = (hw as f32, hh as f32);
-    for y in 0..h {
-        let fy = ((y as f32 + 0.5) / h as f32 * hh_f - 0.5).max(0.0);
-        let y0 = (fy as usize).min(hh - 1);
-        let y1 = (y0 + 1).min(hh - 1);
-        let ty = fy - y0 as f32;
-        for x in 0..w {
-            let fx = ((x as f32 + 0.5) / w as f32 * hw_f - 0.5).max(0.0);
-            let x0 = (fx as usize).min(hw - 1);
-            let x1 = (x0 + 1).min(hw - 1);
-            let tx = fx - x0 as f32;
-            let bil = |buf: &[u8], c: usize| -> f32 {
-                let v = |xx: usize, yy: usize| buf[(yy * hw + xx) * 3 + c] as f32;
-                (v(x0, y0) * (1.0 - tx) + v(x1, y0) * tx) * (1.0 - ty)
-                    + (v(x0, y1) * (1.0 - tx) + v(x1, y1) * tx) * ty
-            };
-            let a = bil(mask, 0) / 255.0;
-            if a < 0.02 {
-                continue;
-            }
-            let o = ((h - 1 - y) * w + x) * 3;
-            for c in 0..3 {
-                px[o + c] = (px[o + c] as f32 * (1.0 - a) + bil(hud, c) * a) as u8;
-            }
-        }
-    }
-}
-
 /// Interactive first-person frame for walk mode: one BVH raycast per pixel,
 /// parallel over rows: fast enough to stream. Same hillshade / sky / HUD /
 /// crosshair language as the stills. Returns finished BMP bytes (no disk).
@@ -233,8 +168,8 @@ pub fn render_pov_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, w:
             rowbuf[o + 2] = r;
         }
     });
-    // real ability-bar HUD (the aim reference) + crosshair, as in the stills
-    overlay_hud(&mut px, w, h);
+    // HUD is layered in the BROWSER at native resolution (cards/hud.png);
+    // baking it here made it mushy. Only the crosshair stays baked.
     for d in 0..14i32 {
         for (cx, cy2) in [(w as i32 / 2 + d - 7, h as i32 / 2), (w as i32 / 2, h as i32 / 2 + d - 7)] {
             if cx >= 0 && cx < w as i32 && cy2 >= 0 && cy2 < h as i32 {
@@ -502,12 +437,7 @@ fn render_ex(
         }
     }
 
-    // real HUD overlay (aim views only): the actual UI extracted from Henry's
-    // own gameplay (cards/hud.bmp + hudmask.bmp) - lineups are aimed by
-    // aligning world features against this static UI
-    if mark.is_none() && !grid {
-        overlay_hud(&mut px, W, H);
-    }
+    // HUD is layered in the browser (cards/hud.png) for full sharpness
 
     // crosshair: green cross at center (not on marked context shots)
     for d in if mark.is_none() { 0..14i32 } else { 0..0i32 } {

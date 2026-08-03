@@ -9,8 +9,10 @@ use rayon::prelude::*;
 /// pixel-true elements only. Lineups whose aim puts one of these ON a world
 /// silhouette edge are replicable in game without guesswork.
 const UI_ANCHORS: [(&str, f32, f32); 10] = [
+    // preference order: ties keep the earlier entry. Crosshair first, then
+    // the always-crisp ability icon corners; the faint under-crosshair
+    // equip diamond only as a last resort.
     ("crosshair", 0.5, 0.5),
-    ("charge-pip tip", 0.4661, 0.7736),
     ("Q icon top-left corner", 0.3863, 0.8972),
     ("Q icon top-right corner", 0.4158, 0.8972),
     ("E icon top-left corner", 0.4514, 0.8972),
@@ -19,11 +21,13 @@ const UI_ANCHORS: [(&str, f32, f32); 10] = [
     ("MB4 icon top-right corner", 0.5460, 0.8972),
     ("X icon top-left corner", 0.5816, 0.8972),
     ("X icon top-right corner", 0.6111, 0.8972),
+    ("diamond right under the crosshair", 0.4661, 0.7736),
 ];
 
 /// Does any UI anchor sit on a strong depth edge at this aim? Returns the
-/// best (anchor name, edge distance, grade 1..2); grade 2 = dead on.
-fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32) -> Option<(&'static str, f32, u8)> {
+/// best (anchor name, edge distance, grade 1..2, screen fx, fy); grade 2 =
+/// dead on.
+fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32) -> Option<(&'static str, f32, u8, f32, f32)> {
     use parry3d::query::{Ray, RayCast};
     let (sy, cy) = yaw.to_radians().sin_cos();
     let (sp, cp) = pitch.to_radians().sin_cos();
@@ -44,7 +48,7 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32) -> Option<(&'stati
         let near = a.min(b);
         near < 9000.0 && (a.max(b) / near > 1.7 || (a.is_infinite() != b.is_infinite()))
     };
-    let mut best: Option<(&'static str, f32, u8)> = None;
+    let mut best: Option<(&'static str, f32, u8, f32, f32)> = None;
     for (name, ax, ay) in UI_ANCHORS {
         const S: f32 = 0.005; // ~0.3 deg horizontally
         let mut d = [[0.0f32; 5]; 5];
@@ -71,14 +75,14 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32) -> Option<(&'stati
         }
         if grade > 0 {
             let better = match best {
-                Some((_, _, g)) => grade > g,
+                Some((_, _, g, _, _)) => grade > g,
                 None => true,
             };
             if better {
-                best = Some((name, dist, grade));
+                best = Some((name, dist, grade, ax, ay));
             }
         }
-        if matches!(best, Some((_, _, 2))) && name == "crosshair" {
+        if matches!(best, Some((_, _, 2, _, _))) && name == "crosshair" {
             break; // crosshair dead-on beats everything
         }
     }
@@ -99,8 +103,9 @@ pub struct Lineup {
     pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
     pub backstop: bool,  // stand is flush against geometry (exactly reproducible)
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
-    /// UI landmark sitting on a world edge at this aim: (anchor, edge dist, grade)
-    pub ui_ref: Option<(&'static str, f32, u8)>,
+    /// UI landmark sitting on a world edge at this aim:
+    /// (anchor, edge dist, grade, screen fx, screen fy)
+    pub ui_ref: Option<(&'static str, f32, u8, f32, f32)>,
 }
 
 impl Lineup {
@@ -237,7 +242,7 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                             }
                             continue;
                         }
-                        let grade = |l: &Lineup| l.ui_ref.map_or(0u8, |(_, _, g)| g);
+                        let grade = |l: &Lineup| l.ui_ref.map_or(0u8, |(_, _, g, _, _)| g);
                         if paired {
                             let key = (pitch / 8.0).round() as i32;
                             let replace = match families.get(&key) {

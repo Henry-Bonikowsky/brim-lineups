@@ -90,7 +90,11 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 lineups.par_iter().take(5).enumerate().for_each(|(i, l)| {
                     let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
                     let base = format!("live/{run}_{}", i + 1);
-                    render::render(vscene, eye, l.yaw, l.pitch, &format!("{cards_dir}/{base}_r.bmp"));
+                    let aim_path = format!("{cards_dir}/{base}_r.bmp");
+                    render::render(vscene, eye, l.yaw, l.pitch, &aim_path);
+                    if let Some((_, _, _, fx, fy)) = l.ui_ref {
+                        stamp_ring(&aim_path, fx, fy); // circle the reference anchor
+                    }
                     render::render_grid(vscene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &format!("{cards_dir}/{base}_s.bmp"));
                     let (wide_eye, wyaw, wpitch) = render::wide_cam(vscene, l.stand, l.yaw);
                     render::render_marked(vscene, wide_eye, wyaw, wpitch, &format!("{cards_dir}/{base}_w.bmp"), l.stand + V3::new(0.0, 0.0, 40.0));
@@ -105,7 +109,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                     .unwrap_or("null".into());
                 let uiref = l
                     .ui_ref
-                    .map(|(name, dist, grade)| {
+                    .map(|(name, dist, grade, _, _)| {
                         format!("{{\"anchor\":\"{name}\",\"dist\":{dist:.0},\"grade\":{grade}}}")
                     })
                     .unwrap_or("null".into());
@@ -304,6 +308,35 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             }
         }
     }
+}
+
+/// Stamp a magenta ring onto a 24bpp BMP at screen fractions (fx, fy): marks
+/// the UI reference anchor on the aim image so it is unambiguous.
+fn stamp_ring(path: &str, fx: f32, fy: f32) {
+    let Ok(mut d) = std::fs::read(path) else { return };
+    if d.len() < 54 || &d[0..2] != b"BM" {
+        return;
+    }
+    let off = u32::from_le_bytes(d[10..14].try_into().unwrap()) as usize;
+    let w = i32::from_le_bytes(d[18..22].try_into().unwrap()) as usize;
+    let h = i32::from_le_bytes(d[22..26].try_into().unwrap()).unsigned_abs() as usize;
+    let row = (w * 3 + 3) & !3;
+    let (cx, cy) = ((fx * w as f32) as i32, (fy * h as f32) as i32);
+    for a in 0..96 {
+        let t = a as f32 / 96.0 * std::f32::consts::TAU;
+        for r in [16.0f32, 17.0, 18.0] {
+            let (x, y) = ((cx as f32 + t.cos() * r) as i32, (cy as f32 + t.sin() * r) as i32);
+            if x >= 0 && (x as usize) < w && y >= 0 && (y as usize) < h {
+                let o = off + (h - 1 - y as usize) * row + x as usize * 3;
+                if o + 2 < d.len() {
+                    d[o] = 255;
+                    d[o + 1] = 0;
+                    d[o + 2] = 255;
+                }
+            }
+        }
+    }
+    let _ = std::fs::write(path, d);
 }
 
 /// Render the chase-cam flight video; returns the JSON body ({"video": ...}

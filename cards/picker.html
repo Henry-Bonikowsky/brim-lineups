@@ -47,6 +47,11 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
 #results h3 { font-size: 15px; margin: 16px 0 6px; font-weight: 600 }
 #results h3:first-child { margin-top: 0 }
 #results img { width: 400px; margin: 3px 4px 3px 0; border-radius: 6px; border: 1px solid var(--edge) }
+.aimwrap { position: relative; display: inline-block; margin: 3px 4px 3px 0 }
+.aimwrap img { margin: 0; display: block }
+.aimwrap .hudlayer { position: absolute; inset: 0; width: 100%; height: 100%;
+  border: none; pointer-events: none }
+#povwrap .hudlayer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
 #results video, #povshot video { border-radius: 6px; border: 1px solid var(--edge) }
 #results p { color: var(--dim) }
 .good { color: #58e07a } .warn { color: #ffab5e } .mid { color: #b8d96a }
@@ -80,7 +85,7 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
   </div>
   <div class="card" id="walkcard">
     <h2>Walk mode - you are the player</h2>
-    <div id="povwrap"><img id="pov" width="960" height="540"></div>
+    <div id="povwrap"><img id="pov" width="960" height="540"><img class="hudlayer" src="hud.png"></div>
     <div id="povinfo">spawning...</div>
     <div id="povhelp">Click the view to lock your mouse. <b>Mouse</b> aims - <b>WASD</b> moves - <b>Shift</b> runs -
       <b>T / click</b> throws from exactly here - <b>Esc</b> releases the mouse.</div>
@@ -138,7 +143,7 @@ async function solveNow(m) {
       let aim = l.aim_ref ? `crosshair lands on geometry ${(l.aim_ref[3] / 100).toFixed(1)}m ahead` : 'crosshair: open sky';
       if (l.ui_ref) {
         const sure = l.ui_ref.grade === 2 ? 'sits ON' : 'sits NEAR';
-        aim += ` - <b class='good'>reference: the ${l.ui_ref.anchor} ${sure} an object edge ${(l.ui_ref.dist / 100).toFixed(1)}m away (match the aim image)</b>`;
+        aim += ` - <b class='good'>reference: the ${l.ui_ref.anchor} ${sure} an object edge ${(l.ui_ref.dist / 100).toFixed(1)}m away - it is circled in pink on the aim image</b>`;
       } else if (!l.aim_ref) {
         aim += ' (no clean UI reference found for this angle)';
       }
@@ -154,7 +159,9 @@ async function solveNow(m) {
           ? `<span class='mid'>anchored - back into the object shown in the top-down view</span>`
           : `<span class='warn'>loose position - standing spot matters and nothing to anchor on</span>`;
       h += `<h3>#${i + 1}: ${verdict}. ${pos}. range ${m2(l.range)}, ${l.time}s flight, ${l.bounces} bounces. ${aim}. stand (${l.stand.join(', ')})</h3>`;
-      h += l.imgs.map(im => `<img src='${im}'>`).join('');
+      h += l.imgs.map((im, k) => k === 0
+        ? `<span class='aimwrap'><img src='${im}'><img class='hudlayer' src='hud.png'></span>`
+        : `<img src='${im}'>`).join('');
       h += `<div id='vid${i + 1}'><button onclick='flightVideo(${i + 1})'>flight video</button> <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button></div>`;
     });
     res.innerHTML = h;
