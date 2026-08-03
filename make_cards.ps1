@@ -1,4 +1,4 @@
-# Renders results/*.json onto the extracted minimap textures as browsable
+﻿# Renders results/*.json onto the extracted minimap textures as browsable
 # lineup cards: cards/index.html. Re-run after regenerating results.
 $root = $PSScriptRoot
 $cams = Get-Content "$root\cards\cameras.json" -Raw | ConvertFrom-Json
@@ -60,12 +60,12 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
         }
         $tables += "</table>"
         # synthetic first-person screenshots, if rendered for this site
-        $renders = Get-ChildItem "$root\cards\renders\$($f.BaseName)_r*.bmp" -ErrorAction SilentlyContinue | Sort-Object Name
+        $renders = Get-ChildItem "$root\cards\renders2\$($f.BaseName)_r*.bmp" -ErrorAction SilentlyContinue | Sort-Object Name
         if ($renders) {
             $tables += "<details><summary>aim screenshots (match your screen to the image; green cross = crosshair)</summary>"
             $i = 1
             foreach ($r in $renders) {
-                $tables += "<div>#$i</div><img src='renders/$($r.Name)?v=$($r.LastWriteTime.Ticks)' style='width:640px;margin:4px 0'>"
+                $tables += "<div>#$i</div><img src='renders2/$($r.Name)?v=$($r.LastWriteTime.Ticks)' style='width:640px;margin:4px 0'>"
                 $i++
             }
             $tables += "</details>"
@@ -76,3 +76,4 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
 }
 $html | Out-File "$root\cards\index.html" -Encoding utf8
 Write-Host "wrote cards/index.html"
+
