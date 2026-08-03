@@ -53,7 +53,9 @@ impl Default for Cfg {
             stop_speed: 200.0,
             eye_z: 175.0,
             arc_deg: 8.0,
-            hand_left: 85.0, // 60 left the sim ~0.25m right (Henry's calibration)
+            // ZERO: Henry confirmed in-game the molly launches from screen
+            // center, straight, above the crosshair. No lateral hand offset.
+            hand_left: 0.0,
             max_time: 8.0,
         }
     }

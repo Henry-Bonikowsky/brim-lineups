@@ -15,11 +15,47 @@ pub type V3 = Vector3<f32>;
 /// BP_ProjectileBlockingVolume actors and the molly demonstrably bounces off
 /// them in game (2026-08-03 clips: both real throws clipped the volume at the
 /// Breeze courtyard tower that the bare art meshes do not cover).
-const UMAP_BLACKLIST: [&str; 20] = [
+const UMAP_BLACKLIST: [&str; 19] = [
     "Vista", "Skybox", "Lighting", "Inactive", "_Alt", "_FFA", "QuickSpike", "SiteRush",
-    "SpikeRush", "Profiling", "BTIL", "Destruction", "ObserverCameras", "Greybox",
+    "SpikeRush", "Profiling", "BTIL", "ObserverCameras", "Greybox",
     "FortCollins", "KillVolumes", "BVPawn", "VFX", "Working", "DesignChanges",
 ];
+// NOTE: "Destruction" must NOT be blacklisted: on Haven the live C site IS
+// Triad_Art_C_Destruction (the persistent level streams it always-loaded and
+// does not stream the old Triad_Art_C at all).
+
+/// The authoritative filter: the persistent level's own streaming list.
+/// Always-loaded sublevels plus the BombMode set are what the live bomb-mode
+/// map consists of; everything else (old art variants, alt modes, dev levels)
+/// is not in the game. Falls back to None (name blacklist only) if missing.
+fn allowed_umaps(dir: &Path) -> Option<std::collections::HashSet<String>> {
+    let name = dir.file_name()?.to_str()?;
+    let txt = std::fs::read_to_string(dir.join(format!("{name}.json"))).ok()?;
+    let v: Value = serde_json::from_str(&txt).ok()?;
+    let mut set = std::collections::HashSet::new();
+    set.insert(name.to_string()); // the persistent level itself
+    let last = |s: &str| s.rsplit('.').next().unwrap_or(s).to_string();
+    for it in v.as_array()? {
+        let p = &it["Properties"];
+        if it["Class"].as_str().is_some_and(|c| c.contains("LevelStreamingAlwaysLoaded")) {
+            if let Some(w) = p["WorldAsset"]["AssetPathName"].as_str() {
+                set.insert(last(w));
+            }
+        }
+        if let Some(arr) = p["GameModeSpecificSublevelsByKey"].as_array() {
+            for e in arr {
+                if e["SublevelKey"].as_str().is_some_and(|k| k.contains("BombMode")) {
+                    for s in e["Sublevels"].as_array().into_iter().flatten() {
+                        if let Some(w) = s["AssetPathName"].as_str() {
+                            set.insert(last(w));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    (set.len() > 1).then_some(set)
+}
 
 /// Soft decor that does not gate projectiles in game (same family the ValoBoard
 /// sight bake prunes).
@@ -195,6 +231,7 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
     .expect("array")
     .clone();
 
+    let allowed = allowed_umaps(dir);
     let mut objs: HashMap<String, Option<(Vec<[f32; 3]>, Vec<[u32; 3]>)>> = HashMap::new();
     let mut tris: Vec<[[f32; 3]; 3]> = Vec::new();
     let mut tri_owner: Vec<(u32, String)> = Vec::new();
@@ -216,7 +253,8 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         // they block mollies in game: exempt them from the Environment gate
         let bv_proj = umap.contains("BVProjectile");
         if mode != Mode::Everything
-            && (!(mesh.contains("/Environment/") || bv_proj)
+            && (allowed.as_ref().is_some_and(|a| !a.contains(umap))
+                || !(mesh.contains("/Environment/") || bv_proj)
                 || comp == "GameObjectMesh"
                 || comp.starts_with("StaticMesh_Glow")
                 || comp.contains("TargetViewMode")
