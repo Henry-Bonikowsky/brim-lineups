@@ -252,50 +252,12 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"flight never settled\"}"));
                 return;
             };
-            let vscene = &vs;
-            let live = &live2;
-            let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
-            let fdir = std::env::temp_dir().join(format!("bl_vid_{run}"));
-            std::fs::create_dir_all(&fdir).ok();
-            const FRAMES: usize = 90;
-            use parry3d::query::{Ray, RayCast};
-            use rayon::prelude::*;
-            (0..FRAMES).into_par_iter().for_each(|f| {
-                let upto = render::flight_frame_index2(f, FRAMES, 16, traj.len(), first_bounce);
-                let i = upto.min(traj.len() - 1);
-                let m = traj[i];
-                let vdir = (traj[(i + 3).min(traj.len() - 1)] - traj[i.saturating_sub(3)]).normalize();
-                let vh = V3::new(vdir.x, vdir.y, 0.0).norm().max(0.2);
-                let back = V3::new(-vdir.x / vh, -vdir.y / vh, 0.0);
-                let mut cam = m + back * 380.0 + V3::new(0.0, 0.0, 170.0);
-                let toc = cam - m;
-                let d = toc.norm();
-                let ray = Ray::new(nalgebra::Point3::from(m), toc / d);
-                if let Some(t) = vscene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, d, true) {
-                    cam = m + toc / d * (t * 0.85).max(60.0);
-                }
-                let look = m - cam;
-                let cam_yaw = look.y.atan2(look.x).to_degrees();
-                let cam_pitch = (look.z / look.norm()).asin().to_degrees();
-                render::render_flight_sized(
-                    vscene, cam, cam_yaw, cam_pitch,
-                    fdir.join(format!("f{f:04}.bmp")).to_str().unwrap(),
-                    out.rest, &traj, i, 640, 360,
-                );
-            });
-            let out_path = format!("{live}/{run}_flight.mp4");
-            let st = std::process::Command::new("ffmpeg")
-                .args([
-                    "-y", "-v", "error", "-framerate", "16",
-                    "-i", fdir.join("f%04d.bmp").to_str().unwrap(),
-                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", &out_path,
-                ])
-                .status();
-            std::fs::remove_dir_all(&fdir).ok();
-            let vid = match st {
-                Ok(s) if s.success() => format!("\"live/{run}_flight.mp4\""),
-                _ => "null".to_string(),
-            };
+            let vid_body = flight_video(&vs, out.rest, &traj, first_bounce, &live2);
+            let vid = vid_body
+                .strip_prefix("{\"video\":")
+                .and_then(|s| s.strip_suffix('}'))
+                .unwrap_or("null")
+                .to_string();
             let body = format!(
                 "{{\"rest\":[{:.0},{:.0},{:.0}],\"time\":{:.2},\"bounces\":{},\"stand\":[{x:.0},{y:.0},{gz:.0}],\"video\":{vid}}}",
                 out.rest.x, out.rest.y, out.rest.z, out.time, out.bounces
@@ -339,10 +301,39 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
 }
 
 /// Render the chase-cam flight video; returns the JSON body ({"video": ...}
-/// or {"error": ...}).
+/// or {"error": ...}). The bounce/settle phase switches to a FIXED camera
+/// with verified line of sight to the rest point (the chase cam clips into
+/// geometry exactly when the landing gets interesting).
 fn flight_video(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, live: &str) -> String {
     use parry3d::query::{Ray, RayCast};
     use rayon::prelude::*;
+    let id = nalgebra::Isometry3::identity();
+    let clear = |a: V3, b: V3| -> bool {
+        let d = b - a;
+        let n = d.norm().max(1.0);
+        vscene.mesh.cast_ray(&id, &Ray::new(nalgebra::Point3::from(a), d / n), n - 40.0, true).is_none()
+    };
+    // landing camera: ring candidates around the rest point, preferring the
+    // direction the molly ARRIVES from (so the bounce happens toward us),
+    // first one that sees both the rest point and the first-bounce point
+    let arrive = {
+        let a = traj[first_bounce.min(traj.len() - 1)] - traj[first_bounce.saturating_sub(8)];
+        (-a.y).atan2(-a.x)
+    };
+    let fb_pos = traj[first_bounce.min(traj.len() - 1)];
+    let mut land_cam = target + V3::new(0.0, 0.0, 900.0);
+    'search: for (radius, height) in [(650.0f32, 330.0f32), (900.0, 480.0), (450.0, 240.0), (1200.0, 700.0)] {
+        for k in 0..12 {
+            // fan out from the arrival direction: 0, +-30, +-60... degrees
+            let da = ((k + 1) / 2) as f32 * 30.0_f32.to_radians() * if k % 2 == 0 { 1.0 } else { -1.0 };
+            let a = arrive + da;
+            let c = target + V3::new(a.cos() * radius, a.sin() * radius, height);
+            if clear(c, target + V3::new(0.0, 0.0, 60.0)) && clear(c, fb_pos + V3::new(0.0, 0.0, 60.0)) {
+                land_cam = c;
+                break 'search;
+            }
+        }
+    }
     let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
     let fdir = std::env::temp_dir().join(format!("bl_vid_{run}"));
     std::fs::create_dir_all(&fdir).ok();
@@ -351,16 +342,21 @@ fn flight_video(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, li
         let upto = render::flight_frame_index2(f, FRAMES, 16, traj.len(), first_bounce);
         let i = upto.min(traj.len() - 1);
         let m = traj[i];
-        let vdir = (traj[(i + 3).min(traj.len() - 1)] - traj[i.saturating_sub(3)]).normalize();
-        let vh = V3::new(vdir.x, vdir.y, 0.0).norm().max(0.2);
-        let back = V3::new(-vdir.x / vh, -vdir.y / vh, 0.0);
-        let mut cam = m + back * 380.0 + V3::new(0.0, 0.0, 170.0);
-        let toc = cam - m;
-        let d = toc.norm();
-        let ray = Ray::new(nalgebra::Point3::from(m), toc / d);
-        if let Some(t) = vscene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, d, true) {
-            cam = m + toc / d * (t * 0.85).max(60.0);
-        }
+        let cam = if i + 12 >= first_bounce {
+            land_cam // settle phase: fixed, guaranteed-visible viewpoint
+        } else {
+            let vdir = (traj[(i + 3).min(traj.len() - 1)] - traj[i.saturating_sub(3)]).normalize();
+            let vh = V3::new(vdir.x, vdir.y, 0.0).norm().max(0.2);
+            let back = V3::new(-vdir.x / vh, -vdir.y / vh, 0.0);
+            let mut cam = m + back * 380.0 + V3::new(0.0, 0.0, 170.0);
+            let toc = cam - m;
+            let d = toc.norm();
+            let ray = Ray::new(nalgebra::Point3::from(m), toc / d);
+            if let Some(t) = vscene.mesh.cast_ray(&id, &ray, d, true) {
+                cam = m + toc / d * (t * 0.85).max(60.0);
+            }
+            cam
+        };
         let look = m - cam;
         let cam_yaw = look.y.atan2(look.x).to_degrees();
         let cam_pitch = (look.z / look.norm()).asin().to_degrees();
