@@ -111,10 +111,12 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
                 if lat < cfg.stop_speed * 2.0 || bounces > 40 {
                     return Some(Outcome { rest: p, time: t, bounces });
                 }
-                // skitter: minimum hop + rolling loss on the slide (tuned so the
-                // in-game-validated wall throw still rests on its spot)
+                // dying-hop phase: natural decaying rebound (no artificial fixed
+                // hop; keeps a small floor so the sim doesn't grind the surface)
+                // with rolling loss on the slide
                 let vn2 = v.dot(&n);
-                v = (v - n * vn2) * 0.65 + n * (cfg.stop_speed * 0.7);
+                let hop = vn2.abs().max(35.0).min(cfg.stop_speed);
+                v = (v - n * vn2) * 0.72 + n * hop;
             }
         } else {
             p += step;
