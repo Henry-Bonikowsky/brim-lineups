@@ -71,6 +71,11 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
                     $sn = Split-Path $s -Leaf
                     $tables += "<img src='renders3/$($sn)?v=$((Get-Item $s).LastWriteTime.Ticks)' style='width:520px;margin:4px 0'>"
                 }
+                $w = $r.FullName -replace "_r(\d+)\.bmp$", "_w`$1.bmp"
+                if (Test-Path $w) {
+                    $wn = Split-Path $w -Leaf
+                    $tables += "<img src='renders3/$($wn)?v=$((Get-Item $w).LastWriteTime.Ticks)' style='width:520px;margin:4px 0 4px 4px'>"
+                }
                 $i++
             }
             $tables += "</details>"

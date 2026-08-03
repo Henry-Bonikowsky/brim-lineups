@@ -9,14 +9,19 @@ const H: usize = 540;
 const HFOV_DEG: f32 = 103.0;
 
 pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, false)
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, None)
 }
 
 pub fn render_grid(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, true)
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, None)
 }
 
-fn render_ex(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, grid: bool) {
+/// Wide context shot with a ring marking a world point (the stand spot).
+pub fn render_marked(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, mark: V3) {
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, Some(mark))
+}
+
+fn render_ex(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, grid: bool, mark: Option<V3>) {
     let (sy, cy) = yaw_deg.to_radians().sin_cos();
     let (sp, cp) = pitch_deg.to_radians().sin_cos();
     let fwd = V3::new(cp * cy, cp * sy, sp);
@@ -144,8 +149,30 @@ fn render_ex(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, g
             px[o + 2] = r;
         }
     }
-    // crosshair: green cross at center
-    for d in 0..14i32 {
+    // world-point marker: green ring where the mark projects
+    if let Some(m) = mark {
+        let d = m - eye;
+        let c = V3::new(d.dot(&right), d.dot(&up), d.dot(&fwd));
+        if c.z > 1.0 {
+            let mx = ((c.x / (c.z * tan_h) * 0.5 + 0.5) * W as f32) as i32;
+            let my = ((0.5 - c.y / (c.z * tan_v) * 0.5) * H as f32) as i32;
+            for a in 0..64 {
+                let t = a as f32 / 64.0 * std::f32::consts::TAU;
+                for r in [10.0f32, 11.0] {
+                    let (px_, py_) = ((mx as f32 + t.cos() * r) as i32, (my as f32 + t.sin() * r) as i32);
+                    if px_ >= 0 && px_ < W as i32 && py_ >= 0 && py_ < H as i32 {
+                        let o = ((H - 1 - py_ as usize) * W + px_ as usize) * 3;
+                        px[o] = 60;
+                        px[o + 1] = 255;
+                        px[o + 2] = 60;
+                    }
+                }
+            }
+        }
+    }
+
+    // crosshair: green cross at center (not on marked context shots)
+    for d in if mark.is_none() { 0..14i32 } else { 0..0i32 } {
         for (cx, cy) in [
             (W as i32 / 2 + d - 7, H as i32 / 2),
             (W as i32 / 2, H as i32 / 2 + d - 7),

@@ -163,7 +163,12 @@ fn main() {
             // cross is where your feet go, image-up is your throw direction
             let spath = format!("{prefix}_s{}.bmp", i + 1);
             render::render_grid(&scene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &spath);
-            eprintln!("rendered {path} + stand view");
+            // wide context: drone shot from behind-above the stand along the throw
+            let (syw, cyw) = l.yaw.to_radians().sin_cos();
+            let wide_eye = l.stand + V3::new(-cyw * 700.0, -syw * 700.0, 650.0);
+            let wpath = format!("{prefix}_w{}.bmp", i + 1);
+            render::render_marked(&scene, wide_eye, l.yaw, -38.0, &wpath, l.stand + V3::new(0.0, 0.0, 40.0));
+            eprintln!("rendered {path} + stand + wide");
         }
     }
 
