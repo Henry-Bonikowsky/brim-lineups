@@ -12,7 +12,7 @@ pub struct Cfg {
     pub bounciness: f32,  // 0.35
     pub friction: f32,    // 0.65
     pub stop_speed: f32,  // 200
-    pub eye_z: f32,       // knob: launch origin height over stand point (native)
+    pub eye_z: f32,       // camera height: CapsuleHalfHeight 98 + BaseEyeHeight 77 (BasePawn CDO)
     pub arc_deg: f32,     // knob: UpwardArc 8 (aim pitch offset, native combine)
     pub max_time: f32,
 }
@@ -25,7 +25,7 @@ impl Default for Cfg {
             bounciness: 0.35,
             friction: 0.65,
             stop_speed: 200.0,
-            eye_z: 150.0,
+            eye_z: 175.0,
             arc_deg: 8.0,
             max_time: 8.0,
         }

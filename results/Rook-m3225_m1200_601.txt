@@ -1,0 +1,20 @@
+﻿.\target\release\brim-lineups.exe : navmesh sparse (4 pts); targeting-mesh fallback added 1112
+At line:1 char:541
++ ... e "-", "m"; .\target\release\brim-lineups.exe "C:\dev\active\ValoBoar ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (navmesh sparse ...back added 1112:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+scene: 3209541 tris from 2540 placements (3876 filtered, 647 instanced skipped), 1116 stand points
+flights: 539 never stopped, 76208 landed far, 2173 within tol
+solved in 775.7ms: 364 distinct lineups within 150u
+             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive
+         (-2873, -2150, 597)  1013u   112.3   -11.7  0.39s   3    40u     50%
+         (-4303, -1465, 597)  1110u    13.8   -12.5  0.43s   3    25u    100%
+         (-2937, -2405, 597)  1239u   101.5   -12.1  0.45s   3    77u      0%
+         (-2147, -1738, 597)  1205u   155.5   -11.5  0.45s   3    35u    100%
+         (-4428, -1058, 697)  1212u    -8.7   -17.0  0.46s   3   114u     88%
+         (-2263, -1867, 597)  1170u   146.3   -11.9  0.48s   3     8u     75%
+          (-4305, -873, 697)  1128u   -18.8   -16.2  0.49s   3    31u     75%
+         (-2018, -1878, 597)  1384u   152.7    -9.8  0.49s   3    45u     88%
+wrote lineups.json (364 entries)

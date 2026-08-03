@@ -1,0 +1,21 @@
+﻿brim-lineups.exe : scene: 493633 tris from 948 placements (3727 filtered, 829 instanced skipped), 2946 stand points
+At line:1 char:1248
++ ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (scene: 493633 t...46 stand points:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+flights: 1413 never stopped, 169125 landed far, 5467 within tol
+solved in 1.6s: 475 distinct lineups within 150u
+             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive
+          (10991, 1486, 110)  1033u   102.0   -11.2  0.60s   3   146u     50%
+          (11043, 1473, 110)  1057u   103.6   -10.9  0.62s   3   134u     50%
+          (11280, 1479, 110)  1131u   113.4   -10.0  0.68s   3   133u     50%
+          (11101, 1249, 160)  1288u   101.8   -11.5  0.69s   3   147u    100%
+          (11472, 1186, 110)  1479u   115.3    -7.5  0.74s   3   148u     38%
+          (11056, 1088, 210)  1437u    98.5   -11.8  0.75s   3   143u    100%
+          (11358, 1365, 110)  1267u   114.4    -8.5  0.77s   3   126u     62%
+          (10629, 1483, 490)  1031u    82.8   -28.9  0.82s   3   107u    100%
+          (11649, 1060, 110)  1675u   118.7    -5.9  0.85s   3   145u     38%
+           (10280, 952, 610)  1631u    73.6   -21.7  0.86s   3   140u    100%
+wrote lineups.json (475 entries)

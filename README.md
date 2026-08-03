@@ -20,8 +20,8 @@ cargo run --release -- <mapDumpDir> --target X,Y,Z [options]
 --tol 150        landing tolerance in units
 --min-dist 1000  ignore trivial close tosses; lineups are throws from range
 --top 15         rows printed (full set goes to lineups.json)
---eye 150        launch origin height above the stand point   [calibration knob]
---arc 8          UpwardArc: launch pitch minus crosshair pitch [calibration knob]
+--eye 175        launch height: pawn camera from the files (98+77) [calibration knob]
+--arc 8          UpwardArc: launch pitch minus crosshair pitch     [calibration knob]
 --speed 2900     ProjectileSpeed from the files
 
 --probe X,Y,Z    debug: raycasts down/up/north at a point, names the hit mesh
@@ -42,8 +42,10 @@ trigger components filtered).
 
 ## Native unknowns (why --eye and --arc exist)
 
-The exact launch origin and the UpwardArc/UpwardShift combination live in native code, not
-the files. Defaults: origin = stand + 150u, launch pitch = crosshair + 8 deg. Calibrate
+Whether the throw originates exactly at the camera, and the UpwardArc/UpwardShift
+combination, live in native code. Defaults: origin = stand + 175u (the pawn camera height
+from BasePawn: CapsuleHalfHeight 98 + BaseEyeHeight 77), launch pitch = crosshair + 8 deg.
+Calibrate
 in-game: stand on a computed lineup, aim at the computed yaw/pitch, compare the landing;
 adjust --eye (shifts short/long uniformly at all ranges) and --arc (shifts reported pitch).
 

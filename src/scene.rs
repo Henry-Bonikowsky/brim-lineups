@@ -13,10 +13,10 @@ pub type V3 = Vector3<f32>;
 /// vistas, disabled props, event reskins, dev greybox, kill-volume triggers,
 /// and the BV volumes (the molly ignores the Projectile channel and pawn
 /// blockers per its BodyInstance responses; it collides with world statics).
-const UMAP_BLACKLIST: [&str; 17] = [
+const UMAP_BLACKLIST: [&str; 18] = [
     "Vista", "Skybox", "Lighting", "Inactive", "_Alt", "_FFA", "QuickSpike", "SiteRush",
-    "Profiling", "BTIL", "Destruction", "ObserverCameras", "Greybox", "FortCollins",
-    "KillVolumes", "BVProjectile", "BVPawn",
+    "SpikeRush", "Profiling", "BTIL", "Destruction", "ObserverCameras", "Greybox",
+    "FortCollins", "KillVolumes", "BVProjectile", "BVPawn",
 ];
 
 /// Soft decor that does not gate projectiles in game (same family the ValoBoard
@@ -110,8 +110,10 @@ pub fn load(dir: &Path) -> Scene {
         let umap = i["umap"].as_str().unwrap_or("");
         let mesh = i["mesh"].as_str().unwrap_or("");
         // real world geometry is Environment art; Cube/BasicShape placements are
-        // trigger volumes, barriers, and markup, never molly-blocking surfaces
+        // trigger volumes, barriers, and markup, never molly-blocking surfaces.
+        // GameObjectMesh components are pickups (ult orbs), overlap-only in game.
         if !mesh.contains("/Environment/")
+            || i["component"].as_str().unwrap_or("") == "GameObjectMesh"
             || UMAP_BLACKLIST.iter().any(|b| umap.contains(b))
             || MESH_BLACKLIST.iter().any(|b| mesh.contains(b))
         {
@@ -186,8 +188,8 @@ pub fn load(dir: &Path) -> Scene {
             let c0 = verts.iter().fold([0.0; 3], |a, v| [a[0] + v[0], a[1] + v[1], a[2] + v[2]]);
             let c = [c0[0] / n, c0[1] / n, c0[2] / n];
             // poly verts sit flush against walls; inset by the player capsule
-            // radius so the launch eye is not inside a wall face
-            const INSET: f64 = 35.0;
+            // radius (BasePawn CapsuleRadius 42) so the eye is not inside a wall
+            const INSET: f64 = 42.0;
             let inset = |v: &[f64; 3]| -> [f64; 3] {
                 let d = [c[0] - v[0], c[1] - v[1]];
                 let len = (d[0] * d[0] + d[1] * d[1]).sqrt();
@@ -203,6 +205,34 @@ pub fn load(dir: &Path) -> Scene {
                     stands.push(V3::new(p[0] as f32, p[1] as f32, p[2] as f32));
                 }
             }
+        }
+    }
+
+    // some maps (Rook, HURM_Helix) ship no real baked navmesh; fall back to
+    // Riot's ability-targeting mesh (navmesh-derived), extracted as targeting.obj
+    // via `valo_dump obj .../TargetingMeshes/<Map>_NavMesh_Targeting <dir>/targeting.obj`
+    if stands.len() < 200 {
+        if let Some((vs, fs)) = load_obj(&dir.join("targeting.obj")) {
+            let before = stands.len();
+            for f in &fs {
+                let (a, b, c) = (vs[f[0] as usize], vs[f[1] as usize], vs[f[2] as usize]);
+                let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+                let w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+                let nz = u[0] * w[1] - u[1] * w[0]; // z of the cross product
+                let area2 = ((u[1] * w[2] - u[2] * w[1]).powi(2)
+                    + (u[2] * w[0] - u[0] * w[2]).powi(2)
+                    + nz * nz)
+                    .sqrt();
+                if area2 < 1.0 || nz.abs() / area2 < 0.7 {
+                    continue; // degenerate or too steep to stand on
+                }
+                let p = [(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0, (a[2] + b[2] + c[2]) / 3.0];
+                let key = ((p[0] / 50.0) as i64, (p[1] / 50.0) as i64, (p[2] / 50.0) as i64);
+                if seen.insert(key) {
+                    stands.push(V3::new(p[0], p[1], p[2]));
+                }
+            }
+            eprintln!("navmesh sparse ({before} pts); targeting-mesh fallback added {}", stands.len() - before);
         }
     }
 
