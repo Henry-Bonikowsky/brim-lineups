@@ -5,6 +5,86 @@ use crate::scene::{Scene, V3};
 use crate::sim::{fly, Cfg};
 use rayon::prelude::*;
 
+/// UI landmarks usable as aiming references (screen fractions of the HUD):
+/// pixel-true elements only. Lineups whose aim puts one of these ON a world
+/// silhouette edge are replicable in game without guesswork.
+const UI_ANCHORS: [(&str, f32, f32); 10] = [
+    ("crosshair", 0.5, 0.5),
+    ("charge-pip tip", 0.4661, 0.7736),
+    ("Q icon top-left corner", 0.3863, 0.8972),
+    ("Q icon top-right corner", 0.4158, 0.8972),
+    ("E icon top-left corner", 0.4514, 0.8972),
+    ("E icon top-right corner", 0.4809, 0.8972),
+    ("MB4 icon top-left corner", 0.5165, 0.8972),
+    ("MB4 icon top-right corner", 0.5460, 0.8972),
+    ("X icon top-left corner", 0.5816, 0.8972),
+    ("X icon top-right corner", 0.6111, 0.8972),
+];
+
+/// Does any UI anchor sit on a strong depth edge at this aim? Returns the
+/// best (anchor name, edge distance, grade 1..2); grade 2 = dead on.
+fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32) -> Option<(&'static str, f32, u8)> {
+    use parry3d::query::{Ray, RayCast};
+    let (sy, cy) = yaw.to_radians().sin_cos();
+    let (sp, cp) = pitch.to_radians().sin_cos();
+    let fwd = V3::new(cp * cy, cp * sy, sp);
+    let right = V3::new(-sy, cy, 0.0);
+    let up = fwd.cross(&right).normalize();
+    let tan_h = (103.0f32.to_radians() / 2.0).tan();
+    let tan_v = tan_h * 9.0 / 16.0;
+    let id = nalgebra::Isometry3::identity();
+    let depth_at = |fx: f32, fy: f32| -> f32 {
+        let d = (fwd + right * ((fx * 2.0 - 1.0) * tan_h) + up * ((1.0 - fy * 2.0) * tan_v)).normalize();
+        scene
+            .mesh
+            .cast_ray(&id, &Ray::new(nalgebra::Point3::from(eye), d), 5.0e4, true)
+            .unwrap_or(f32::INFINITY)
+    };
+    let edgy = |a: f32, b: f32| -> bool {
+        let near = a.min(b);
+        near < 9000.0 && (a.max(b) / near > 1.7 || (a.is_infinite() != b.is_infinite()))
+    };
+    let mut best: Option<(&'static str, f32, u8)> = None;
+    for (name, ax, ay) in UI_ANCHORS {
+        const S: f32 = 0.005; // ~0.3 deg horizontally
+        let mut d = [[0.0f32; 5]; 5];
+        for (j, dj) in (-2i32..=2).enumerate() {
+            for (i, di) in (-2i32..=2).enumerate() {
+                d[j][i] = depth_at(ax + di as f32 * S, ay + dj as f32 * S);
+            }
+        }
+        // edge crossing adjacent to the center = grade 2; anywhere = grade 1
+        let mut grade = 0u8;
+        let mut dist = f32::INFINITY;
+        for j in 0..5 {
+            for i in 0..4 {
+                if edgy(d[j][i], d[j][i + 1]) || (j < 4 && edgy(d[j][i], d[j + 1][i])) {
+                    let r = ((i as f32 + 0.5 - 2.0).abs()).max((j as f32 - 2.0).abs());
+                    if r <= 1.0 {
+                        grade = 2;
+                    } else if grade == 0 {
+                        grade = 1;
+                    }
+                    dist = dist.min(d[j][i].min(d[j][i + 1]));
+                }
+            }
+        }
+        if grade > 0 {
+            let better = match best {
+                Some((_, _, g)) => grade > g,
+                None => true,
+            };
+            if better {
+                best = Some((name, dist, grade));
+            }
+        }
+        if matches!(best, Some((_, _, 2))) && name == "crosshair" {
+            break; // crosshair dead-on beats everything
+        }
+    }
+    best
+}
+
 pub struct Lineup {
     pub dist: f32, // stand-to-target range (lineups are long throws, not tosses)
     pub stand: V3,
@@ -19,6 +99,8 @@ pub struct Lineup {
     pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
     pub backstop: bool,  // stand is flush against geometry (exactly reproducible)
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
+    /// UI landmark sitting on a world edge at this aim: (anchor, edge dist, grade)
+    pub ui_ref: Option<(&'static str, f32, u8)>,
 }
 
 impl Lineup {
@@ -129,6 +211,10 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                         // blocks it even at 2m)
                         let covered = err < tol && crate::sim::fire_covers(scene, o.rest, target);
                         if covered { &n_near } else { &n_far }.fetch_add(1, Relaxed);
+                        // covered candidates get scored for a UI reference: a
+                        // lineup you can replicate off a landmark beats a
+                        // slightly faster one aimed at featureless sky
+                        let ui_ref = if covered && paired { ui_reference(scene, origin, yaw, pitch - cfg.arc_deg) } else { None };
                         let cand = Lineup {
                             dist: d,
                             stand: *stand,
@@ -143,6 +229,7 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                             pos_forgive: 0.0,
                             backstop: false,
                             aim_ref: None,
+                            ui_ref,
                         };
                         if !covered {
                             if paired && best_miss.as_ref().is_none_or(|b| cand.err < b.err) {
@@ -150,13 +237,18 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                             }
                             continue;
                         }
+                        let grade = |l: &Lineup| l.ui_ref.map_or(0u8, |(_, _, g)| g);
                         if paired {
                             let key = (pitch / 8.0).round() as i32;
-                            match families.get(&key) {
-                                Some(cur) if cur.time <= cand.time => {}
-                                _ => {
-                                    families.insert(key, cand);
+                            let replace = match families.get(&key) {
+                                Some(cur) => {
+                                    grade(&cand) > grade(cur)
+                                        || (grade(&cand) == grade(cur) && cand.time < cur.time)
                                 }
+                                None => true,
+                            };
+                            if replace {
+                                families.insert(key, cand);
                             }
                         } else if best.as_ref().is_none_or(|b| cand.time < b.time) {
                             best = Some(cand);
@@ -261,6 +353,9 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         .mesh
         .cast_ray(&nalgebra::Isometry3::identity(), &ray, 5.0e4, true)
         .map(|t| (origin + aim_dir * t, t));
+    if b.ui_ref.is_none() {
+        b.ui_ref = ui_reference(scene, origin, b.yaw, b.pitch);
+    }
     let mut ok = 0;
     let mut worst = 0.0f32;
     for (jy, jp) in

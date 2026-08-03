@@ -135,7 +135,13 @@ async function solveNow(m) {
     if (j.error) { res.innerHTML = `<p>${j.error}</p>`; solving = false; return; }
     let h = `<p>${j.count} working lineups to (${j.target.join(', ')}) - top ${j.lineups.length}:</p>`;
     j.lineups.forEach((l, i) => {
-      const aim = l.aim_ref ? `crosshair lands on geometry ${(l.aim_ref[3] / 100).toFixed(1)}m ahead` : 'crosshair: open sky (align with the launcher / ability bar)';
+      let aim = l.aim_ref ? `crosshair lands on geometry ${(l.aim_ref[3] / 100).toFixed(1)}m ahead` : 'crosshair: open sky';
+      if (l.ui_ref) {
+        const sure = l.ui_ref.grade === 2 ? 'sits ON' : 'sits NEAR';
+        aim += ` - <b class='good'>reference: the ${l.ui_ref.anchor} ${sure} an object edge ${(l.ui_ref.dist / 100).toFixed(1)}m away (match the aim image)</b>`;
+      } else if (!l.aim_ref) {
+        aim += ' (no clean UI reference found for this angle)';
+      }
       const m2 = v => (v / 100).toFixed(1) + 'm';
       const verdict = l.covered
         ? `<span class='good'>fire covers your spot</span> (rests ${m2(l.err)} away)`
