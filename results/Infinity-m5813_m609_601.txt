@@ -1,16 +1,14 @@
 ﻿brim-lineups.exe : scene[collision]: 1379070 tris from 2023 placements (4462 filtered, 1402 instances expanded), 2171 
 stand points
-At line:1 char:1374
+At line:1 char:1324
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...71 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 flights: 9705 never stopped, 84039 landed far, 486 within tol
-solved in 383.6ms: 93 distinct lineups within 150u
+solved in 289.9ms: 68 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-        (-5040, -2237, 1010)  1802u   113.4   -15.2  1.72s   4   121u     12%  (-5310, -1614, 1000 @ 704u)
-        (-4959, -2240, 1010)  1841u   116.6   -14.7  1.97s   4    83u     12%  (-5274, -1611, 1000 @ 727u)
         (-3783, -2412, 1010)  2715u   139.4    -5.9  2.09s   4   117u      0%  (-5205, -1193, 991 @ 1882u)
          (-3627, -2638, 998)  2982u   137.1    -3.6  2.35s   4     5u      0%  (open sky)
         (-3492, -2507, 1010)  2998u   140.7    -3.7  2.37s   4    30u     12%  (open sky)
@@ -21,6 +19,8 @@ solved in 383.6ms: 93 distinct lineups within 150u
           (-3409, 1990, 410)  3540u  -130.8    67.8  4.98s   2   125u     25%  (open sky)
          (-2114, -4713, 810)  5526u   134.0    59.1  5.47s   3   145u      0%  (open sky)
           (-3225, 2500, 410)  4045u  -131.8    66.6  5.96s   2   149u     12%  (-3533, 2155, 1653 @ 1163u)
+          (-5480, 1632, 410)  2265u   -98.5    73.2  6.05s   2   148u     38%  (-5557, 1117, 2307 @ 1799u)
+          (-5015, 1616, 410)  2364u  -109.7    73.8  6.05s   2   112u     38%  (-5188, 1133, 2348 @ 1837u)
 scene[visual]: 2523102 tris from 3095 placements (3390 filtered, 3463 instances expanded), 2171 stand points
 rendered .\cards\renders3\Infinity-m5813_m609_601_r1.bmp + stand + wide
 rendered .\cards\renders3\Infinity-m5813_m609_601_r2.bmp + stand + wide
@@ -34,4 +34,4 @@ rendered .\cards\renders3\Infinity-m5813_m609_601_r9.bmp + stand + wide
 rendered .\cards\renders3\Infinity-m5813_m609_601_r10.bmp + stand + wide
 rendered .\cards\renders3\Infinity-m5813_m609_601_r11.bmp + stand + wide
 rendered .\cards\renders3\Infinity-m5813_m609_601_r12.bmp + stand + wide
-wrote lineups.json (93 entries)
+wrote lineups.json (68 entries)

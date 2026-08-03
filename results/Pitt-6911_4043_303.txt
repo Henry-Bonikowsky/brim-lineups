@@ -1,16 +1,14 @@
 ﻿brim-lineups.exe : scene[collision]: 1930382 tris from 2001 placements (3218 filtered, 3039 instances expanded), 2315 
 stand points
-At line:1 char:1374
+At line:1 char:1324
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...15 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 flights: 135 never stopped, 137485 landed far, 2060 within tol
-solved in 542.1ms: 224 distinct lineups within 150u
+solved in 461.6ms: 208 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-           (8712, 3728, 310)  1828u   168.1    -8.7  1.01s   3    93u     25%  (7528, 3978, 300 @ 1224u)
-           (4724, 5495, 610)  2625u   -35.6    -9.5  1.05s   3   114u     50%  (6746, 4049, 371 @ 2520u)
            (6369, 2257, 510)  1867u    71.1   -15.5  1.25s   3   111u      0%  (6585, 2887, 500 @ 691u)
           (6731, -3392, 700)  7438u    87.6    46.7  4.54s   3   132u      0%  (open sky)
           (7436, -2067, 260)  6133u    93.9    54.9  4.66s   3   107u      0%  (7398, -1504, 1238 @ 982u)
@@ -21,6 +19,8 @@ solved in 542.1ms: 224 distinct lineups within 150u
            (10964, 568, 310)  5339u   139.4    59.6  4.84s   2    20u     38%  (open sky)
            (11143, 818, 310)  5321u   142.7    59.7  4.85s   2    20u     38%  (open sky)
           (7962, -1982, 460)  6116u    98.9    55.6  4.85s   3   108u     12%  (open sky)
+          (11190, 1041, 310)  5227u   144.9    60.2  4.86s   2    20u     38%  (open sky)
+           (10751, 486, 310)  5235u   137.2    60.2  4.86s   2    21u     38%  (open sky)
 scene[visual]: 2595241 tris from 3172 placements (2047 filtered, 5303 instances expanded), 2315 stand points
 rendered .\cards\renders3\Pitt-6911_4043_303_r1.bmp + stand + wide
 rendered .\cards\renders3\Pitt-6911_4043_303_r2.bmp + stand + wide
@@ -34,4 +34,4 @@ rendered .\cards\renders3\Pitt-6911_4043_303_r9.bmp + stand + wide
 rendered .\cards\renders3\Pitt-6911_4043_303_r10.bmp + stand + wide
 rendered .\cards\renders3\Pitt-6911_4043_303_r11.bmp + stand + wide
 rendered .\cards\renders3\Pitt-6911_4043_303_r12.bmp + stand + wide
-wrote lineups.json (224 entries)
+wrote lineups.json (208 entries)

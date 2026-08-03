@@ -1,19 +1,16 @@
 ﻿brim-lineups.exe : scene[collision]: 1337694 tris from 1663 placements (2758 filtered, 2396 instances expanded), 2794 
 stand points
-At line:1 char:1374
+At line:1 char:1324
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...94 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 flights: 366 never stopped, 126079 landed far, 1715 within tol
-solved in 472.3ms: 136 distinct lineups within 150u
+solved in 493.8ms: 133 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
            (4356, 4041, 510)  2332u    76.4    -3.6  0.93s   3    65u     50%  (4431, 4351, 665 @ 320u)
            (4371, 3967, 510)  2402u    77.1    -3.2  0.97s   3    63u     62%  (4459, 4351, 663 @ 395u)
-           (2701, 5500, 618)  2278u    19.2    -5.6  1.05s   3    43u     62%  (4900, 6267, 563 @ 2340u)
-           (4974, 3183, 510)  3145u    93.7    -1.1  1.49s   3    85u     25%  (4911, 4151, 667 @ 970u)
-           (5038, 3167, 510)  3165u    95.9     5.0  1.79s   3   112u     38%  (4934, 4182, 774 @ 1024u)
            (5348, 2108, 410)  4249u    99.1    12.1  2.26s   3   129u     38%  (4354, 8331, 1930 @ 6443u)
              (29, 2310, 310)  6254u    39.9    52.5  4.48s   2   124u     25%  (open sky)
            (-148, 2524, 310)  6259u    37.4    52.5  4.49s   2   119u     25%  (open sky)
@@ -21,6 +18,9 @@ solved in 472.3ms: 136 distinct lineups within 150u
            (-173, 2640, 310)  6210u    36.4    52.9  4.51s   2   117u     25%  (open sky)
             (416, 2112, 288)  6098u    43.7    53.5  4.51s   2   131u     25%  (open sky)
             (348, 1338, 210)  6702u    47.1    50.5  4.54s   2   150u     12%  (783, 1805, 1159 @ 1003u)
+          (7039, -1014, 610)  7666u   106.8    42.4  4.56s   3    79u     12%  (open sky)
+            (1025, 884, 210)  6637u    54.1    50.1  4.59s   3    64u     25%  (1440, 1456, 1230 @ 1102u)
+          (6960, -1012, 610)  7641u   106.2    43.0  4.59s   3    87u     12%  (open sky)
 scene[visual]: 2415366 tris from 2570 placements (1851 filtered, 4358 instances expanded), 2794 stand points
 rendered .\cards\renders3\Foxtrot-4825_6325_500_r1.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-4825_6325_500_r2.bmp + stand + wide
@@ -34,4 +34,4 @@ rendered .\cards\renders3\Foxtrot-4825_6325_500_r9.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-4825_6325_500_r10.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-4825_6325_500_r11.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-4825_6325_500_r12.bmp + stand + wide
-wrote lineups.json (136 entries)
+wrote lineups.json (133 entries)

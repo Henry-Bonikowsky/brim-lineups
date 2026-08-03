@@ -1,16 +1,14 @@
 ﻿brim-lineups.exe : scene[collision]: 2213802 tris from 2771 placements (4007 filtered, 1942 instances expanded), 3059 
 stand points
-At line:1 char:1374
+At line:1 char:1324
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...59 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 flights: 87 never stopped, 178949 landed far, 1324 within tol
-solved in 803.8ms: 214 distinct lineups within 150u
+solved in 709.8ms: 203 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-            (1650, 264, 100)  1951u   103.8    -6.5  0.93s   3    62u    100%  (1343, 1508, 129 @ 1289u)
-           (1638, -353, 100)  2550u    99.0    -4.0  1.24s   3    98u     75%  (1307, 1730, 129 @ 2114u)
           (-2140, 1277, 110)  3404u    12.9     6.3  1.72s   3   121u     25%  (805, 1949, 620 @ 3039u)
           (-2514, 1185, 110)  3789u    12.8     8.3  1.79s   3   109u     62%  (880, 1953, 792 @ 3516u)
           (-2287, 1182, 108)  3571u    13.7     7.2  1.80s   3   123u     50%  (-698, 1570, 490 @ 1649u)
@@ -21,6 +19,8 @@ solved in 803.8ms: 214 distinct lineups within 150u
          (-4338, -2173, 110)  6986u    38.2    49.6  4.71s   3   107u      0%  (open sky)
          (-4192, -2195, 150)  6886u    39.1    50.7  4.76s   2   126u      0%  (open sky)
          (-4102, -2465, 258)  6992u    41.3    50.4  4.77s   2   116u      0%  (open sky)
+         (-5015, -1961, 110)  7410u    33.7    44.7  4.78s   3    94u     12%  (open sky)
+          (-2041, -3008, 60)  6066u    57.3    55.3  4.82s   2   149u      0%  (-1709, -2491, 1123 @ 1080u)
 scene[visual]: 2782212 tris from 4005 placements (2773 filtered, 2844 instances expanded), 3059 stand points
 rendered .\cards\renders3\Port-1150_2150_105_r1.bmp + stand + wide
 rendered .\cards\renders3\Port-1150_2150_105_r2.bmp + stand + wide
@@ -34,4 +34,4 @@ rendered .\cards\renders3\Port-1150_2150_105_r9.bmp + stand + wide
 rendered .\cards\renders3\Port-1150_2150_105_r10.bmp + stand + wide
 rendered .\cards\renders3\Port-1150_2150_105_r11.bmp + stand + wide
 rendered .\cards\renders3\Port-1150_2150_105_r12.bmp + stand + wide
-wrote lineups.json (214 entries)
+wrote lineups.json (203 entries)

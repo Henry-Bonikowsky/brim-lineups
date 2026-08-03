@@ -85,17 +85,26 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, cfg: &Cfg) -> V
                 }
             }
             if let Some(b) = &mut best {
-                // a LINEUP is thrown from cover: reject stands with a clear
-                // eye-to-target sightline (you would be visible from the landing
-                // spot); those are on-site tosses, not lineups
+                // a LINEUP is thrown from cover: nobody standing anywhere around
+                // the site may have line of sight to the thrower. Sample defender
+                // eyes on rings around the target; ANY clear sightline kills it.
                 use parry3d::query::{Ray, RayCast};
-                let to_target = target + V3::new(0.0, 0.0, 64.0) - origin;
-                let td = to_target.norm();
-                let sight = Ray::new(nalgebra::Point3::from(origin), to_target / td);
-                let exposed = scene
-                    .mesh
-                    .cast_ray(&nalgebra::Isometry3::identity(), &sight, td - 60.0, true)
-                    .is_none();
+                let mut site_eyes = vec![target + V3::new(0.0, 0.0, 160.0)];
+                for (ring, n) in [(350.0f32, 6usize), (650.0, 8)] {
+                    for k in 0..n {
+                        let a = k as f32 / n as f32 * std::f32::consts::TAU;
+                        site_eyes.push(target + V3::new(a.cos() * ring, a.sin() * ring, 160.0));
+                    }
+                }
+                let exposed = site_eyes.iter().any(|se| {
+                    let v = se - origin;
+                    let d = v.norm();
+                    let sight = Ray::new(nalgebra::Point3::from(origin), v / d);
+                    scene
+                        .mesh
+                        .cast_ray(&nalgebra::Isometry3::identity(), &sight, d - 60.0, true)
+                        .is_none()
+                });
                 if exposed {
                     return vec![].into_iter();
                 }

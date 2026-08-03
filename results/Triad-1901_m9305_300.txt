@@ -1,33 +1,13 @@
 ﻿brim-lineups.exe : scene[collision]: 1691072 tris from 2008 placements (3670 filtered, 3381 instances expanded), 2387 
 stand points
-At line:1 char:1374
+At line:1 char:1324
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...87 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 flights: 863 never stopped, 181906 landed far, 21 within tol
-solved in 610.0ms: 10 distinct lineups within 150u
+solved in 502.7ms: 0 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-          (3965, -9632, 310)  2090u   170.0    -9.0  0.98s   3   142u     12%  (2821, -9430, 300 @ 1177u)
-          (4010, -9440, 310)  2113u   176.3    -8.9  1.04s   3   100u     12%  (2831, -9364, 300 @ 1196u)
-          (4026, -9623, 310)  2149u   171.5    -8.7  1.05s   3   110u      0%  (2827, -9444, 300 @ 1227u)
-            (32, -9973, 310)  1985u    18.7    -9.7  1.06s   3    77u      0%  (1055, -9627, 300 @ 1095u)
-           (33, -10026, 310)  2002u    20.1    -9.6  1.06s   3    80u      0%  (1059, -9650, 300 @ 1108u)
-          (-516, -9910, 310)  2491u    15.1    -5.6  1.11s   3   111u     12%  (1178, -9454, 312 @ 1763u)
-          (4298, -8975, 310)  2419u  -170.2    -6.1  1.18s   3    87u     25%  (2621, -9266, 305 @ 1711u)
-         (-520, -10024, 310)  2526u    17.5    -5.4  1.19s   3    91u     12%  (1177, -9487, 315 @ 1788u)
-          (4508, -8954, 310)  2631u  -170.3    -4.9  1.25s   3   101u      0%  (2400, -9313, 303 @ 2146u)
-          (4529, -9036, 310)  2642u  -172.2    -4.8  1.25s   3   102u      0%  (2400, -9329, 305 @ 2157u)
 scene[visual]: 2700001 tris from 3048 placements (2630 filtered, 5694 instances expanded), 2387 stand points
-rendered .\cards\renders3\Triad-1901_m9305_300_r1.bmp + stand + wide
-rendered .\cards\renders3\Triad-1901_m9305_300_r2.bmp + stand + wide
-rendered .\cards\renders3\Triad-1901_m9305_300_r3.bmp + stand + wide
-rendered .\cards\renders3\Triad-1901_m9305_300_r4.bmp + stand + wide
-rendered .\cards\renders3\Triad-1901_m9305_300_r5.bmp + stand + wide
-rendered .\cards\renders3\Triad-1901_m9305_300_r6.bmp + stand + wide
-rendered .\cards\renders3\Triad-1901_m9305_300_r7.bmp + stand + wide
-rendered .\cards\renders3\Triad-1901_m9305_300_r8.bmp + stand + wide
-rendered .\cards\renders3\Triad-1901_m9305_300_r9.bmp + stand + wide
-rendered .\cards\renders3\Triad-1901_m9305_300_r10.bmp + stand + wide
-wrote lineups.json (10 entries)
+wrote lineups.json (0 entries)
