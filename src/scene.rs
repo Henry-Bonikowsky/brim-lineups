@@ -23,9 +23,13 @@ const UMAP_BLACKLIST: [&str; 20] = [
 
 /// Soft decor that does not gate projectiles in game (same family the ValoBoard
 /// sight bake prunes).
-const MESH_BLACKLIST: [&str; 11] = [
+const MESH_BLACKLIST: [&str; 13] = [
     "Foliage", "Plant", "Sky", "Vista", "Wire", "Rope", "Paper", "Flag", "Floater",
     "Islands_", "FloatingChunk",
+    // overhead radianite tube runs (Breeze def-spawn): BlockAll profile but no
+    // real collision in game; Henry's lineup arcs straight through where the
+    // sim deflected off them (2026-08-03 walk-mode test). Support pillars stay.
+    "RadianiteTubeStraight", "RadianiteTubeElbow",
 ];
 
 pub struct Scene {

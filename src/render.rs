@@ -137,6 +137,40 @@ pub fn render_flight_sized(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Blend the real HUD (ability bar etc.) onto a BMP-ordered pixel buffer:
+/// bilinear-sampled with the feathered alpha mask, so it stays clean at any
+/// render size instead of nearest-neighbor pixelation.
+fn overlay_hud(px: &mut [u8], w: usize, h: usize) {
+    let Some((hw, hh, hud, mask)) = hud_overlay() else { return };
+    let (hw, hh) = (*hw, *hh);
+    let (hw_f, hh_f) = (hw as f32, hh as f32);
+    for y in 0..h {
+        let fy = ((y as f32 + 0.5) / h as f32 * hh_f - 0.5).max(0.0);
+        let y0 = (fy as usize).min(hh - 1);
+        let y1 = (y0 + 1).min(hh - 1);
+        let ty = fy - y0 as f32;
+        for x in 0..w {
+            let fx = ((x as f32 + 0.5) / w as f32 * hw_f - 0.5).max(0.0);
+            let x0 = (fx as usize).min(hw - 1);
+            let x1 = (x0 + 1).min(hw - 1);
+            let tx = fx - x0 as f32;
+            let bil = |buf: &[u8], c: usize| -> f32 {
+                let v = |xx: usize, yy: usize| buf[(yy * hw + xx) * 3 + c] as f32;
+                (v(x0, y0) * (1.0 - tx) + v(x1, y0) * tx) * (1.0 - ty)
+                    + (v(x0, y1) * (1.0 - tx) + v(x1, y1) * tx) * ty
+            };
+            let a = bil(mask, 0) / 255.0;
+            if a < 0.02 {
+                continue;
+            }
+            let o = ((h - 1 - y) * w + x) * 3;
+            for c in 0..3 {
+                px[o + c] = (px[o + c] as f32 * (1.0 - a) + bil(hud, c) * a) as u8;
+            }
+        }
+    }
+}
+
 /// Interactive first-person frame for walk mode: one BVH raycast per pixel,
 /// parallel over rows: fast enough to stream. Same hillshade / sky / HUD /
 /// crosshair language as the stills. Returns finished BMP bytes (no disk).
@@ -186,20 +220,7 @@ pub fn render_pov_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, w:
         }
     });
     // real ability-bar HUD (the aim reference) + crosshair, as in the stills
-    if let Some((hw, hh, hud, mask)) = hud_overlay() {
-        for y in 0..h {
-            let sy_ = y * hh / h;
-            for x in 0..w {
-                let si = (sy_ * hw + x * hw / w) * 3;
-                if mask[si] > 0 {
-                    let o = ((h - 1 - y) * w + x) * 3;
-                    px[o] = hud[si];
-                    px[o + 1] = hud[si + 1];
-                    px[o + 2] = hud[si + 2];
-                }
-            }
-        }
-    }
+    overlay_hud(&mut px, w, h);
     for d in 0..14i32 {
         for (cx, cy2) in [(w as i32 / 2 + d - 7, h as i32 / 2), (w as i32 / 2, h as i32 / 2 + d - 7)] {
             if cx >= 0 && cx < w as i32 && cy2 >= 0 && cy2 < h as i32 {
@@ -456,25 +477,11 @@ fn render_ex(
         }
     }
 
-    // real HUD overlay (aim views only): the actual ability bar extracted from
-    // Henry's own gameplay (cards/hud.bmp + hudmask.bmp, 1152x720) - lineups
-    // are aimed by aligning world features against this static UI
+    // real HUD overlay (aim views only): the actual UI extracted from Henry's
+    // own gameplay (cards/hud.bmp + hudmask.bmp) - lineups are aimed by
+    // aligning world features against this static UI
     if mark.is_none() && !grid {
-        if let Some((hw, hh, hud, mask)) = hud_overlay() {
-            for y in 0..H {
-                let sy = y * hh / H;
-                for x in 0..W {
-                    let sx = x * hw / W;
-                    let si = (sy * hw + sx) * 3;
-                    if mask[si] > 0 {
-                        let o = ((H - 1 - y) * W + x) * 3;
-                        px[o] = hud[si];
-                        px[o + 1] = hud[si + 1];
-                        px[o + 2] = hud[si + 2];
-                    }
-                }
-            }
-        }
+        overlay_hud(&mut px, W, H);
     }
 
     // crosshair: green cross at center (not on marked context shots)
