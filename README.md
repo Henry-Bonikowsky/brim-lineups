@@ -57,7 +57,10 @@ adjust --eye (shifts short/long uniformly at all ranges) and --arc (shifts repor
   A Long/Lobby ground; B site center correctly yields none within 150u (it sits under the
   temple roof).
 - Lotus: 147 lineups to a site from 2000u+, several 100% forgiveness / 5u error.
-- Not yet verified in-game: the two calibration knobs. That is the make-or-break check.
+- IN-GAME VALIDATED 2026-08-02: Henry threw a computed #1 lineup in-game and it landed
+  exactly on target. The file-derived defaults (--eye 175, --arc 8) are confirmed correct
+  with no calibration offset. The physics, geometry, solver, and aim renders are all
+  verified against the live game.
 
 ## Lineup cards
 
