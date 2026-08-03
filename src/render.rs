@@ -4,21 +4,21 @@
 
 use crate::scene::{Scene, V3};
 
-const W: usize = 960;
-const H: usize = 540;
+const DEF_W: usize = 960;
+const DEF_H: usize = 540;
 const HFOV_DEG: f32 = 103.0;
 
 pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, None, None)
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, None, None, DEF_W, DEF_H)
 }
 
 pub fn render_grid(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, None, None)
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, None, None, DEF_W, DEF_H)
 }
 
 /// Wide context shot with a ring marking a world point (the stand spot).
 pub fn render_marked(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, mark: V3) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, Some(mark), None)
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, Some(mark), None, DEF_W, DEF_H)
 }
 
 /// One flight-video frame: trail polyline up to `upto`, molly dot at `upto`,
@@ -33,9 +33,27 @@ pub fn render_flight(
     traj: &[V3],
     upto: usize,
 ) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, Some(target), Some((traj, upto)))
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, Some(target), Some((traj, upto)), DEF_W, DEF_H)
 }
 
+/// Flight frame at reduced size (chase-cam videos rendered on demand).
+#[allow(clippy::too_many_arguments)]
+pub fn render_flight_sized(
+    scene: &Scene,
+    eye: V3,
+    yaw_deg: f32,
+    pitch_deg: f32,
+    path: &str,
+    target: V3,
+    traj: &[V3],
+    upto: usize,
+    w: usize,
+    h: usize,
+) {
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, Some(target), Some((traj, upto)), w, h)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn render_ex(
     scene: &Scene,
     eye: V3,
@@ -45,7 +63,11 @@ fn render_ex(
     grid: bool,
     mark: Option<V3>,
     traj: Option<(&[V3], usize)>,
+    w: usize,
+    h: usize,
 ) {
+    #[allow(non_snake_case)]
+    let (W, H) = (w, h);
     let (sy, cy) = yaw_deg.to_radians().sin_cos();
     let (sp, cp) = pitch_deg.to_radians().sin_cos();
     let fwd = V3::new(cp * cy, cp * sy, sp);

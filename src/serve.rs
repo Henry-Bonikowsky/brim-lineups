@@ -110,6 +110,119 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             continue;
         }
 
+        if path == "/video" {
+            let get = |k: &str| -> Option<String> {
+                query.split('&').find_map(|kv| {
+                    let (a, b) = kv.split_once('=')?;
+                    (a == k).then(|| b.to_string())
+                })
+            };
+            let (Some(map), Some(tx), Some(ty)) = (
+                get("map"),
+                get("tx").and_then(|v| v.parse::<f32>().ok()),
+                get("ty").and_then(|v| v.parse::<f32>().ok()),
+            ) else {
+                let _ = req.respond(tiny_http::Response::from_string("bad params").with_status_code(400));
+                continue;
+            };
+            let stand = get("sx").and_then(|sx| Some((sx.parse::<f32>().ok()?, get("sy")?.parse::<f32>().ok()?)));
+            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(200.0);
+            let n: usize = get("n").and_then(|v| v.parse().ok()).unwrap_or(1);
+            if cache.as_ref().map(|(m, _, _)| m != &map).unwrap_or(true) {
+                let dir = std::path::PathBuf::from(dumps_root).join(&map);
+                cache = Some((map.clone(), scene::load(&dir), scene::load_visual(&dir)));
+            }
+            let (_, cscene, vscene) = cache.as_mut().unwrap();
+            let cfg = Cfg::default();
+            let Some(tz) = cscene.ground_z(tx, ty) else {
+                let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no ground\"}"));
+                continue;
+            };
+            let target = V3::new(tx, ty, tz);
+            let saved = if let Some((sx, sy)) = stand {
+                let sz = cscene.ground_z(sx, sy).unwrap_or(tz);
+                Some(std::mem::replace(&mut cscene.stands, vec![V3::new(sx, sy, sz)]))
+            } else {
+                None
+            };
+            let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
+            let lineups = solve::solve(cscene, target, tol, min_dist, strict, &cfg);
+            if let Some(orig) = saved {
+                cscene.stands = orig;
+            }
+            let Some(l) = lineups.get(n - 1) else {
+                let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no such lineup\"}"));
+                continue;
+            };
+            let origin = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
+            let lp = l.pitch + cfg.arc_deg;
+            let (sy2, cy2) = l.yaw.to_radians().sin_cos();
+            let (sp2, cp2) = lp.to_radians().sin_cos();
+            let Some((_, traj)) = crate::sim::fly_path(cscene, origin, V3::new(cp2 * cy2, cp2 * sy2, sp2), &cfg) else {
+                let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"flight failed\"}"));
+                continue;
+            };
+            // chase cam: behind the molly along its velocity, pulled in if a wall
+            // sits between the camera and the molly
+            let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+            let fdir = std::env::temp_dir().join(format!("bl_vid_{run}"));
+            std::fs::create_dir_all(&fdir).ok();
+            const FRAMES: usize = 54;
+            use parry3d::query::{Ray, RayCast};
+            for f in 0..FRAMES {
+                let upto = if f >= FRAMES - 10 {
+                    traj.len() - 1
+                } else {
+                    ((f as f32 / (FRAMES - 10) as f32) * traj.len() as f32) as usize
+                };
+                let i = upto.min(traj.len() - 1);
+                let m = traj[i];
+                let vdir = (traj[(i + 3).min(traj.len() - 1)] - traj[i.saturating_sub(3)]).normalize();
+                let vh = V3::new(vdir.x, vdir.y, 0.0).norm().max(0.2);
+                let back = V3::new(-vdir.x / vh, -vdir.y / vh, 0.0);
+                let mut cam = m + back * 380.0 + V3::new(0.0, 0.0, 170.0);
+                let toc = cam - m;
+                let d = toc.norm();
+                let ray = Ray::new(nalgebra::Point3::from(m), toc / d);
+                if let Some(t) = vscene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, d, true) {
+                    cam = m + toc / d * (t * 0.85).max(60.0);
+                }
+                let look = m - cam;
+                let cam_yaw = look.y.atan2(look.x).to_degrees();
+                let cam_pitch = (look.z / look.norm()).asin().to_degrees();
+                render::render_flight_sized(
+                    vscene,
+                    cam,
+                    cam_yaw,
+                    cam_pitch,
+                    fdir.join(format!("f{f:04}.bmp")).to_str().unwrap(),
+                    target,
+                    &traj,
+                    i,
+                    640,
+                    360,
+                );
+            }
+            let out = format!("{live}/{run}_flight.mp4");
+            let st = std::process::Command::new("ffmpeg")
+                .args([
+                    "-y", "-v", "error", "-framerate", "18",
+                    "-i", fdir.join("f%04d.bmp").to_str().unwrap(),
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", &out,
+                ])
+                .status();
+            std::fs::remove_dir_all(&fdir).ok();
+            let body = match st {
+                Ok(s) if s.success() => format!("{{\"video\":\"live/{run}_flight.mp4\"}}"),
+                _ => "{\"error\":\"ffmpeg failed (is it on PATH?)\"}".to_string(),
+            };
+            let _ = req.respond(
+                tiny_http::Response::from_string(body)
+                    .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap()),
+            );
+            continue;
+        }
+
         // static files from cards/
         let rel = if path == "/" { "picker.html".to_string() } else { path.trim_start_matches('/').to_string() };
         if rel.contains("..") {
