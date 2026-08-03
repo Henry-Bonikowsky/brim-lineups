@@ -39,8 +39,10 @@ impl Default for Cfg {
             // s=2900/g=1100). Solving both: s=3000, g=1140. The file says
             // ProjectileSpeed 2900, but ProjectileThrowTuning has a native
             // SpeedScale default that plausibly supplies the extra ~3.5%.
+            // Henry's walk-mode calibration 2026-08-03: at g=1140 the arc ran
+            // 0.25-0.5m long; 1145 pulls ~0.3m back with negligible timing shift
             speed: 3000.0,
-            gravity: 1140.0,
+            gravity: 1145.0,
             // file DefaultBounciness is 0.35 but live walk-mode-vs-game
             // comparison (2026-08-03) shows real rebounds run hotter: the
             // measured restitution from the frame-timed clip was 0.38-0.40,
@@ -51,7 +53,7 @@ impl Default for Cfg {
             stop_speed: 200.0,
             eye_z: 175.0,
             arc_deg: 8.0,
-            hand_left: 60.0,
+            hand_left: 85.0, // 60 left the sim ~0.25m right (Henry's calibration)
             max_time: 8.0,
         }
     }

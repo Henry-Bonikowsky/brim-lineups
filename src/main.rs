@@ -163,7 +163,8 @@ fn main() {
     let t0 = std::time::Instant::now();
     let min_dist: f32 =
         min_dist_override.unwrap_or_else(|| get("--min-dist").map(|s| s.parse().unwrap()).unwrap_or(1800.0));
-    let lineups = solve::solve(&scene, target, tol, min_dist, min_dist_override.is_none(), &cfg);
+    let stands = scene.stands.clone();
+    let lineups = solve::solve(&scene, &stands, target, tol, min_dist, min_dist_override.is_none(), &cfg);
     eprintln!("solved in {:.1?}: {} distinct lineups within {tol}u", t0.elapsed(), lineups.len());
 
     println!(

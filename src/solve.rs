@@ -59,13 +59,12 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
 /// stand, deduped, ranked by mid-range preference + time). strict=false
 /// (paired mode, one locked stand): every distinct working ANGLE FAMILY from
 /// that stand (pitch buckets), ranked by time.
-pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, cfg: &Cfg) -> Vec<Lineup> {
-    let paired = !strict && scene.stands.len() == 1;
+pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, cfg: &Cfg) -> Vec<Lineup> {
+    let paired = !strict && stands.len() == 1;
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
     let max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
-    let mut all: Vec<Lineup> = scene
-        .stands
+    let mut all: Vec<Lineup> = stands
         .par_iter()
         .flat_map_iter(|stand| {
             let origin = stand + V3::new(0.0, 0.0, cfg.eye_z);

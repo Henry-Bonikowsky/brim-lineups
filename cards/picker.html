@@ -229,13 +229,27 @@ async function povFrame(force) {
   const m = document.getElementById('map').value;
   const state = `${walk.x.toFixed(0)},${walk.y.toFixed(0)},${walk.yaw.toFixed(2)},${walk.pitch.toFixed(2)}`;
   const moving = Object.values(walk.keys).some(Boolean);
-  const idle = !moving && state === walk.lastState;
-  if (idle && walk.hiDone) { walk.busy = false; return; }   // sharp + idle: sleep until input
-  const w = idle ? 1152 : 640;                              // refine to full res when standing still
-  const q = `/pov?map=${m}&x=${walk.x.toFixed(0)}&y=${walk.y.toFixed(0)}&yaw=${walk.yaw.toFixed(2)}&pitch=${walk.pitch.toFixed(2)}&w=${w}&t=${Date.now()}`;
+  if (!moving && state === walk.lastState) {
+    // idle: stop the loop (input wakes it) and refine sharply in the
+    // BACKGROUND: movement never waits on the big render
+    walk.busy = false;
+    clearTimeout(walk.hiTimer);
+    walk.hiTimer = setTimeout(() => {
+      if (!walk.on) return;
+      const s2 = `${walk.x.toFixed(0)},${walk.y.toFixed(0)},${walk.yaw.toFixed(2)},${walk.pitch.toFixed(2)}`;
+      if (s2 !== state) return;
+      const hi = new Image();
+      hi.onload = () => {
+        const s3 = `${walk.x.toFixed(0)},${walk.y.toFixed(0)},${walk.yaw.toFixed(2)},${walk.pitch.toFixed(2)}`;
+        if (walk.on && s3 === state && !walk.busy) pov.src = hi.src;
+      };
+      hi.src = `/pov?map=${m}&x=${walk.x.toFixed(0)}&y=${walk.y.toFixed(0)}&yaw=${walk.yaw.toFixed(2)}&pitch=${walk.pitch.toFixed(2)}&w=1152&t=${Date.now()}`;
+    }, 400);
+    return;
+  }
+  const q = `/pov?map=${m}&x=${walk.x.toFixed(0)}&y=${walk.y.toFixed(0)}&yaw=${walk.yaw.toFixed(2)}&pitch=${walk.pitch.toFixed(2)}&w=640&t=${Date.now()}`;
   await new Promise(res => { pov.onload = res; pov.onerror = res; pov.src = q; });
   walk.lastState = state;
-  walk.hiDone = idle;
   document.getElementById('povinfo').textContent =
     `stand (${walk.x.toFixed(0)}, ${walk.y.toFixed(0)})   yaw ${walk.yaw.toFixed(1)}   pitch ${walk.pitch.toFixed(1)}`;
   walk.busy = false;
