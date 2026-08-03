@@ -1,0 +1,39 @@
+﻿brim-lineups.exe : scene[collision]: 2210744 tris from 2749 placements (4029 filtered, 1942 instances expanded), 3059 
+stand points
+At line:1 char:1452
++ ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (scene[collision...59 stand points:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+stands: 3059 -> 3058 after reachability gate
+stands: 3058 -> 2675 after main-network filter
+flights: 1018 never stopped, 206859 landed far, 923 within tol
+solved in 717.7ms: 53 distinct lineups within 150u
+             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
+           (2040, -352, 100)  2655u   110.6   -11.4  1.42s   5   104u     25%  (1734, 462, 100 @ 886u)
+          (-2479, 1313, 100)  3724u    11.0     8.1  1.74s   3   106u     62%  (819, 1953, 755 @ 3394u)
+          (-2514, 1185, 110)  3789u    12.8     8.3  1.80s   3   110u     62%  (880, 1953, 792 @ 3516u)
+          (-2724, 1241, 110)  3979u    11.2     5.3  1.92s   4   105u     50%  (872, 1953, 623 @ 3681u)
+           (3013, -305, 147)  3082u   126.2    71.0  6.12s   2    73u     25%  (open sky)
+            (-622, -32, 110)  2811u    49.9    72.1  6.13s   2    87u     25%  (open sky)
+           (3038, -466, 182)  3226u   124.8    70.5  6.12s   3    69u     25%  (open sky)
+           (2570, -202, 100)  2748u   120.1    72.3  6.13s   2    91u     25%  (open sky)
+           (2588, -178, 100)  2736u   120.7    72.4  6.13s   2    92u     25%  (open sky)
+           (2812, -688, 180)  3289u   119.3    70.2  6.12s   3    67u     25%  (open sky)
+            (2700, -53, 103)  2694u   124.1    72.6  6.13s   2    95u     25%  (open sky)
+            (-465, 169, 110)  2556u    50.8    73.1  6.14s   2    95u     25%  (-314, 354, 1070 @ 821u)
+scene[visual]: 2750178 tris from 3820 placements (2958 filtered, 2831 instances expanded), 3059 stand points
+rendered .\cards\renders3\Port-1150_2150_105_r1.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r2.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r3.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r4.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r5.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r6.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r7.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r8.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r9.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r10.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r11.bmp + stand + wide
+rendered .\cards\renders3\Port-1150_2150_105_r12.bmp + stand + wide
+wrote lineups.json (53 entries)

@@ -1,6 +1,6 @@
-﻿brim-lineups.exe : scene[collision]: 1378734 tris from 2015 placements (4470 filtered, 1402 instances expanded), 2171 
+﻿brim-lineups.exe : scene[collision]: 1377185 tris from 2011 placements (4474 filtered, 1402 instances expanded), 2171 
 stand points
-At line:1 char:2014
+At line:1 char:1452
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...71 stand points:String) [], RemoteException
@@ -9,7 +9,7 @@ At line:1 char:2014
 stands: 2171 -> 2170 after reachability gate
 stands: 2170 -> 1040 after main-network filter
 flights: 4719 never stopped, 37168 landed far, 233 within tol
-solved in 111.1ms: 13 distinct lineups within 150u
+solved in 109.7ms: 13 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
          (-3286, -1669, 610)  2740u   157.2    72.4  6.90s   4    59u     62%  (open sky)
          (-3425, -1811, 610)  2673u   153.3    72.7  6.90s   4    70u     50%  (open sky)
@@ -23,7 +23,7 @@ solved in 111.1ms: 13 distinct lineups within 150u
          (-3563, -1351, 610)  2369u   163.7    73.9  6.99s   3   119u     38%  (open sky)
           (-3891, -460, 610)  1928u  -177.6    74.6  6.15s   2   145u     50%  (open sky)
          (-2061, -4378, 810)  5318u   134.9    60.1  6.93s   3    36u     25%  (open sky)
-scene[visual]: 2522154 tris from 3084 placements (3401 filtered, 3463 instances expanded), 2171 stand points
+scene[visual]: 2450976 tris from 2778 placements (3707 filtered, 2894 instances expanded), 2171 stand points
 rendered .\cards\renders3\Infinity-m5813_m609_601_r1.bmp + stand + wide
 rendered .\cards\renders3\Infinity-m5813_m609_601_r2.bmp + stand + wide
 rendered .\cards\renders3\Infinity-m5813_m609_601_r3.bmp + stand + wide

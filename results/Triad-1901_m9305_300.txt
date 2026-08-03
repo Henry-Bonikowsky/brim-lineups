@@ -1,6 +1,6 @@
-﻿brim-lineups.exe : scene[collision]: 1688038 tris from 1997 placements (3681 filtered, 3381 instances expanded), 2387 
+﻿brim-lineups.exe : scene[collision]: 1614111 tris from 1804 placements (3874 filtered, 3381 instances expanded), 2387 
 stand points
-At line:1 char:2014
+At line:1 char:1452
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...87 stand points:String) [], RemoteException
@@ -8,10 +8,10 @@ At line:1 char:2014
  
 stands: 2387 -> 2198 after reachability gate
 stands: 2198 -> 2009 after main-network filter
-flights: 5248 never stopped, 198533 landed far, 99 within tol
-solved in 544.1ms: 1 distinct lineups within 150u
+flights: 5249 never stopped, 198532 landed far, 99 within tol
+solved in 541.2ms: 1 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
          (2648, -12530, 310)  3310u   103.0    68.0  7.13s   3   147u      0%  (open sky)
-scene[visual]: 2694323 tris from 3031 placements (2647 filtered, 5687 instances expanded), 2387 stand points
+scene[visual]: 2617188 tris from 2834 placements (2844 filtered, 5687 instances expanded), 2387 stand points
 rendered .\cards\renders3\Triad-1901_m9305_300_r1.bmp + stand + wide
 wrote lineups.json (1 entries)

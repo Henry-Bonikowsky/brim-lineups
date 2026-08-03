@@ -1,6 +1,6 @@
 ﻿brim-lineups.exe : scene[collision]: 1128689 tris from 1492 placements (3261 filtered, 1048 instances expanded), 2077 
 stand points
-At line:1 char:2014
+At line:1 char:1452
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...77 stand points:String) [], RemoteException
@@ -8,10 +8,10 @@ At line:1 char:2014
  
 stands: 2077 -> 2052 after reachability gate
 stands: 2052 -> 1825 after main-network filter
-flights: 8812 never stopped, 102251 landed far, 897 within tol
-solved in 305.2ms: 80 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (4600, -4092, 110)  2464u   -14.0     4.1  1.18s   3   108u     25%  (5650, -4353, 362 @ 1085u)
+flights: 8812 never stopped, 102251 landed far, 897 within tol
+solved in 328.3ms: 80 distinct lineups within 150u
           (4666, -4032, 110)  2415u   -15.7     3.9  1.17s   3   100u     25%  (5650, -4309, 354 @ 1025u)
           (4958, -3994, 110)  2147u   -16.8     4.8  1.48s   4    44u     25%  (5650, -4204, 346 @ 725u)
           (4958, -4002, 110)  2145u   -16.6     4.8  1.48s   4    44u     25%  (5650, -4209, 346 @ 725u)
@@ -23,7 +23,7 @@ solved in 305.2ms: 80 distinct lineups within 150u
           (8728, -2325, 330)  2932u  -126.3    70.6  5.22s   2    54u     62%  (open sky)
           (5039, -2251, 160)  3122u   -51.3    69.7  5.14s   2    51u     62%  (5612, -2965, 2808 @ 2638u)
           (5477, -2234, 150)  2883u   -58.3    70.7  5.16s   2    51u     62%  (5942, -2987, 2849 @ 2674u)
-scene[visual]: 2218884 tris from 2738 placements (2015 filtered, 2538 instances expanded), 2077 stand points
+scene[visual]: 2197493 tris from 2443 placements (2310 filtered, 2538 instances expanded), 2077 stand points
 rendered .\cards\renders3\Jam-6991_m4687_303_r1.bmp + stand + wide
 rendered .\cards\renders3\Jam-6991_m4687_303_r2.bmp + stand + wide
 rendered .\cards\renders3\Jam-6991_m4687_303_r3.bmp + stand + wide
@@ -31,3 +31,9 @@ rendered .\cards\renders3\Jam-6991_m4687_303_r4.bmp + stand + wide
 rendered .\cards\renders3\Jam-6991_m4687_303_r5.bmp + stand + wide
 rendered .\cards\renders3\Jam-6991_m4687_303_r6.bmp + stand + wide
 rendered .\cards\renders3\Jam-6991_m4687_303_r7.bmp + stand + wide
+rendered .\cards\renders3\Jam-6991_m4687_303_r8.bmp + stand + wide
+rendered .\cards\renders3\Jam-6991_m4687_303_r9.bmp + stand + wide
+rendered .\cards\renders3\Jam-6991_m4687_303_r10.bmp + stand + wide
+rendered .\cards\renders3\Jam-6991_m4687_303_r11.bmp + stand + wide
+rendered .\cards\renders3\Jam-6991_m4687_303_r12.bmp + stand + wide
+wrote lineups.json (80 entries)

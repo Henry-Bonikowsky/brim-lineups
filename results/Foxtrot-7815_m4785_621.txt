@@ -1,6 +1,6 @@
 ﻿brim-lineups.exe : scene[collision]: 1337579 tris from 1657 placements (2764 filtered, 2396 instances expanded), 2794 
 stand points
-At line:1 char:2014
+At line:1 char:1452
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...94 stand points:String) [], RemoteException
@@ -8,6 +8,8 @@ At line:1 char:2014
  
 stands: 2794 -> 2790 after reachability gate
 stands: 2790 -> 2688 after main-network filter
+flights: 32 never stopped, 144487 landed far, 81 within tol
+solved in 393.6ms: 23 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (4922, -5175, 410)  2919u     5.7    71.5  5.99s   2   120u      0%  (5367, -5131, 1920 @ 1408u)
           (4515, -5023, 390)  3309u     2.1    69.8  6.00s   2   117u      0%  (open sky)
@@ -21,9 +23,7 @@ stands: 2790 -> 2688 after main-network filter
             (9541, 678, 710)  5729u  -105.5    56.7  5.66s   3   140u      0%  (open sky)
           (2797, -2954, 200)  5342u   -18.0    58.6  6.67s   4   105u      0%  (3150, -3069, 983 @ 713u)
            (10746, 327, 610)  5893u  -118.8    59.5  5.84s   2   142u      0%  (open sky)
-flights: 32 never stopped, 144487 landed far, 81 within tol
-solved in 396.5ms: 23 distinct lineups within 150u
-scene[visual]: 2414843 tris from 2562 placements (1859 filtered, 4358 instances expanded), 2794 stand points
+scene[visual]: 2402482 tris from 2498 placements (1923 filtered, 4358 instances expanded), 2794 stand points
 rendered .\cards\renders3\Foxtrot-7815_m4785_621_r1.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-7815_m4785_621_r2.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-7815_m4785_621_r3.bmp + stand + wide

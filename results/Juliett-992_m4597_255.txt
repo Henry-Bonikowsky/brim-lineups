@@ -1,0 +1,15 @@
+﻿brim-lineups.exe : scene[collision]: 1283918 tris from 2145 placements (3629 filtered, 1819 instances expanded), 1950 
+stand points
+At line:1 char:1452
++ ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (scene[collision...50 stand points:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+stands: 1950 -> 1922 after reachability gate
+stands: 1922 -> 1776 after main-network filter
+flights: 1368 never stopped, 125832 landed far, 0 within tol
+solved in 334.8ms: 0 distinct lineups within 150u
+             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
+scene[visual]: 1725035 tris from 3203 placements (2571 filtered, 2910 instances expanded), 1950 stand points
+wrote lineups.json (0 entries)
