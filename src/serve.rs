@@ -304,7 +304,9 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 };
                 let _ = req.respond(
                     tiny_http::Response::from_data(buf)
-                        .with_header(format!("Content-Type: {ct}").parse::<tiny_http::Header>().unwrap()),
+                        .with_header(format!("Content-Type: {ct}").parse::<tiny_http::Header>().unwrap())
+                        // the browser must NEVER serve a stale picker/hud
+                        .with_header("Cache-Control: no-store".parse::<tiny_http::Header>().unwrap()),
                 );
             }
             Err(_) => {
