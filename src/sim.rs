@@ -42,20 +42,29 @@ pub struct Outcome {
 /// with a segment raycast per step (point projectile; the 1u post-bounce sphere
 /// is negligible at map scale).
 pub fn fly(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<Outcome> {
-    fly_impl(scene, origin, dir, cfg, false)
+    fly_impl(scene, origin, dir, cfg, false, None)
 }
 
 pub fn fly_traced(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<Outcome> {
-    fly_impl(scene, origin, dir, cfg, true)
+    fly_impl(scene, origin, dir, cfg, true, None)
 }
 
-fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool) -> Option<Outcome> {
+/// Like fly, but also records the position at every integration step.
+pub fn fly_path(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<(Outcome, Vec<V3>)> {
+    let mut path = Vec::new();
+    fly_impl(scene, origin, dir, cfg, false, Some(&mut path)).map(|o| (o, path))
+}
+
+fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut record: Option<&mut Vec<V3>>) -> Option<Outcome> {
     const DT: f32 = 1.0 / 120.0;
     let mut p = origin;
     let mut v = dir * cfg.speed;
     let mut bounciness = cfg.bounciness;
     let mut t = 0.0f32;
     let mut bounces = 0u32;
+    if let Some(r) = record.as_deref_mut() {
+        r.push(p);
+    }
     while t < cfg.max_time {
         v.z -= cfg.gravity * DT;
         let step = v * DT;
@@ -84,12 +93,18 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool) -> Optio
                     p.x, p.y, p.z, n.x, n.y, n.z, v.norm()
                 );
             }
+            if let Some(r) = record.as_deref_mut() {
+                r.push(p);
+            }
             if v.norm() < cfg.stop_speed {
                 return Some(Outcome { rest: p, time: t, bounces });
             }
         } else {
             p += step;
             t += DT;
+            if let Some(r) = record.as_deref_mut() {
+                r.push(p);
+            }
             if p.z < scene.min_z - 2000.0 {
                 return None; // fell out of the world
             }

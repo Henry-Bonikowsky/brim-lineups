@@ -9,19 +9,43 @@ const H: usize = 540;
 const HFOV_DEG: f32 = 103.0;
 
 pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, None)
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, None, None)
 }
 
 pub fn render_grid(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, None)
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, None, None)
 }
 
 /// Wide context shot with a ring marking a world point (the stand spot).
 pub fn render_marked(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, mark: V3) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, Some(mark))
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, Some(mark), None)
 }
 
-fn render_ex(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, grid: bool, mark: Option<V3>) {
+/// One flight-video frame: trail polyline up to `upto`, molly dot at `upto`,
+/// ring at the target.
+pub fn render_flight(
+    scene: &Scene,
+    eye: V3,
+    yaw_deg: f32,
+    pitch_deg: f32,
+    path: &str,
+    target: V3,
+    traj: &[V3],
+    upto: usize,
+) {
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, Some(target), Some((traj, upto)))
+}
+
+fn render_ex(
+    scene: &Scene,
+    eye: V3,
+    yaw_deg: f32,
+    pitch_deg: f32,
+    path: &str,
+    grid: bool,
+    mark: Option<V3>,
+    traj: Option<(&[V3], usize)>,
+) {
     let (sy, cy) = yaw_deg.to_radians().sin_cos();
     let (sp, cp) = pitch_deg.to_radians().sin_cos();
     let fwd = V3::new(cp * cy, cp * sy, sp);
@@ -167,6 +191,82 @@ fn render_ex(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, g
                         px[o + 2] = 60;
                     }
                 }
+            }
+        }
+    }
+
+    // flight trail overlay: project the trajectory, draw trail + molly dot
+    if let Some((tr, upto)) = traj {
+        let proj = |w: &V3| -> Option<(i32, i32)> {
+            let d = w - eye;
+            let c = V3::new(d.dot(&right), d.dot(&up), d.dot(&fwd));
+            if c.z < 1.0 {
+                return None;
+            }
+            Some((
+                ((c.x / (c.z * tan_h) * 0.5 + 0.5) * W as f32) as i32,
+                ((0.5 - c.y / (c.z * tan_v) * 0.5) * H as f32) as i32,
+            ))
+        };
+        let mut put = |x: i32, y: i32, r: u8, g: u8, b: u8| {
+            if x >= 0 && x < W as i32 && y >= 0 && y < H as i32 {
+                let o = ((H - 1 - y as usize) * W + x as usize) * 3;
+                px[o] = b;
+                px[o + 1] = g;
+                px[o + 2] = r;
+            }
+        };
+        let end = upto.min(tr.len().saturating_sub(1));
+        for w in tr[..=end].windows(2) {
+            if let (Some(a), Some(b)) = (proj(&w[0]), proj(&w[1])) {
+                let (dx, dy) = ((b.0 - a.0) as f32, (b.1 - a.1) as f32);
+                let n = dx.abs().max(dy.abs()).max(1.0) as i32;
+                for s in 0..=n {
+                    let f = s as f32 / n as f32;
+                    put(a.0 + (dx * f) as i32, a.1 + (dy * f) as i32, 255, 200, 40);
+                }
+            }
+        }
+        if let Some((mx, my)) = proj(&tr[end]) {
+            for dy in -4i32..=4 {
+                for dx in -4i32..=4 {
+                    if dx * dx + dy * dy <= 16 {
+                        put(mx + dx, my + dy, 255, 90, 30);
+                    }
+                }
+            }
+        }
+    }
+
+    // HUD ability-bar overlay (aim views only): box outlines at the measured
+    // positions of Henry's ability slots (Q, E, MB4, Z from a 1152x720 clip
+    // frame). Sky-pointing lineups are aimed by aligning skyline features
+    // against these boxes, exactly like using the real ability bar as UI ref.
+    if mark.is_none() && !grid {
+        const SLOTS: [f32; 4] = [0.388, 0.468, 0.5295, 0.592]; // centers, x/W
+        const CY: f32 = 0.928; // centers, y/H
+        let (bw, bh) = ((46.0 / 1152.0 * W as f32) as i32, (46.0 / 720.0 * H as f32) as i32);
+        for cx_n in SLOTS {
+            let (cx, cy) = ((cx_n * W as f32) as i32, (CY * H as f32) as i32);
+            let mut put = |x: i32, y: i32| {
+                if x >= 0 && x < W as i32 && y >= 0 && y < H as i32 {
+                    let o = ((H - 1 - y as usize) * W + x as usize) * 3;
+                    px[o] = 200;
+                    px[o + 1] = 240;
+                    px[o + 2] = 200;
+                }
+            };
+            for dx in -bw / 2..=bw / 2 {
+                put(cx + dx, cy - bh / 2);
+                put(cx + dx, cy + bh / 2);
+            }
+            for dy in -bh / 2..=bh / 2 {
+                put(cx - bw / 2, cy + dy);
+                put(cx + bw / 2, cy + dy);
+            }
+            // center tick rising from the box top: the vertical players sight along
+            for dy in 1..=10 {
+                put(cx, cy - bh / 2 - dy);
             }
         }
     }

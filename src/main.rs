@@ -152,6 +152,44 @@ fn main() {
         );
     }
 
+    // flight video frames: --video N writes f0000.bmp.. for lineup #N into
+    // --video-out <dir>; encode with ffmpeg afterwards. Static side-ish camera
+    // fitted to the whole trajectory; trail + molly dot + target ring.
+    if let Some(nstr) = get("--video") {
+        let n: usize = nstr.parse().expect("--video N");
+        let l = lineups.get(n - 1).expect("lineup index out of range");
+        let outdir = get("--video-out").unwrap_or_else(|| "video_frames".into());
+        std::fs::create_dir_all(&outdir).unwrap();
+        let vscene = scene::load_visual(&dir);
+        let origin = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
+        let launch_pitch = l.pitch + cfg.arc_deg;
+        let (sy, cy2) = l.yaw.to_radians().sin_cos();
+        let (sp, cp) = launch_pitch.to_radians().sin_cos();
+        let (_, traj) = sim::fly_path(&scene, origin, V3::new(cp * cy2, cp * sy, sp), &cfg)
+            .expect("flight");
+        // camera: beside and above the path midpoint, fitted by pulling back
+        let mid = traj.iter().fold(V3::zeros(), |a, p| a + p) / traj.len() as f32;
+        let perp = V3::new(-sy, cy2, 0.0);
+        let range = (target - origin).norm().max(1500.0);
+        let cam = mid + perp * (range * 0.55) + V3::new(-cy2, -sy, 0.0) * (range * 0.15)
+            + V3::new(0.0, 0.0, range * 0.25);
+        let look = mid - cam;
+        let cam_yaw = look.y.atan2(look.x).to_degrees();
+        let cam_pitch = (look.z / look.norm()).asin().to_degrees();
+        const FRAMES: usize = 72;
+        for f in 0..FRAMES {
+            let upto = if f >= FRAMES - 12 {
+                traj.len() - 1 // hold on the rest position
+            } else {
+                (f as f32 / (FRAMES - 12) as f32 * traj.len() as f32) as usize
+            };
+            let fp = format!("{outdir}/f{f:04}.bmp");
+            render::render_flight(&vscene, cam, cam_yaw, cam_pitch, &fp, target, &traj, upto);
+        }
+        eprintln!("wrote {FRAMES} frames to {outdir} (flight of lineup #{n})");
+        return;
+    }
+
     // synthetic first-person screenshots for the top lineups: match your screen
     // to the image and the aim is reproduced (no angle HUD needed in game)
     if let Some(prefix) = get("--render") {
