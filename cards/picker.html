@@ -63,7 +63,8 @@ async function solveNow(m) {
     let h = `<p>${j.count} lineups to (${j.target.join(', ')}) - top ${j.lineups.length}:</p>`;
     j.lineups.forEach((l, i) => {
       const aim = l.aim_ref ? `crosshair on (${l.aim_ref[0]}, ${l.aim_ref[1]}, ${l.aim_ref[2]}) at ${l.aim_ref[3]}u` : 'crosshair: open sky';
-      h += `<h3>#${i + 1}: stand (${l.stand.join(', ')}), range ${l.range}u, yaw ${l.yaw}, pitch ${l.pitch}, ${l.time}s, ${l.bounces} bounces, err ${l.err}u, forgive ${(l.forgive * 100).toFixed(0)}%. ${aim}</h3>`;
+      const frag = (l.err > 260 ? ` <span style='color:#fa6'>NO clean lineup - this is the closest miss (${l.err}u off)</span>` : '') + (l.spread > 400 ? ` <span style='color:#f88'>fragile: aim error scatters up to ${l.spread}u</span>` : '');
+      h += `<h3>#${i + 1}: stand (${l.stand.join(', ')}), range ${l.range}u, yaw ${l.yaw}, pitch ${l.pitch}, ${l.time}s, ${l.bounces} bounces, err ${l.err}u, forgive ${(l.forgive * 100).toFixed(0)}%.${frag} ${aim}</h3>`;
       h += l.imgs.map(im => `<img src='${im}' style='width:420px;margin:2px'>`).join('');
       h += `<div id='vid${i + 1}'><button onclick='flightVideo(${i + 1})'>flight video</button></div>`;
     });

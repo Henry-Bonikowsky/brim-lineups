@@ -167,9 +167,18 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         // real world geometry is Environment art; Cube/BasicShape placements are
         // trigger volumes, barriers, and markup, never molly-blocking surfaces.
         // GameObjectMesh components are pickups (ult orbs), overlap-only in game.
+        // Bombsite outline/glow markers are decals + a target-view column: they
+        // render as thin overlays in game and block nothing.
+        let comp = i["component"].as_str().unwrap_or("");
         if mode != Mode::Everything
             && (!mesh.contains("/Environment/")
-                || i["component"].as_str().unwrap_or("") == "GameObjectMesh"
+                || comp == "GameObjectMesh"
+                || comp.starts_with("StaticMesh_Glow")
+                || comp.contains("TargetViewMode")
+                || mesh.contains("Bombsite_")
+                || mesh.contains("BombSite")
+                || mesh.contains("BVS_Bomb")
+                || mesh.contains("Box_For_Volumes")
                 || UMAP_BLACKLIST.iter().any(|b| umap.contains(b)))
         {
             skipped_umap += 1;

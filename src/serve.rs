@@ -93,8 +93,8 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                     .map(|(p, d)| format!("[{:.0},{:.0},{:.0},{:.0}]", p.x, p.y, p.z, d))
                     .unwrap_or("null".into());
                 rows.push(format!(
-                    "{{\"stand\":[{:.0},{:.0},{:.0}],\"range\":{:.0},\"yaw\":{:.1},\"pitch\":{:.1},\"time\":{:.2},\"bounces\":{},\"err\":{:.0},\"forgive\":{:.2},\"aim_ref\":{},\"imgs\":[\"{base}_r.bmp\",\"{base}_s.bmp\",\"{base}_w.bmp\"]}}",
-                    l.stand.x, l.stand.y, l.stand.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.forgive, aim
+                    "{{\"stand\":[{:.0},{:.0},{:.0}],\"range\":{:.0},\"yaw\":{:.1},\"pitch\":{:.1},\"time\":{:.2},\"bounces\":{},\"err\":{:.0},\"forgive\":{:.2},\"spread\":{:.0},\"aim_ref\":{},\"imgs\":[\"{base}_r.bmp\",\"{base}_s.bmp\",\"{base}_w.bmp\"]}}",
+                    l.stand.x, l.stand.y, l.stand.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.forgive, l.spread, aim
                 ));
             }
             let body = format!(

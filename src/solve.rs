@@ -14,6 +14,7 @@ pub struct Lineup {
     pub bounces: u32,
     pub err: f32,        // rest-to-target distance
     pub forgive: f32,    // fraction of +-0.75 deg jitters still within tol
+    pub spread: f32,     // worst landing deviation across those jitters (fragility)
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
 }
 
@@ -57,19 +58,42 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                 return vec![].into_iter();
             }
             let yaw0 = delta.y.atan2(delta.x).to_degrees();
-            // paired mode keeps the best lineup per ~8 deg pitch family so
-            // drastically different working angles all surface
+            // paired mode: ONE stand is cheap, so scan the full angle space
+            // exhaustively (finds arch-threads and skims the ballistic anchor
+            // misses) and keep the best lineup per ~8 deg pitch family
             let mut best: Option<Lineup> = None;
+            let mut best_miss: Option<Lineup> = None;
             let mut families: std::collections::HashMap<i32, Lineup> = Default::default();
-            for (ai, base) in launch_angles(cfg.speed, cfg.gravity, d, delta.z).into_iter().enumerate() {
-                // refine around the vacuum solution: geometry + bounces move the
-                // landing spot, the sim is the truth. The LOW arc gets a wider
-                // downward sweep to catch fast skim-bounce throws that shed
-                // speed on the ground short of the target.
-                let lo = if ai == 0 { -10 } else { -4 };
-                for dp in lo..=4 {
-                    for dy in -2..=2 {
-                        let (yaw, pitch) = (yaw0 + dy as f32, base + dp as f32);
+            let sweeps: Vec<(f32, f32)> = if paired {
+                let mut v = Vec::new();
+                let mut pitch = -35.0f32;
+                while pitch <= 85.0 {
+                    let mut dy = -6.0f32;
+                    while dy <= 6.0 {
+                        v.push((yaw0 + dy, pitch));
+                        dy += 1.0;
+                    }
+                    pitch += 1.25;
+                }
+                v
+            } else {
+                let mut v = Vec::new();
+                for (ai, base) in launch_angles(cfg.speed, cfg.gravity, d, delta.z).into_iter().enumerate() {
+                    // refine around the vacuum solution: geometry + bounces move
+                    // the landing; the LOW arc gets a wider downward sweep for
+                    // fast skim-bounce throws
+                    let lo = if ai == 0 { -10 } else { -4 };
+                    for dp in lo..=4 {
+                        for dy in -2..=2 {
+                            v.push((yaw0 + dy as f32, base + dp as f32));
+                        }
+                    }
+                }
+                v
+            };
+            {
+                for (yaw, pitch) in sweeps {
+                    {
                         if pitch <= -89.0 || pitch >= 89.0 {
                             continue;
                         }
@@ -79,9 +103,6 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                         };
                         let err = (o.rest - target).norm();
                         if err < tol { &n_near } else { &n_far }.fetch_add(1, Relaxed);
-                        if err >= tol {
-                            continue;
-                        }
                         let cand = Lineup {
                             dist: d,
                             stand: *stand,
@@ -91,8 +112,15 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                             bounces: o.bounces,
                             err,
                             forgive: 0.0,
+                            spread: 0.0,
                             aim_ref: None,
                         };
+                        if err >= tol {
+                            if paired && best_miss.as_ref().is_none_or(|b| cand.err < b.err) {
+                                best_miss = Some(cand);
+                            }
+                            continue;
+                        }
                         if paired {
                             let key = (pitch / 8.0).round() as i32;
                             match families.get(&key) {
@@ -109,6 +137,11 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
             }
             if paired {
                 let mut out: Vec<Lineup> = families.into_values().collect();
+                if out.is_empty() {
+                    // no throw lands within tolerance: report the closest miss so
+                    // the user sees WHY (err > tol labels it)
+                    out.extend(best_miss);
+                }
                 for b in &mut out {
                     finish(scene, target, tol, cfg, origin, b);
                 }
@@ -151,8 +184,16 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
         n_far.load(Relaxed),
         n_near.load(Relaxed)
     );
+    // a lineup the solver itself rates near-zero forgiveness is untrustworthy
+    // (tiny aim error cascades, e.g. clipping a sloped roof); prefer sturdy ones
+    let sturdy = |v: &mut Vec<Lineup>| {
+        if v.iter().any(|l| l.forgive >= 0.25) {
+            v.retain(|l| l.forgive >= 0.25);
+        }
+    };
     if paired {
         // angle families from the locked stand, fastest first
+        sturdy(&mut all);
         all.sort_by(|a, b| a.time.total_cmp(&b.time));
         return all;
     }
@@ -168,6 +209,7 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
         }
     }
     let mut out: Vec<Lineup> = by_cell.into_values().collect();
+    sturdy(&mut out);
     // rank: mid-range stands preferred (sweet spot ~3000u), then speed
     let key = |l: &Lineup| (l.dist - 3000.0).abs() / 1500.0 + l.time * 0.35;
     out.sort_by(|a, b| key(a).total_cmp(&key(b)));
@@ -185,15 +227,21 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         .cast_ray(&nalgebra::Isometry3::identity(), &ray, 5.0e4, true)
         .map(|t| (origin + aim_dir * t, t));
     let mut ok = 0;
+    let mut worst = 0.0f32;
     for (jy, jp) in
         [(0.75, 0.0), (-0.75, 0.0), (0.0, 0.75), (0.0, -0.75), (0.75, 0.75), (-0.75, 0.75), (0.75, -0.75), (-0.75, -0.75)]
     {
         let launch_pitch = b.pitch + cfg.arc_deg + jp;
         if let Some(o) = fly(scene, origin, dir_from(b.yaw + jy, launch_pitch), cfg) {
-            if (o.rest - target).norm() < tol {
+            let dev = (o.rest - target).norm();
+            worst = worst.max(dev);
+            if dev < tol {
                 ok += 1;
             }
+        } else {
+            worst = worst.max(9999.0);
         }
     }
     b.forgive = ok as f32 / 8.0;
+    b.spread = worst;
 }
