@@ -38,6 +38,8 @@ fn hud_overlay() -> Option<&'static (usize, usize, Vec<u8>, Vec<u8>)> {
 const DEF_W: usize = 960;
 const DEF_H: usize = 540;
 const HFOV_DEG: f32 = 103.0;
+/// world units per ground-texture repeat (planar mapping; no UVs in the dump)
+const GROUND_TILE: f32 = 400.0;
 
 pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
     render_ex(scene, eye, yaw_deg, pitch_deg, path, false, None, None, DEF_W, DEF_H)
@@ -203,7 +205,19 @@ pub fn render_pov_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, w:
                         parry3d::shape::FeatureId::Face(i) => i % ntris.max(1),
                         _ => 0,
                     };
-                    let mat = scene.color_of(tri);
+                    // ground faces get their real in-game diffuse texture
+                    // (world-planar tiling); walls stay hillshade
+                    let mat = if n.z.abs() > 0.62 {
+                        match scene.tex_of(tri) {
+                            Some(t) => {
+                                let wp = eye + dir * hit.time_of_impact;
+                                t.sample_world(wp.x, wp.y, GROUND_TILE)
+                            }
+                            None => scene.color_of(tri),
+                        }
+                    } else {
+                        scene.color_of(tri)
+                    };
                     let fog = (hit.time_of_impact / 9000.0).min(0.75);
                     let l = lambert * (1.0 - fog);
                     (
@@ -331,6 +345,8 @@ fn render_ex(
         let n = n / nl;
         // oblique hillshade light: floors mid-gray, walls contrast both ways
         let lambert = 0.22 + 0.72 * n.dot(&V3::new(0.55, 0.45, 0.70)).abs();
+        // ground faces sample their real diffuse texture per pixel
+        let tex = if n.z.abs() > 0.62 { scene.tex_of(tri_idx as u32) } else { None };
         let (ax, ay) = (scr[0].0, scr[0].1);
         let (bx, by) = (scr[1].0, scr[1].1);
         let (cx, cxy) = (scr[2].0, scr[2].1);
@@ -347,12 +363,21 @@ fn render_ex(
                 if l0 < 0.0 || l1 < 0.0 || l2 < 0.0 {
                     continue;
                 }
-                let z = 1.0 / (l0 / scr[0].2 + l1 / scr[1].2 + l2 / scr[2].2);
+                let (w0, w1, w2) = (l0 / scr[0].2, l1 / scr[1].2, l2 / scr[2].2);
+                let z = 1.0 / (w0 + w1 + w2);
                 let idx = py * W + px;
                 if z < depth[idx] {
                     depth[idx] = z;
                     let fog = (z / 9000.0).min(0.75);
                     let l = lambert * (1.0 - fog);
+                    let mat = match tex {
+                        Some(t) => {
+                            // perspective-correct world position for the sample
+                            let wp = (p[0] * w0 + p[1] * w1 + p[2] * w2) * z;
+                            t.sample_world(wp.x, wp.y, GROUND_TILE)
+                        }
+                        None => mat,
+                    };
                     // boost material color toward readable brightness
                     shade[idx] = [
                         (mat[0] * 1.35).min(1.0) * l + 0.55 * fog,

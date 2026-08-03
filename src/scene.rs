@@ -68,6 +68,29 @@ const MESH_BLACKLIST: [&str; 13] = [
     "RadianiteTubeStraight", "RadianiteTubeElbow",
 ];
 
+/// Small diffuse texture (BGR, top-down rows) for ground sampling.
+pub struct TexImg {
+    pub w: usize,
+    pub h: usize,
+    pub px: Vec<u8>,
+}
+
+impl TexImg {
+    /// World-planar sample (floors tile roughly every `scale` units).
+    pub fn sample_world(&self, wx: f32, wy: f32, scale: f32) -> [f32; 3] {
+        let u = (wx / scale).rem_euclid(1.0);
+        let v = (wy / scale).rem_euclid(1.0);
+        self.sample_uv(u, v)
+    }
+
+    pub fn sample_uv(&self, u: f32, v: f32) -> [f32; 3] {
+        let x = ((u * self.w as f32) as usize).min(self.w - 1);
+        let y = ((v * self.h as f32) as usize).min(self.h - 1);
+        let o = (y * self.w + x) * 3;
+        [self.px[o + 2] as f32 / 255.0, self.px[o + 1] as f32 / 255.0, self.px[o] as f32 / 255.0]
+    }
+}
+
 pub struct Scene {
     pub mesh: TriMesh,
     pub stands: Vec<V3>,
@@ -76,6 +99,8 @@ pub struct Scene {
     pub tri_owner: Vec<(u32, String)>,
     /// (first triangle index, material color) per placement
     pub tri_color: Vec<(u32, [f32; 3])>,
+    /// (first triangle index, ground texture) per placement
+    pub tri_tex: Vec<(u32, Option<std::sync::Arc<TexImg>>)>,
 }
 
 impl Scene {
@@ -132,6 +157,36 @@ impl Scene {
             Err(i) => self.tri_color[i - 1].1,
         }
     }
+
+    pub fn tex_of(&self, tri: u32) -> Option<&TexImg> {
+        let i = match self.tri_tex.binary_search_by_key(&tri, |(s, _)| *s) {
+            Ok(i) => i,
+            Err(0) => return None,
+            Err(i) => i - 1,
+        };
+        self.tri_tex[i].1.as_deref()
+    }
+}
+
+/// 24bpp BMP reader for the dumped ground textures (bottom-up rows -> top-down).
+fn load_bmp(path: &Path) -> Option<TexImg> {
+    let d = std::fs::read(path).ok()?;
+    if d.len() < 54 || &d[0..2] != b"BM" {
+        return None;
+    }
+    let off = u32::from_le_bytes(d[10..14].try_into().ok()?) as usize;
+    let w = i32::from_le_bytes(d[18..22].try_into().ok()?) as usize;
+    let h = i32::from_le_bytes(d[22..26].try_into().ok()?).unsigned_abs() as usize;
+    let row = (w * 3 + 3) & !3;
+    if d.len() < off + row * h {
+        return None;
+    }
+    let mut px = vec![0u8; w * h * 3];
+    for y in 0..h {
+        let src = off + (h - 1 - y) * row;
+        px[y * w * 3..(y + 1) * w * 3].copy_from_slice(&d[src..src + w * 3]);
+    }
+    Some(TexImg { w, h, px })
 }
 
 fn rotm(pitch: f32, yaw: f32, roll: f32) -> [[f32; 3]; 3] {
@@ -233,6 +288,8 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
 
     let allowed = allowed_umaps(dir);
     let mut objs: HashMap<String, Option<(Vec<[f32; 3]>, Vec<[u32; 3]>)>> = HashMap::new();
+    let mut texs: HashMap<String, Option<std::sync::Arc<TexImg>>> = HashMap::new();
+    let mut tri_tex: Vec<(u32, Option<std::sync::Arc<TexImg>>)> = Vec::new();
     let mut tris: Vec<[[f32; 3]; 3]> = Vec::new();
     let mut tri_owner: Vec<(u32, String)> = Vec::new();
     let mut tri_color: Vec<(u32, [f32; 3])> = Vec::new();
@@ -313,6 +370,14 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
             tris.len() as u32,
             colors.get(&obj_name.trim_end_matches(".obj").to_string()).copied().unwrap_or([0.62, 0.62, 0.62]),
         ));
+        let tex = texs
+            .entry(obj_name.clone())
+            .or_insert_with(|| {
+                load_bmp(&dir.join("textures").join(obj_name.trim_end_matches(".obj").to_string() + ".bmp"))
+                    .map(std::sync::Arc::new)
+            })
+            .clone();
+        tri_tex.push((tris.len() as u32, tex));
         if let Some(insts) = i["perInstance"].as_array() {
             // instanced meshes (benches, props, clutter): per-instance transform
             // relative to the component, then the component world transform
@@ -497,6 +562,6 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         }
     }
 
-    Scene { mesh, stands, min_z, tri_owner, tri_color }
+    Scene { mesh, stands, min_z, tri_owner, tri_color, tri_tex }
 }
 

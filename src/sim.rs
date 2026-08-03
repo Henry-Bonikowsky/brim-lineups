@@ -1,4 +1,4 @@
-//! Molly flight: constants extracted from the VALORANT 13.02 files
+﻿//! Molly flight: constants extracted from the VALORANT 13.02 files
 //! (see C:\dev\research\brim-molly-physics.md). Native-only unknowns are knobs.
 
 use crate::scene::{Scene, V3};
@@ -305,7 +305,7 @@ mod tests {
             stands: vec![],
             min_z: 0.0,
             tri_owner: vec![(0, "ground".into())],
-            tri_color: vec![(0, [0.6, 0.6, 0.6])],
+            tri_color: vec![(0, [0.6, 0.6, 0.6])], tri_tex: vec![],
         };
         let cfg = Cfg::default();
         let dir = V3::new(std::f32::consts::FRAC_1_SQRT_2, 0.0, std::f32::consts::FRAC_1_SQRT_2);
@@ -345,7 +345,7 @@ mod tests {
             stands: vec![],
             min_z: 0.0,
             tri_owner: vec![(0, "ground".into())],
-            tri_color: vec![(0, [0.6, 0.6, 0.6])],
+            tri_color: vec![(0, [0.6, 0.6, 0.6])], tri_tex: vec![],
         };
         let rest = V3::new(0.0, 0.0, 1.0);
         let behind = V3::new(400.0, 0.0, 1.0);
@@ -354,3 +354,4 @@ mod tests {
         assert!(fire_covers(&scene, rest, open), "open side must be covered");
     }
 }
+
