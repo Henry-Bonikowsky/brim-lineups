@@ -1,28 +1,28 @@
-﻿brim-lineups.exe : scene[collision]: 1906881 tris from 2470 placements (4256 filtered, 3499 instances expanded), 2263 
+﻿brim-lineups.exe : scene[collision]: 1904585 tris from 2463 placements (4263 filtered, 3499 instances expanded), 2263 
 stand points
-At line:1 char:1452
+At line:1 char:1742
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...63 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 stands: 2263 -> 2190 after reachability gate
-flights: 3773 never stopped, 156172 landed far, 495 within tol
-solved in 547.8ms: 76 distinct lineups within 150u
+flights: 3773 never stopped, 156140 landed far, 527 within tol
+solved in 561.9ms: 36 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-           (408, -5100, 910)  2464u  -140.2   -10.3  2.12s   4   146u      0%  (-345, -5728, 906 @ 996u)
-           (359, -5127, 910)  2408u  -140.0   -10.9  2.11s   4   149u      0%  (-356, -5727, 905 @ 950u)
-         (-1312, -3435, 310)  3183u   -94.1    66.5  5.97s   3   124u     12%  (open sky)
-         (-1192, -3412, 310)  3217u   -96.2    66.3  5.95s   3   142u      0%  (open sky)
-         (-1434, -3433, 310)  3179u   -91.9    70.5  6.07s   2    35u     12%  (open sky)
-         (-1181, -3382, 310)  3248u   -96.3    66.2  5.95s   3   145u      0%  (open sky)
-         (-1102, -3867, 310)  2777u  -100.1    72.2  6.09s   2    88u     12%  (-1124, -3993, 881 @ 416u)
-         (-1429, -3377, 310)  3235u   -91.9    70.3  6.07s   2    29u     12%  (open sky)
          (-1258, -3957, 310)  2668u   -97.0    72.6  6.09s   2    96u     50%  (-1280, -4130, 1044 @ 586u)
          (-1154, -4025, 310)  2614u   -99.5    72.8  6.09s   2    99u     50%  (-1174, -4145, 881 @ 415u)
          (-1723, -3027, 510)  3588u   -86.1    69.0  6.15s   2    63u     25%  (-1716, -3125, 940 @ 274u)
-          (-985, -2961, 310)  3691u   -98.6    68.3  6.04s   2    19u     12%  (-1017, -3170, 1017 @ 573u)
-scene[visual]: 2493806 tris from 3728 placements (2998 filtered, 4773 instances expanded), 2263 stand points
+         (-1462, -2605, 433)  4006u   -92.1    63.1  5.81s   3   149u     38%  (open sky)
+         (-1318, -2653, 310)  3963u   -93.2    67.1  6.02s   2    50u     38%  (open sky)
+         (-1426, -2428, 310)  4184u   -92.6    61.1  5.74s   3   125u     25%  (open sky)
+         (-1729, -2417, 310)  4197u   -88.4    61.0  5.74s   3    67u     25%  (open sky)
+         (-1370, -2413, 310)  4200u   -93.3    61.0  5.73s   3   137u     25%  (open sky)
+           (-85, -8024, 510)  2028u   134.8    74.3  6.19s   2   140u     25%  (open sky)
+           (-92, -7997, 510)  2004u   135.2    74.4  6.19s   2   138u     38%  (open sky)
+          (-825, -2535, 310)  4137u  -100.9    66.3  6.01s   2   102u     38%  (open sky)
+         (-2958, -7763, 310)  1828u    37.1    75.0  6.10s   2   136u     25%  (open sky)
+scene[visual]: 2490226 tris from 3718 placements (3008 filtered, 4773 instances expanded), 2263 stand points
 rendered .\cards\renders3\Bonsai-m1539_m6610_400_r1.bmp + stand + wide
 rendered .\cards\renders3\Bonsai-m1539_m6610_400_r2.bmp + stand + wide
 rendered .\cards\renders3\Bonsai-m1539_m6610_400_r3.bmp + stand + wide
@@ -35,4 +35,4 @@ rendered .\cards\renders3\Bonsai-m1539_m6610_400_r9.bmp + stand + wide
 rendered .\cards\renders3\Bonsai-m1539_m6610_400_r10.bmp + stand + wide
 rendered .\cards\renders3\Bonsai-m1539_m6610_400_r11.bmp + stand + wide
 rendered .\cards\renders3\Bonsai-m1539_m6610_400_r12.bmp + stand + wide
-wrote lineups.json (76 entries)
+wrote lineups.json (36 entries)

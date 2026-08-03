@@ -30,6 +30,8 @@ pub struct Scene {
     pub min_z: f32,
     /// (first triangle index, source label) per placement, for debug attribution
     pub tri_owner: Vec<(u32, String)>,
+    /// (first triangle index, material color) per placement
+    pub tri_color: Vec<(u32, [f32; 3])>,
 }
 
 impl Scene {
@@ -56,6 +58,14 @@ impl Scene {
             Ok(i) => &self.tri_owner[i].1,
             Err(0) => "?",
             Err(i) => &self.tri_owner[i - 1].1,
+        }
+    }
+
+    pub fn color_of(&self, tri: u32) -> [f32; 3] {
+        match self.tri_color.binary_search_by_key(&tri, |(s, _)| *s) {
+            Ok(i) => self.tri_color[i].1,
+            Err(0) => [0.62, 0.62, 0.62],
+            Err(i) => self.tri_color[i - 1].1,
         }
     }
 }
@@ -160,6 +170,31 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
     let mut objs: HashMap<String, Option<(Vec<[f32; 3]>, Vec<[u32; 3]>)>> = HashMap::new();
     let mut tris: Vec<[[f32; 3]; 3]> = Vec::new();
     let mut tri_owner: Vec<(u32, String)> = Vec::new();
+    let mut tri_color: Vec<(u32, [f32; 3])> = Vec::new();
+    // material colors extracted from the pak textures (valo_dump colors mode)
+    let colors: HashMap<String, [f32; 3]> = std::fs::read_to_string(dir.join("meshcolors.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .map(|v| {
+            v.as_object()
+                .map(|o| {
+                    o.iter()
+                        .filter_map(|(k, arr)| {
+                            let a = arr.as_array()?;
+                            Some((
+                                k.clone(),
+                                [
+                                    a[0].as_f64()? as f32,
+                                    a[1].as_f64()? as f32,
+                                    a[2].as_f64()? as f32,
+                                ],
+                            ))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
     let (mut used, mut skipped_umap, mut skipped_inst) = (0usize, 0usize, 0usize);
     for i in &inst {
         let umap = i["umap"].as_str().unwrap_or("");
@@ -226,6 +261,10 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
             ]
         };
         tri_owner.push((tris.len() as u32, format!("{umap}:{}", i["component"].as_str().unwrap_or("?"))));
+        tri_color.push((
+            tris.len() as u32,
+            colors.get(&obj_name.trim_end_matches(".obj").to_string()).copied().unwrap_or([0.62, 0.62, 0.62]),
+        ));
         if let Some(insts) = i["perInstance"].as_array() {
             // instanced meshes (benches, props, clutter): per-instance transform
             // relative to the component, then the component world transform
@@ -365,7 +404,50 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
             })
         });
         eprintln!("stands: {} -> {} after reachability gate", before, stands.len());
+
+        // keep only the LARGEST connected walkable network (<=130u steps,
+        // neighbors within 420u): isolated perches, scaffold tops and
+        // ability-only towers form small islands and vanish
+        let n = stands.len();
+        let mut parent: Vec<usize> = (0..n).collect();
+        fn find(p: &mut Vec<usize>, i: usize) -> usize {
+            let mut r = i;
+            while p[r] != r {
+                r = p[r];
+            }
+            let mut c = i;
+            while p[c] != r {
+                let nx = p[c];
+                p[c] = r;
+                c = nx;
+            }
+            r
+        }
+        for i in 0..n {
+            for j in i + 1..n {
+                let d = stands[j] - stands[i];
+                if d.z.abs() <= 130.0 && d.x * d.x + d.y * d.y <= 420.0 * 420.0 {
+                    let (a, b) = (find(&mut parent, i), find(&mut parent, j));
+                    if a != b {
+                        parent[a] = b;
+                    }
+                }
+            }
+        }
+        let mut counts: std::collections::HashMap<usize, usize> = Default::default();
+        for i in 0..n {
+            *counts.entry(find(&mut parent, i)).or_default() += 1;
+        }
+        if let Some((&main_root, _)) = counts.iter().max_by_key(|(_, c)| **c) {
+            let keep: Vec<bool> = (0..n).map(|i| find(&mut parent, i) == main_root).collect();
+            let mut k = 0;
+            stands.retain(|_| {
+                k += 1;
+                keep[k - 1]
+            });
+            eprintln!("stands: {} -> {} after main-network filter", n, stands.len());
+        }
     }
 
-    Scene { mesh, stands, min_z, tri_owner }
+    Scene { mesh, stands, min_z, tri_owner, tri_color }
 }

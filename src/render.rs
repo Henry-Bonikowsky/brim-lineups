@@ -153,11 +153,12 @@ fn render_ex(
     let tan_v = tan_h * H as f32 / W as f32;
 
     let mut depth = vec![f32::INFINITY; W * H];
-    let mut shade = vec![0.55f32; W * H]; // sky-ish base
+    let mut shade = vec![[0.55f32; 3]; W * H]; // rgb, sky-ish base
     let mut is_sky = vec![true; W * H];
 
     let vtx = scene.mesh.vertices();
-    for tri in scene.mesh.indices() {
+    for (tri_idx, tri) in scene.mesh.indices().iter().enumerate() {
+        let mat = scene.color_of(tri_idx as u32);
         let p: Vec<V3> = tri.iter().map(|&i| V3::new(vtx[i as usize].x, vtx[i as usize].y, vtx[i as usize].z)).collect();
         // camera space: x right, y up, z forward
         let cam: Vec<V3> = p

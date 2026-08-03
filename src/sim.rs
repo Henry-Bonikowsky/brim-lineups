@@ -154,6 +154,7 @@ mod tests {
             stands: vec![],
             min_z: 0.0,
             tri_owner: vec![(0, "ground".into())],
+            tri_color: vec![(0, [0.6, 0.6, 0.6])],
         };
         let cfg = Cfg::default();
         let dir = V3::new(std::f32::consts::FRAC_1_SQRT_2, 0.0, std::f32::consts::FRAC_1_SQRT_2);

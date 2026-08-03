@@ -1,15 +1,15 @@
 ﻿brim-lineups.exe : navmesh sparse (4 pts); targeting-mesh fallback added 1112
-At line:1 char:1452
+At line:1 char:1742
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (navmesh sparse ...back added 1112:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-scene[collision]: 3789363 tris from 2957 placements (4106 filtered, 1482 instances expanded), 1116 stand points
+scene[collision]: 3788069 tris from 2949 placements (4114 filtered, 1482 instances expanded), 1116 stand points
 stands: 1116 -> 1116 after reachability gate
-flights: 986 never stopped, 59618 landed far, 356 within tol
+flights: 986 never stopped, 59951 landed far, 23 within tol
+solved in 167.3ms: 0 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-solved in 177.3ms: 0 distinct lineups within 150u
 navmesh sparse (4 pts); targeting-mesh fallback added 1112
-scene[visual]: 4715084 tris from 4294 placements (2769 filtered, 3039 instances expanded), 1116 stand points
+scene[visual]: 4712974 tris from 4282 placements (2781 filtered, 3039 instances expanded), 1116 stand points
 wrote lineups.json (0 entries)

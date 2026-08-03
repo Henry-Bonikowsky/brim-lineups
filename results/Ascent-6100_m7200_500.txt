@@ -1,14 +1,14 @@
-﻿brim-lineups.exe : scene[collision]: 1702454 tris from 1874 placements (3570 filtered, 2729 instances expanded), 2824 
+﻿brim-lineups.exe : scene[collision]: 1685206 tris from 1857 placements (3587 filtered, 2725 instances expanded), 2824 
 stand points
-At line:1 char:1452
+At line:1 char:1742
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...24 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 stands: 2824 -> 2815 after reachability gate
-flights: 684 never stopped, 181192 landed far, 4124 within tol
-solved in 1.3s: 398 distinct lineups within 150u
+flights: 762 never stopped, 181028 landed far, 4210 within tol
+solved in 1.3s: 254 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (4625, -4618, 410)  2973u   -58.3    70.4  5.20s   2   124u     25%  (open sky)
           (4468, -4710, 410)  2977u   -54.8    70.3  5.22s   2   130u     25%  (open sky)
@@ -22,7 +22,7 @@ solved in 1.3s: 398 distinct lineups within 150u
           (4664, -4484, 410)  3072u   -60.1    69.9  5.75s   3    31u     25%  (open sky)
           (4976, -4484, 410)  2939u   -65.5    70.5  5.79s   3    46u     25%  (open sky)
           (5037, -4470, 410)  2930u   -66.7    70.5  5.79s   3    48u     25%  (open sky)
-scene[visual]: 2406808 tris from 3191 placements (2253 filtered, 4964 instances expanded), 2824 stand points
+scene[visual]: 2383592 tris from 3170 placements (2274 filtered, 4960 instances expanded), 2824 stand points
 rendered .\cards\renders3\Ascent-6100_m7200_500_r1.bmp + stand + wide
 rendered .\cards\renders3\Ascent-6100_m7200_500_r2.bmp + stand + wide
 rendered .\cards\renders3\Ascent-6100_m7200_500_r3.bmp + stand + wide
@@ -35,4 +35,4 @@ rendered .\cards\renders3\Ascent-6100_m7200_500_r9.bmp + stand + wide
 rendered .\cards\renders3\Ascent-6100_m7200_500_r10.bmp + stand + wide
 rendered .\cards\renders3\Ascent-6100_m7200_500_r11.bmp + stand + wide
 rendered .\cards\renders3\Ascent-6100_m7200_500_r12.bmp + stand + wide
-wrote lineups.json (398 entries)
+wrote lineups.json (254 entries)

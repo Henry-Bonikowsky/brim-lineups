@@ -1,28 +1,28 @@
-﻿brim-lineups.exe : scene[collision]: 1865102 tris from 1856 placements (3678 filtered, 1384 instances expanded), 5241 
+﻿brim-lineups.exe : scene[collision]: 1806966 tris from 1783 placements (3751 filtered, 1378 instances expanded), 5241 
 stand points
-At line:1 char:1452
+At line:1 char:1742
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...41 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-stands: 5241 -> 5226 after reachability gate
-flights: 1921 never stopped, 316090 landed far, 11269 within tol
-solved in 1.4s: 433 distinct lineups within 150u
+stands: 5241 -> 5186 after reachability gate
+flights: 29329 never stopped, 293362 landed far, 5749 within tol
+solved in 1.6s: 184 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-          (10276, 1901, 560)  1895u  -132.3   -16.4  0.81s   4   150u      0%  (9854, 1438, 550 @ 653u)
-           (9982, 3333, 110)  2998u  -109.1    70.3  5.10s   4    18u     12%  (9805, 2822, 1796 @ 1605u)
-           (6273, 1768, 105)  3008u   -24.9    70.3  5.10s   4    18u     50%  (open sky)
-           (6292, 1841, 105)  3022u   -26.3    70.2  5.10s   4    18u     50%  (open sky)
-          (10350, 3150, 110)  2974u  -117.0    70.4  5.11s   4    18u     50%  (open sky)
-           (6627, 2368, 185)  3020u   -38.2    70.3  5.13s   3    20u     62%  (6813, 2221, 1022 @ 704u)
-          (10770, 2970, 100)  3039u  -125.6    70.2  5.10s   3    20u     50%  (open sky)
-          (10530, 3030, 110)  2956u  -121.2    70.5  5.11s   4    19u     50%  (open sky)
-           (6172, 1650, 105)  3052u   -22.1    70.1  5.10s   4    18u     50%  (open sky)
-           (7472, 3025, 105)  2951u   -58.8    70.5  5.11s   4    19u     62%  (open sky)
-          (10173, 3333, 110)  3066u  -112.5    70.1  5.10s   4    18u     50%  (open sky)
-           (6450, 1950, 105)  2933u   -29.6    70.6  5.11s   4    19u     50%  (open sky)
-scene[visual]: 3531296 tris from 3021 placements (2513 filtered, 4170 instances expanded), 5241 stand points
+           (6273, 1768, 105)  3008u   -25.9    70.3  5.12s   2    54u     25%  (open sky)
+           (6292, 1841, 105)  3022u   -27.3    70.2  5.12s   2    54u     25%  (open sky)
+           (7877, 3378, 105)  3089u   -67.7    70.0  5.12s   2    55u     25%  (open sky)
+           (6627, 2368, 185)  3020u   -40.2    70.3  5.29s   2   143u     25%  (6804, 2218, 1006 @ 687u)
+           (7650, 3025, 105)  2863u   -60.9    70.9  5.13s   2    51u     38%  (open sky)
+           (6627, 2432, 185)  3060u   -41.2    70.1  5.29s   2   143u     25%  (6803, 2279, 1006 @ 687u)
+           (6570, 2130, 105)  2926u   -35.9    70.6  5.27s   2   139u     25%  (6784, 1975, 1031 @ 796u)
+           (6450, 2250, 145)  3093u   -36.5    70.0  5.24s   2   136u     25%  (open sky)
+           (7808, 3037, 105)  2803u   -63.8    71.1  5.12s   2    49u     38%  (open sky)
+           (6627, 2132, 105)  2880u   -36.5    70.8  5.29s   2   143u     50%  (6835, 1979, 1022 @ 786u)
+           (6450, 1650, 105)  2797u   -25.3    71.2  5.14s   2    50u     50%  (open sky)
+           (6570, 1830, 105)  2770u   -29.7    71.3  5.14s   2    50u     38%  (6790, 1704, 1027 @ 789u)
+scene[visual]: 3464452 tris from 2874 placements (2660 filtered, 4028 instances expanded), 5241 stand points
 rendered .\cards\renders3\Plummet-9000_500_101_r1.bmp + stand + wide
 rendered .\cards\renders3\Plummet-9000_500_101_r2.bmp + stand + wide
 rendered .\cards\renders3\Plummet-9000_500_101_r3.bmp + stand + wide
@@ -35,4 +35,4 @@ rendered .\cards\renders3\Plummet-9000_500_101_r9.bmp + stand + wide
 rendered .\cards\renders3\Plummet-9000_500_101_r10.bmp + stand + wide
 rendered .\cards\renders3\Plummet-9000_500_101_r11.bmp + stand + wide
 rendered .\cards\renders3\Plummet-9000_500_101_r12.bmp + stand + wide
-wrote lineups.json (433 entries)
+wrote lineups.json (184 entries)

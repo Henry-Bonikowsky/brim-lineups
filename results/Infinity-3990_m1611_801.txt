@@ -1,24 +1,22 @@
-﻿brim-lineups.exe : scene[collision]: 1379070 tris from 2023 placements (4462 filtered, 1402 instances expanded), 2171 
+﻿brim-lineups.exe : scene[collision]: 1378734 tris from 2015 placements (4470 filtered, 1402 instances expanded), 2171 
 stand points
-At line:1 char:1452
+At line:1 char:1742
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...71 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 stands: 2171 -> 2170 after reachability gate
-flights: 5638 never stopped, 145543 landed far, 859 within tol
-solved in 433.2ms: 5 distinct lineups within 150u
+flights: 5640 never stopped, 145613 landed far, 787 within tol
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-           (4627, 1393, 810)  3071u  -102.0     0.5  1.23s   4    59u     25%  (3950, -1800, 1016 @ 3264u)
-           (4675, 1627, 810)  3310u  -101.9     1.8  1.31s   4    59u     25%  (3950, -1800, 1094 @ 3505u)
-           (4763, 1910, 810)  3605u  -102.4     3.3  1.42s   4    58u     25%  (3949, -1800, 1203 @ 3804u)
-           (4802, 1918, 810)  3621u  -104.0    -1.6  1.47s   5    82u     50%  (3878, -1800, 876 @ 3832u)
-           (5679, 1922, 810)  3916u  -113.5    67.4  6.07s   2   144u      0%  (open sky)
-scene[visual]: 2523102 tris from 3095 placements (3390 filtered, 3463 instances expanded), 2171 stand points
+           (4627, 1393, 810)  3071u  -102.0     2.5  1.52s   3   101u     75%  (3950, -1800, 1130 @ 3267u)
+           (4675, 1627, 810)  3310u  -101.9     3.8  1.61s   3   101u     75%  (3950, -1800, 1216 @ 3510u)
+           (4763, 1910, 810)  3605u  -102.4     5.3  1.73s   3   104u     25%  (3949, -1800, 1337 @ 3814u)
+           (4802, 1918, 810)  3621u  -103.0     5.4  1.73s   3   108u     25%  (3947, -1800, 1344 @ 3832u)
+solved in 426.5ms: 4 distinct lineups within 150u
+scene[visual]: 2522154 tris from 3084 placements (3401 filtered, 3463 instances expanded), 2171 stand points
 rendered .\cards\renders3\Infinity-3990_m1611_801_r1.bmp + stand + wide
 rendered .\cards\renders3\Infinity-3990_m1611_801_r2.bmp + stand + wide
 rendered .\cards\renders3\Infinity-3990_m1611_801_r3.bmp + stand + wide
 rendered .\cards\renders3\Infinity-3990_m1611_801_r4.bmp + stand + wide
-rendered .\cards\renders3\Infinity-3990_m1611_801_r5.bmp + stand + wide
-wrote lineups.json (5 entries)
+wrote lineups.json (4 entries)
