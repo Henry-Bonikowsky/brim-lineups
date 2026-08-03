@@ -86,9 +86,8 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 let base = format!("live/{run}_{}", i + 1);
                 render::render(vscene, eye, l.yaw, l.pitch, &format!("{cards_dir}/{base}_r.bmp"));
                 render::render_grid(vscene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &format!("{cards_dir}/{base}_s.bmp"));
-                let (syw, cyw) = l.yaw.to_radians().sin_cos();
-                let wide_eye = l.stand + V3::new(-cyw * 750.0, -syw * 750.0, 1000.0);
-                render::render_marked(vscene, wide_eye, l.yaw, -50.0, &format!("{cards_dir}/{base}_w.bmp"), l.stand + V3::new(0.0, 0.0, 40.0));
+                let (wide_eye, wyaw, wpitch) = render::wide_cam(vscene, l.stand, l.yaw);
+                render::render_marked(vscene, wide_eye, wyaw, wpitch, &format!("{cards_dir}/{base}_w.bmp"), l.stand + V3::new(0.0, 0.0, 40.0));
                 let aim = l
                     .aim_ref
                     .map(|(p, d)| format!("[{:.0},{:.0},{:.0},{:.0}]", p.x, p.y, p.z, d))
@@ -167,14 +166,10 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
             let fdir = std::env::temp_dir().join(format!("bl_vid_{run}"));
             std::fs::create_dir_all(&fdir).ok();
-            const FRAMES: usize = 54;
+            const FRAMES: usize = 90;
             use parry3d::query::{Ray, RayCast};
             for f in 0..FRAMES {
-                let upto = if f >= FRAMES - 10 {
-                    traj.len() - 1
-                } else {
-                    ((f as f32 / (FRAMES - 10) as f32) * traj.len() as f32) as usize
-                };
+                let upto = render::flight_frame_index(f, FRAMES, 24, traj.len());
                 let i = upto.min(traj.len() - 1);
                 let m = traj[i];
                 let vdir = (traj[(i + 3).min(traj.len() - 1)] - traj[i.saturating_sub(3)]).normalize();
@@ -206,7 +201,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             let out = format!("{live}/{run}_flight.mp4");
             let st = std::process::Command::new("ffmpeg")
                 .args([
-                    "-y", "-v", "error", "-framerate", "18",
+                    "-y", "-v", "error", "-framerate", "16",
                     "-i", fdir.join("f%04d.bmp").to_str().unwrap(),
                     "-c:v", "libx264", "-pix_fmt", "yuv420p", &out,
                 ])

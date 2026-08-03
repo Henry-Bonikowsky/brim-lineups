@@ -67,6 +67,51 @@ pub fn render_flight(
     render_ex(scene, eye, yaw_deg, pitch_deg, path, false, Some(target), Some((traj, upto)), DEF_W, DEF_H)
 }
 
+/// Pick a context-camera position that can actually SEE the stand: behind-above
+/// along the throw, else offset to the side, else overhead; each candidate is
+/// pulled in front of any blocking geometry.
+pub fn wide_cam(scene: &Scene, stand: V3, yaw_deg: f32) -> (V3, f32, f32) {
+    use parry3d::query::{Ray, RayCast};
+    let (sy, cy) = yaw_deg.to_radians().sin_cos();
+    let anchor = stand + V3::new(0.0, 0.0, 40.0);
+    let cands = [
+        stand + V3::new(-cy * 750.0, -sy * 750.0, 1000.0),
+        stand + V3::new(-cy * 400.0 + sy * 500.0, -sy * 400.0 - cy * 500.0, 800.0),
+        stand + V3::new(-cy * 400.0 - sy * 500.0, -sy * 400.0 + cy * 500.0, 800.0),
+        stand + V3::new(0.0, 0.0, 1100.0),
+    ];
+    let mut best = cands[3];
+    for cand in cands {
+        let toc = cand - anchor;
+        let d = toc.norm();
+        let ray = Ray::new(nalgebra::Point3::from(anchor), toc / d);
+        match scene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, d, true) {
+            None => {
+                best = cand;
+                break;
+            }
+            Some(t) if t * 0.85 > 350.0 => {
+                best = anchor + toc / d * (t * 0.85);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let look = anchor - best;
+    (best, look.y.atan2(look.x).to_degrees(), (look.z / look.norm()).asin().to_degrees())
+}
+
+/// End-weighted trajectory index for flight videos: most frames go to the
+/// final approach and bounces, with a hold on the rest position.
+pub fn flight_frame_index(f: usize, frames: usize, hold: usize, len: usize) -> usize {
+    if f >= frames - hold {
+        len - 1
+    } else {
+        let frac = f as f32 / (frames - hold) as f32;
+        (((1.0 - (1.0 - frac).powf(1.7)) * len as f32) as usize).min(len - 1)
+    }
+}
+
 /// Flight frame at reduced size (chase-cam videos rendered on demand).
 #[allow(clippy::too_many_arguments)]
 pub fn render_flight_sized(

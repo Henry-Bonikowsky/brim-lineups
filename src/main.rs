@@ -213,13 +213,9 @@ fn main() {
         let look = mid - cam;
         let cam_yaw = look.y.atan2(look.x).to_degrees();
         let cam_pitch = (look.z / look.norm()).asin().to_degrees();
-        const FRAMES: usize = 72;
+        const FRAMES: usize = 96;
         for f in 0..FRAMES {
-            let upto = if f >= FRAMES - 12 {
-                traj.len() - 1 // hold on the rest position
-            } else {
-                (f as f32 / (FRAMES - 12) as f32 * traj.len() as f32) as usize
-            };
+            let upto = render::flight_frame_index(f, FRAMES, 24, traj.len());
             let fp = format!("{outdir}/f{f:04}.bmp");
             render::render_flight(&vscene, cam, cam_yaw, cam_pitch, &fp, target, &traj, upto);
         }
@@ -240,11 +236,10 @@ fn main() {
             // cross is where your feet go, image-up is your throw direction
             let spath = format!("{prefix}_s{}.bmp", i + 1);
             render::render_grid(&scene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &spath);
-            // wide context: drone shot from behind-above the stand along the throw
-            let (syw, cyw) = l.yaw.to_radians().sin_cos();
-            let wide_eye = l.stand + V3::new(-cyw * 750.0, -syw * 750.0, 1000.0);
+            // wide context: drone shot with a visibility-checked camera
+            let (wide_eye, wyaw, wpitch) = render::wide_cam(&scene, l.stand, l.yaw);
             let wpath = format!("{prefix}_w{}.bmp", i + 1);
-            render::render_marked(&scene, wide_eye, l.yaw, -50.0, &wpath, l.stand + V3::new(0.0, 0.0, 40.0));
+            render::render_marked(&scene, wide_eye, wyaw, wpitch, &wpath, l.stand + V3::new(0.0, 0.0, 40.0));
             eprintln!("rendered {path} + stand + wide");
         }
     }
