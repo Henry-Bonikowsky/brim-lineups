@@ -162,7 +162,7 @@ fn main() {
             // stand-locating view: straight down from just overhead; the green
             // cross is where your feet go, image-up is your throw direction
             let spath = format!("{prefix}_s{}.bmp", i + 1);
-            render::render(&scene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &spath);
+            render::render_grid(&scene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &spath);
             eprintln!("rendered {path} + stand view");
         }
     }

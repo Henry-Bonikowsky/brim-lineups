@@ -9,6 +9,14 @@ const H: usize = 540;
 const HFOV_DEG: f32 = 103.0;
 
 pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, false)
+}
+
+pub fn render_grid(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
+    render_ex(scene, eye, yaw_deg, pitch_deg, path, true)
+}
+
+fn render_ex(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, grid: bool) {
     let (sy, cy) = yaw_deg.to_radians().sin_cos();
     let (sp, cp) = pitch_deg.to_radians().sin_cos();
     let fwd = V3::new(cp * cy, cp * sy, sp);
@@ -67,7 +75,8 @@ pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) 
             continue;
         }
         let n = n / nl;
-        let lambert = 0.35 + 0.65 * n.dot(&V3::new(0.35, 0.2, 0.92)).abs();
+        // oblique hillshade light: floors mid-gray, walls contrast both ways
+        let lambert = 0.22 + 0.72 * n.dot(&V3::new(0.55, 0.45, 0.70)).abs();
         let (ax, ay) = (scr[0].0, scr[0].1);
         let (bx, by) = (scr[1].0, scr[1].1);
         let (cx, cxy) = (scr[2].0, scr[2].1);
@@ -91,6 +100,28 @@ pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) 
                     let fog = (z / 9000.0).min(0.75);
                     shade[idx] = lambert * (1.0 - fog) + 0.55 * fog;
                     is_sky[idx] = false;
+                }
+            }
+        }
+    }
+
+    // world-space grid on geometry (stand views): 100u lines, heavier at 500u
+    if grid {
+        for y in 0..H {
+            for x in 0..W {
+                let i = y * W + x;
+                if is_sky[i] {
+                    continue;
+                }
+                let sx = (x as f32 + 0.5) / W as f32 * 2.0 - 1.0;
+                let sy = 1.0 - (y as f32 + 0.5) / H as f32 * 2.0;
+                let wp = eye + (fwd + right * (sx * tan_h) + up * (sy * tan_v)) * depth[i];
+                let f100 = |v: f32| (v.rem_euclid(100.0) - 50.0).abs() > 50.0 - 3.0;
+                let f500 = |v: f32| (v.rem_euclid(500.0) - 250.0).abs() > 250.0 - 4.0;
+                if f500(wp.x) || f500(wp.y) {
+                    shade[i] *= 0.55;
+                } else if f100(wp.x) || f100(wp.y) {
+                    shade[i] *= 0.8;
                 }
             }
         }
