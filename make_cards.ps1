@@ -65,7 +65,7 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
             $tables += "<details><summary>aim screenshots (match your screen to the image; green cross = crosshair)</summary>"
             $i = 1
             foreach ($r in $renders) {
-                $tables += "<div>#$i</div><img src='renders/$($r.Name)' style='width:640px;margin:4px 0'>"
+                $tables += "<div>#$i</div><img src='renders/$($r.Name)?v=$($r.LastWriteTime.Ticks)' style='width:640px;margin:4px 0'>"
                 $i++
             }
             $tables += "</details>"
