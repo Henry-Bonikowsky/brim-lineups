@@ -13,10 +13,10 @@ pub type V3 = Vector3<f32>;
 /// vistas, disabled props, event reskins, dev greybox, kill-volume triggers,
 /// and the BV volumes (the molly ignores the Projectile channel and pawn
 /// blockers per its BodyInstance responses; it collides with world statics).
-const UMAP_BLACKLIST: [&str; 18] = [
+const UMAP_BLACKLIST: [&str; 21] = [
     "Vista", "Skybox", "Lighting", "Inactive", "_Alt", "_FFA", "QuickSpike", "SiteRush",
     "SpikeRush", "Profiling", "BTIL", "Destruction", "ObserverCameras", "Greybox",
-    "FortCollins", "KillVolumes", "BVProjectile", "BVPawn",
+    "FortCollins", "KillVolumes", "BVProjectile", "BVPawn", "VFX", "Working", "DesignChanges",
 ];
 
 /// Soft decor that does not gate projectiles in game (same family the ValoBoard
