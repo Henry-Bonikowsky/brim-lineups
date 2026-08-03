@@ -1,5 +1,5 @@
 ﻿brim-lineups.exe : navmesh sparse (4 pts); targeting-mesh fallback added 1112
-At line:1 char:1477
+At line:1 char:1452
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (navmesh sparse ...back added 1112:String) [], RemoteException
@@ -7,21 +7,21 @@ At line:1 char:1477
  
 scene[collision]: 3789363 tris from 2957 placements (4106 filtered, 1482 instances expanded), 1116 stand points
 stands: 1116 -> 1116 after reachability gate
-flights: 1160 never stopped, 91778 landed far, 1502 within tol
-solved in 378.4ms: 251 distinct lineups within 150u
+flights: 1178 never stopped, 91829 landed far, 1433 within tol
+solved in 545.3ms: 251 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-        (-3636, -3466, 1190)  2303u    80.7   -24.8  1.73s   3   149u     50%  (-3579, -3114, 1200 @ 393u)
-        (-3463, -3457, 1190)  2269u    84.0   -25.2  1.73s   3   140u     62%  (-3426, -3108, 1200 @ 388u)
-         (-5855, -2600, 797)  2979u    29.0    -3.7  1.78s   3    69u      0%  (-4374, -1778, 864 @ 1697u)
-           (3648, -499, 497)  6908u  -174.2    47.7  4.29s   4    87u      0%  (open sky)
-            (3197, 727, 397)  6704u  -163.3    49.0  4.32s   4    94u      0%  (2567, 538, 1328 @ 1002u)
-           (3450, -700, 497)  6693u  -175.7    49.6  4.39s   4   104u     12%  (open sky)
-           (3296, -853, 497)  6531u  -177.0    50.9  4.45s   4   115u     12%  (2436, -899, 1731 @ 1365u)
-           (3157, -467, 497)  6424u  -173.4    51.7  4.47s   4   120u     12%  (2412, -552, 1620 @ 1208u)
-          (3396, -1355, 497)  6623u   179.7    51.2  4.48s   2   117u     12%  (open sky)
-           (3186, -716, 497)  6429u  -175.7    51.6  4.48s   4   121u     12%  (2412, -774, 1652 @ 1250u)
-          (3405, -1127, 497)  6630u  -178.4    51.1  4.48s   2   118u     12%  (open sky)
-          (3198, -1203, 497)  6423u   181.0    52.7  4.55s   2   114u     12%  (2415, -1217, 1699 @ 1292u)
+         (-5855, -2600, 797)  2979u    29.0    -3.7  1.79s   3    55u      0%  (-4374, -1778, 864 @ 1697u)
+         (-5727, -2600, 797)  2867u    30.2    -4.4  1.88s   4   134u     12%  (-4378, -1814, 852 @ 1566u)
+        (-3636, -3466, 1190)  2303u    81.7   -26.8  1.74s   4   118u    100%  (-3589, -3143, 1200 @ 366u)
+        (-3463, -3457, 1190)  2269u    84.0   -23.2  1.74s   4    99u     50%  (-3423, -3074, 1200 @ 419u)
+          (-208, -1137, 597)  3017u  -177.8    70.2  5.16s   2    62u     62%  (open sky)
+          (-2863, 1788, 597)  3009u   -97.9    70.3  5.18s   2    67u     38%  (open sky)
+          (-3405, 1831, 597)  3036u   -88.6    70.2  5.14s   2   108u     50%  (open sky)
+          (-3103, 1831, 597)  3033u   -93.3    70.2  5.16s   2    63u     50%  (open sky)
+          (-3500, 1692, 597)  2905u   -85.6    70.7  5.11s   2    51u     50%  (open sky)
+          (-100, -1143, 597)  3126u  -181.0    69.8  5.11s   2   122u      0%  (open sky)
+          (-3207, 1692, 597)  2892u   -91.4    70.8  5.17s   2    59u     38%  (open sky)
+          (-2755, 1665, 597)  2903u  -100.3    70.7  5.19s   2    68u     38%  (open sky)
 navmesh sparse (4 pts); targeting-mesh fallback added 1112
 scene[visual]: 4715084 tris from 4294 placements (2769 filtered, 3039 instances expanded), 1116 stand points
 rendered .\cards\renders3\Rook-m3225_m1200_601_r1.bmp + stand + wide

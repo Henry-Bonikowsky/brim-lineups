@@ -123,18 +123,31 @@ fn quat_rotm(x: f32, y: f32, z: f32, w: f32) -> [[f32; 3]; 3] {
     ]
 }
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum Mode {
+    Collision,
+    Visual,
+    Everything,
+}
+
 /// Collision scene for the flight sim (strict molly-blocking filter).
 pub fn load(dir: &Path) -> Scene {
-    load_ex(dir, false)
+    load_ex(dir, Mode::Collision)
 }
 
 /// Visual scene for renders: everything the player sees (decorative and
 /// no-collision meshes included; only backdrop and invisible volumes dropped).
 pub fn load_visual(dir: &Path) -> Scene {
-    load_ex(dir, true)
+    load_ex(dir, Mode::Visual)
 }
 
-fn load_ex(dir: &Path, visual: bool) -> Scene {
+/// Diagnostic scene: no filters at all (every instance from every umap).
+pub fn load_everything(dir: &Path) -> Scene {
+    load_ex(dir, Mode::Everything)
+}
+
+fn load_ex(dir: &Path, mode: Mode) -> Scene {
+    let visual = mode != Mode::Collision;
     // --- placed meshes -> world triangles
     let inst: Vec<Value> = serde_json::from_str::<Value>(
         &std::fs::read_to_string(dir.join("instances.json")).expect("instances.json"),
@@ -154,18 +167,19 @@ fn load_ex(dir: &Path, visual: bool) -> Scene {
         // real world geometry is Environment art; Cube/BasicShape placements are
         // trigger volumes, barriers, and markup, never molly-blocking surfaces.
         // GameObjectMesh components are pickups (ult orbs), overlap-only in game.
-        if !mesh.contains("/Environment/")
-            || i["component"].as_str().unwrap_or("") == "GameObjectMesh"
-            || UMAP_BLACKLIST.iter().any(|b| umap.contains(b))
+        if mode != Mode::Everything
+            && (!mesh.contains("/Environment/")
+                || i["component"].as_str().unwrap_or("") == "GameObjectMesh"
+                || UMAP_BLACKLIST.iter().any(|b| umap.contains(b)))
         {
             skipped_umap += 1;
             continue;
         }
-        if !visual && MESH_BLACKLIST.iter().any(|b| mesh.contains(b)) {
+        if mode == Mode::Collision && MESH_BLACKLIST.iter().any(|b| mesh.contains(b)) {
             skipped_umap += 1;
             continue;
         }
-        if visual && (mesh.contains("Sky") || mesh.contains("Vista")) {
+        if mode == Mode::Visual && (mesh.contains("Sky") || mesh.contains("Vista")) {
             skipped_umap += 1;
             continue;
         }
@@ -173,7 +187,7 @@ fn load_ex(dir: &Path, visual: bool) -> Scene {
         // shells) carry NoCollision and must not block the molly (but they ARE
         // visible, so the visual scene keeps them)
         let coll = &i["collision"];
-        if !visual && !coll.is_null() {
+        if mode == Mode::Collision && !coll.is_null() {
             let enabled = coll["enabled"].as_str().unwrap_or("");
             let profile = coll["profile"].as_str().unwrap_or("");
             if enabled == "ECollisionEnabled::NoCollision"

@@ -1,6 +1,6 @@
 ﻿brim-lineups.exe : scene[collision]: 1131853 tris from 1504 placements (3249 filtered, 1048 instances expanded), 2077 
 stand points
-At line:1 char:1581
+At line:1 char:1452
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...77 stand points:String) [], RemoteException
@@ -8,7 +8,7 @@ At line:1 char:1581
  
 stands: 2077 -> 2052 after reachability gate
 flights: 10336 never stopped, 116487 landed far, 1337 within tol
-solved in 397.8ms: 133 distinct lineups within 150u
+solved in 415.0ms: 133 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (4567, -4367, 110)  2445u    -9.5     3.0  1.03s   3    42u     12%  (5650, -4549, 342 @ 1100u)
           (4600, -4092, 110)  2464u   -14.0     3.1  1.07s   4    37u     12%  (5650, -4353, 343 @ 1084u)
@@ -32,3 +32,7 @@ rendered .\cards\renders3\Jam-6991_m4687_303_r6.bmp + stand + wide
 rendered .\cards\renders3\Jam-6991_m4687_303_r7.bmp + stand + wide
 rendered .\cards\renders3\Jam-6991_m4687_303_r8.bmp + stand + wide
 rendered .\cards\renders3\Jam-6991_m4687_303_r9.bmp + stand + wide
+rendered .\cards\renders3\Jam-6991_m4687_303_r10.bmp + stand + wide
+rendered .\cards\renders3\Jam-6991_m4687_303_r11.bmp + stand + wide
+rendered .\cards\renders3\Jam-6991_m4687_303_r12.bmp + stand + wide
+wrote lineups.json (133 entries)

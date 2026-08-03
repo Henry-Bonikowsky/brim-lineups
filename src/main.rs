@@ -106,21 +106,26 @@ fn main() {
     if let Some(p) = get("--probe") {
         let c: Vec<f32> = p.split(',').map(|x| x.trim().parse().unwrap()).collect();
         use parry3d::query::{Ray, RayCast};
-        for (name, o, d) in [
-            ("down from +2000", V3::new(c[0], c[1], c[2] + 2000.0), V3::new(0.0, 0.0, -1.0)),
-            ("up from point", V3::new(c[0], c[1], c[2]), V3::new(0.0, 0.0, 1.0)),
-            ("north", V3::new(c[0], c[1], c[2] + 150.0), V3::new(1.0, 0.0, 0.0)),
-        ] {
-            let ray = Ray::new(nalgebra::Point3::from(o), d);
-            match scene.mesh.cast_ray_and_get_normal(&nalgebra::Isometry3::identity(), &ray, 1.0e5, true) {
-                Some(h) => {
-                    let owner = match h.feature {
-                        parry3d::shape::FeatureId::Face(f) => scene.owner_of(f),
-                        _ => "?",
-                    };
-                    println!("{name}: hit at dist {:.1} -> z={:.1} [{owner}]", h.time_of_impact, o.z + d.z * h.time_of_impact);
+        // compare collision, visual, and UNFILTERED scenes: a hit only in
+        // "everything" names the mesh a filter wrongly removed
+        let vscene = scene::load_visual(&dir);
+        let escene = scene::load_everything(&dir);
+        for (label, sc) in [("collision", &scene), ("visual", &vscene), ("everything", &escene)] {
+            for (name, o, d) in [
+                ("down from +2000", V3::new(c[0], c[1], c[2] + 2000.0), V3::new(0.0, 0.0, -1.0)),
+                ("up from point", V3::new(c[0], c[1], c[2]), V3::new(0.0, 0.0, 1.0)),
+            ] {
+                let ray = Ray::new(nalgebra::Point3::from(o), d);
+                match sc.mesh.cast_ray_and_get_normal(&nalgebra::Isometry3::identity(), &ray, 1.0e5, true) {
+                    Some(h) => {
+                        let owner = match h.feature {
+                            parry3d::shape::FeatureId::Face(f) => sc.owner_of(f),
+                            _ => "?",
+                        };
+                        println!("[{label:>10}] {name}: dist {:.1} -> z={:.1} [{owner}]", h.time_of_impact, o.z + d.z * h.time_of_impact);
+                    }
+                    None => println!("[{label:>10}] {name}: no hit"),
                 }
-                None => println!("{name}: no hit"),
             }
         }
         return;
