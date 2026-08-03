@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8"><title>Target picker</title>
+<style>
+body { background:#14181c; color:#dde; font:14px/1.5 system-ui; margin:20px }
+select { font-size:16px; padding:4px } .wrap { position:relative; display:inline-block; margin-top:12px }
+img { width:768px; cursor:crosshair } #out { margin-top:10px; font-family:consolas,monospace; background:#0a0d10; padding:10px; border-radius:6px }
+#dot { position:absolute; width:12px; height:12px; border:2px solid #ffd166; border-radius:50%; transform:translate(-50%,-50%); display:none; pointer-events:none }
+</style>
+<h1>Pick a molly target</h1>
+<p>Choose a map, click the exact landing spot (your plant spot). Copy the command it gives you,
+or just tell Claude the coordinates.</p>
+<select id="map"></select>
+<div class="wrap"><img id="img"><div id="dot"></div></div>
+<div id="out">click the map...</div>
+<script>
+let cams = null;
+fetch('cameras.json').then(r => r.json()).then(j => {
+  cams = j;
+  const sel = document.getElementById('map');
+  Object.keys(j).sort().forEach(m => { const o = document.createElement('option'); o.value = o.textContent = m; sel.appendChild(o); });
+  sel.onchange = () => { document.getElementById('img').src = sel.value + '.png'; document.getElementById('dot').style.display = 'none'; };
+  sel.onchange();
+});
+document.getElementById('img').onclick = e => {
+  const m = document.getElementById('map').value, c = cams[m];
+  const r = e.target.getBoundingClientRect();
+  const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
+  const th = (c.yaw || 0) * Math.PI / 180;
+  const ux = Math.cos(th), uy = Math.sin(th);      // image-up axis in world
+  const rx = -uy, ry = ux;                          // image-right axis
+  const du = (u - 0.5) * c.ortho, dv = (0.5 - v) * c.ortho;
+  const X = c.cx + rx * du + ux * dv;
+  const Y = c.cy + ry * du + uy * dv;
+  const dot = document.getElementById('dot');
+  dot.style.left = (u * 100) + '%'; dot.style.top = (v * 100) + '%'; dot.style.display = 'block';
+  document.getElementById('out').textContent =
+    `target: ${X.toFixed(0)}, ${Y.toFixed(0)}\n` +
+    `.\\target\\release\\brim-lineups.exe "..\\ValoBoard\\third_party\\valorant_dump\\${m}" --target "${X.toFixed(0)},${Y.toFixed(0)},auto" --render .\\out --top 5`;
+};
+</script>

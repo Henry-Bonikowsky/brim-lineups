@@ -9,6 +9,7 @@
 //! from the game files (C:\dev\research\brim-molly-physics.md). --eye and --arc
 //! are the two native-unknown calibration knobs.
 
+mod render;
 mod scene;
 mod sim;
 mod solve;
@@ -25,11 +26,8 @@ fn main() {
     let get = |name: &str| -> Option<String> {
         args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
     };
-    let target: V3 = {
-        let t = get("--target").expect("--target X,Y,Z required");
-        let p: Vec<f32> = t.split(',').map(|x| x.trim().parse().expect("target coord")).collect();
-        V3::new(p[0], p[1], p[2])
-    };
+    let target_raw = get("--target").expect("--target X,Y,Z (or X,Y,auto) required");
+    let tparts: Vec<&str> = target_raw.split(',').map(|x| x.trim()).collect();
     let tol: f32 = get("--tol").map(|s| s.parse().unwrap()).unwrap_or(150.0);
     let top: usize = get("--top").map(|s| s.parse().unwrap()).unwrap_or(15);
     let mut cfg = sim::Cfg::default();
@@ -44,6 +42,31 @@ fn main() {
     }
 
     let scene = scene::load(&dir);
+    let target: V3 = {
+        let x: f32 = tparts[0].parse().expect("target x");
+        let y: f32 = tparts[1].parse().expect("target y");
+        if tparts[2] == "auto" {
+            // ground floor at (x, y): walk down through stacked hits, keep the lowest
+            use parry3d::query::{Ray, RayCast};
+            let mut z_top = 6000.0f32;
+            let mut floor = None;
+            for _ in 0..8 {
+                let ray = Ray::new(nalgebra::Point3::new(x, y, z_top), V3::new(0.0, 0.0, -1.0));
+                match scene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, z_top - scene.min_z + 100.0, true) {
+                    Some(t) if t > 1.0 => {
+                        z_top -= t + 5.0;
+                        floor = Some(z_top + 5.0);
+                    }
+                    _ => break,
+                }
+            }
+            let z = floor.expect("no ground found at target x,y");
+            eprintln!("target z auto-resolved to {z:.0}");
+            V3::new(x, y, z)
+        } else {
+            V3::new(x, y, tparts[2].parse().expect("target z"))
+        }
+    };
     if let Some(p) = get("--probe") {
         let c: Vec<f32> = p.split(',').map(|x| x.trim().parse().unwrap()).collect();
         use parry3d::query::{Ray, RayCast};
@@ -127,6 +150,17 @@ fn main() {
             l.err,
             l.forgive * 100.0
         );
+    }
+
+    // synthetic first-person screenshots for the top lineups: match your screen
+    // to the image and the aim is reproduced (no angle HUD needed in game)
+    if let Some(prefix) = get("--render") {
+        for (i, l) in lineups.iter().take(get("--render-top").map(|s| s.parse().unwrap()).unwrap_or(3)).enumerate() {
+            let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
+            let path = format!("{prefix}_r{}.bmp", i + 1);
+            render::render(&scene, eye, l.yaw, l.pitch, &path);
+            eprintln!("rendered {path}");
+        }
     }
 
     // machine-readable output next to nothing in particular: cwd

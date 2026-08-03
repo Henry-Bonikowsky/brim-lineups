@@ -59,6 +59,17 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
             $i++
         }
         $tables += "</table>"
+        # synthetic first-person screenshots, if rendered for this site
+        $renders = Get-ChildItem "$root\cards\renders\$($f.BaseName)_r*.bmp" -ErrorAction SilentlyContinue | Sort-Object Name
+        if ($renders) {
+            $tables += "<details><summary>aim screenshots (match your screen to the image; green cross = crosshair)</summary>"
+            $i = 1
+            foreach ($r in $renders) {
+                $tables += "<div>#$i</div><img src='renders/$($r.Name)' style='width:640px;margin:4px 0'>"
+                $i++
+            }
+            $tables += "</details>"
+        }
         $siteIdx++
     }
     $html += "</svg></div>$tables</div>"
