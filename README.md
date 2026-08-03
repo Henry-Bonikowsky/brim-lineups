@@ -58,3 +58,7 @@ adjust --eye (shifts short/long uniformly at all ranges) and --arc (shifts repor
   temple roof).
 - Lotus: 147 lineups to a site from 2000u+, several 100% forgiveness / 5u error.
 - Not yet verified in-game: the two calibration knobs. That is the make-or-break check.
+
+## Lineup cards
+
+`cards/index.html` renders every site's top lineups on the real minimap textures (dots = stands, ring = target, hover for aim numbers, tables with crosshair reference points). Regenerate with `.\make_cards.ps1` after new solver runs. Minimaps + camera transforms extracted from the paks (valo_dump `tex` mode + per-map AresMinimapCamera).
