@@ -21,8 +21,10 @@ const UMAP_BLACKLIST: [&str; 21] = [
 
 /// Soft decor that does not gate projectiles in game (same family the ValoBoard
 /// sight bake prunes).
-const MESH_BLACKLIST: [&str; 9] =
-    ["Foliage", "Plant", "Sky", "Vista", "Wire", "Rope", "Paper", "Flag", "Floater"];
+const MESH_BLACKLIST: [&str; 11] = [
+    "Foliage", "Plant", "Sky", "Vista", "Wire", "Rope", "Paper", "Flag", "Floater",
+    "Islands_", "FloatingChunk",
+];
 
 pub struct Scene {
     pub mesh: TriMesh,
