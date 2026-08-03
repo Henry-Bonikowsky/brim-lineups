@@ -1,34 +1,99 @@
-﻿<!doctype html><meta charset="utf-8"><title>Target picker</title>
+<!doctype html><meta charset="utf-8"><title>Brim Lineups</title>
 <style>
-body { background:#14181c; color:#dde; font:14px/1.5 system-ui; margin:20px }
-select { font-size:16px; padding:4px } .wrap { position:relative; display:inline-block; margin-top:12px }
-img { width:768px; cursor:crosshair } #out { margin-top:10px; font-family:consolas,monospace; background:#0a0d10; padding:10px; border-radius:6px }
-#dot { position:absolute; width:12px; height:12px; border:2px solid #ffd166; border-radius:50%; transform:translate(-50%,-50%); display:none; pointer-events:none }
-#dot2 { position:absolute; width:12px; height:12px; border:2px solid #6f6; border-radius:50%; transform:translate(-50%,-50%); display:none; pointer-events:none }
+:root {
+  --bg: #0f1419; --panel: #1a2129; --panel2: #232b35; --edge: #2e3944;
+  --ink: #e8edf2; --dim: #8fa0b0; --red: #ff4655; --teal: #3ce8c8; --gold: #ffd166;
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 "Segoe UI", system-ui, sans-serif }
+header {
+  display: flex; align-items: center; gap: 18px; padding: 14px 26px;
+  background: linear-gradient(180deg, #161c24, #12171d); border-bottom: 1px solid var(--edge);
+  position: sticky; top: 0; z-index: 5;
+}
+header h1 { font-size: 19px; letter-spacing: 3px; font-weight: 800; color: var(--ink) }
+header h1 span { color: var(--red) }
+select {
+  font-size: 15px; padding: 7px 12px; background: var(--panel2); color: var(--ink);
+  border: 1px solid var(--edge); border-radius: 6px; outline: none; cursor: pointer;
+}
+button {
+  font-size: 14px; font-weight: 600; letter-spacing: 0.5px; padding: 8px 16px;
+  background: var(--panel2); color: var(--ink); border: 1px solid var(--edge);
+  border-radius: 6px; cursor: pointer;
+}
+button:hover { border-color: var(--teal); color: var(--teal) }
+button.primary { background: var(--red); border-color: var(--red); color: #fff }
+button.primary:hover { filter: brightness(1.12); color: #fff }
+main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; flex-wrap: wrap }
+.card {
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 10px;
+  padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+}
+.card h2 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); margin-bottom: 10px }
+#mapcard { flex: 0 0 auto }
+.wrap { position: relative; display: inline-block }
+#img { width: 700px; cursor: crosshair; border-radius: 6px; display: block }
+#dot, #dot2 { position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  transform: translate(-50%,-50%); display: none; pointer-events: none }
+#dot { border: 2.5px solid var(--gold); box-shadow: 0 0 8px var(--gold) }
+#dot2 { border: 2.5px solid #58e07a; box-shadow: 0 0 8px #58e07a }
+.legend { display: flex; gap: 18px; margin-top: 10px; color: var(--dim); font-size: 13px }
+.legend b { color: var(--ink) }
+.chip { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px }
+#out { margin-top: 12px; font: 13px/1.6 Consolas, monospace; background: #0a0e12;
+  padding: 10px 12px; border-radius: 6px; color: var(--dim); white-space: pre-wrap }
+#rescard { flex: 1 1 460px; min-width: 460px }
+#results h3 { font-size: 15px; margin: 16px 0 6px; font-weight: 600 }
+#results h3:first-child { margin-top: 0 }
+#results img { width: 400px; margin: 3px 4px 3px 0; border-radius: 6px; border: 1px solid var(--edge) }
+#results video, #povshot video { border-radius: 6px; border: 1px solid var(--edge) }
+#results p { color: var(--dim) }
+.good { color: #58e07a } .warn { color: #ffab5e } .mid { color: #b8d96a }
+#walkcard { flex: 1 1 100%; display: none }
+#povwrap { position: relative; display: inline-block }
+#pov { width: 960px; max-width: 100%; border-radius: 6px; background: #000; cursor: crosshair; display: block }
+#povinfo { font: 14px/1.5 Consolas, monospace; background: #0a0e12; color: var(--teal);
+  padding: 8px 14px; border-radius: 6px; margin-top: 8px; max-width: 960px }
+#povhelp { color: var(--dim); font-size: 13px; margin-top: 6px }
+#povshot { margin-top: 10px }
+#povshot p { font: 14px/1.6 Consolas, monospace; color: var(--ink); margin-bottom: 6px }
 </style>
-<h1>Pick a molly lineup</h1>
-<p><b>Left-click</b> = landing spot (yellow). <b>Right-click</b> = standing spot (green, optional).
-With both set you get the exact lineup for that pair; with only a landing spot you get every
-covered lineup to it. Copy the command, or tell Claude the numbers.</p>
-<p><button id="walkbtn">WALK MODE</button> spawn a first-person player (at the green dot if set).
-Click the view to lock the mouse: <b>mouse</b> aims, <b>WASD</b> moves, <b>Shift</b> runs,
-<b>T / left-click</b> throws the molly from exactly where you stand and aim, <b>Esc</b> releases.</p>
-<div id="walk" style="display:none">
-  <img id="pov" width="960" height="540" style="width:960px;cursor:crosshair;background:#000">
-  <div id="povinfo" style="font-family:consolas,monospace;background:#0a0d10;padding:8px;border-radius:6px;max-width:944px"></div>
-  <div id="povshot"></div>
-</div>
-<select id="map"></select>
-<div class="wrap"><img id="img"><div id="dot"></div><div id="dot2"></div></div>
-<div id="out">click the map...</div>
-<div id="results"></div>
+<header>
+  <h1>BRIM<span>//</span>LINEUPS</h1>
+  <select id="map"></select>
+  <button class="primary" id="walkbtn">▶ WALK MODE</button>
+</header>
+<main>
+  <div class="card" id="mapcard">
+    <h2>Map</h2>
+    <div class="wrap"><img id="img"><div id="dot"></div><div id="dot2"></div></div>
+    <div class="legend">
+      <span><span class="chip" style="background:var(--gold)"></span><b>Left-click</b> landing spot</span>
+      <span><span class="chip" style="background:#58e07a"></span><b>Right-click</b> stand spot (optional)</span>
+    </div>
+    <div id="out">click the map...</div>
+  </div>
+  <div class="card" id="rescard">
+    <h2>Lineups</h2>
+    <div id="results"><p style="color:var(--dim)">Click a landing spot to solve. Add a stand spot for an exact pair.</p></div>
+  </div>
+  <div class="card" id="walkcard">
+    <h2>Walk mode - you are the player</h2>
+    <div id="povwrap"><img id="pov" width="960" height="540"></div>
+    <div id="povinfo">spawning...</div>
+    <div id="povhelp">Click the view to lock your mouse. <b>Mouse</b> aims - <b>WASD</b> moves - <b>Shift</b> runs -
+      <b>T / click</b> throws from exactly here - <b>Esc</b> releases the mouse.</div>
+    <div id="povshot"></div>
+  </div>
+</main>
 <script>
 const cams = { "Plummet": { "cx": 6375, "yaw": 0, "ortho": 13312, "cy": 6025 }, "Juliett": { "cx": 200, "yaw": 0, "ortho": 12800, "cy": 0 }, "Rook": { "cx": 0.004757, "yaw": 1033.3136, "ortho": 14336, "cy": -375 }, "Ascent": { "cx": 1050, "yaw": 0, "ortho": 14336, "cy": -4500 }, "Jam": { "cx": 5775, "yaw": 0, "ortho": 13824, "cy": 624.9979 }, "Foxtrot": { "cx": 4775, "yaw": 0, "ortho": 14336, "cy": 500 }, "Duality": { "cx": 7900, "yaw": 0, "ortho": 16896, "cy": -1300 }, "Pitt": { "cx": 5325, "yaw": 0, "ortho": 12800, "cy": 250 }, "Infinity": { "cx": 0, "yaw": 0, "ortho": 12400, "cy": 0 }, "Triad": { "cx": 1900, "yaw": 0, "ortho": 13312, "cy": -7900 }, "Bonsai": { "cx": 2529, "yaw": 0, "ortho": 12800, "cy": -4380 }, "Canyon": { "cx": 8395.34, "yaw": 0, "ortho": 12800, "cy": -728.98 }, "Port": { "cx": -2700, "yaw": 0, "ortho": 13824, "cy": 550 } } ;
 const NAMES = { Triad: 'Haven', Bonsai: 'Split', Canyon: 'Fracture', Duality: 'Bind', Foxtrot: 'Breeze', Infinity: 'Abyss', Jam: 'Lotus', Juliett: 'Sunset', Pitt: 'Pearl', Port: 'Icebox', Rook: 'Corrode', Plummet: 'Summit', Ascent: 'Ascent' };
 { const j = cams;
   const sel = document.getElementById('map');
   Object.keys(j).sort((a, b) => (NAMES[a] || a).localeCompare(NAMES[b] || b)).forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = NAMES[m] || m; sel.appendChild(o); });
-  sel.onchange = () => { document.getElementById('img').src = sel.value + '.png'; document.getElementById('dot').style.display = 'none'; };
+  sel.onchange = () => { document.getElementById('img').src = sel.value + '.png'; document.getElementById('dot').style.display = 'none'; document.getElementById('dot2').style.display = 'none'; };
   sel.onchange();
 }
 let targetPt = null, standPt = null;
@@ -70,21 +135,21 @@ async function solveNow(m) {
     if (j.error) { res.innerHTML = `<p>${j.error}</p>`; solving = false; return; }
     let h = `<p>${j.count} working lineups to (${j.target.join(', ')}) - top ${j.lineups.length}:</p>`;
     j.lineups.forEach((l, i) => {
-      const aim = l.aim_ref ? `crosshair lands on geometry ${(l.aim_ref[3] / 100).toFixed(1)}m ahead` : 'crosshair: open sky (use the ability-bar alignment in the aim image)';
-      const m = v => (v / 100).toFixed(1) + 'm';
+      const aim = l.aim_ref ? `crosshair lands on geometry ${(l.aim_ref[3] / 100).toFixed(1)}m ahead` : 'crosshair: open sky (align with the launcher / ability bar)';
+      const m2 = v => (v / 100).toFixed(1) + 'm';
       const verdict = l.covered
-        ? `<span style='color:#7f7'>fire covers your spot</span> (rests ${m(l.err)} away)`
+        ? `<span class='good'>fire covers your spot</span> (rests ${m2(l.err)} away)`
         : l.err <= 450
-          ? `<span style='color:#fa6'>lands close (${m(l.err)}) but the fire is BLOCKED - it spreads on the wrong side of geometry</span>`
-          : `<span style='color:#fa6'>fire does NOT reach - closest possible rests ${m(l.err)} away</span>`;
+          ? `<span class='warn'>lands close (${m2(l.err)}) but the fire is BLOCKED - wrong side of geometry</span>`
+          : `<span class='warn'>fire does NOT reach - closest possible rests ${m2(l.err)} away</span>`;
       const pos = l.pos === 2
-        ? `<span style='color:#7f7'>easy position - rough standing is fine</span>`
+        ? `<span class='good'>easy position - rough standing is fine</span>`
         : l.pos === 1
-          ? `<span style='color:#ad7'>anchored - back into the object shown in the top-down view</span>`
-          : `<span style='color:#fa6'>loose position - standing spot matters and nothing to anchor on</span>`;
-      h += `<h3>#${i + 1}: ${verdict}. ${pos}. range ${m(l.range)}, ${l.time}s flight, ${l.bounces} bounces. ${aim}. stand (${l.stand.join(', ')})</h3>`;
-      h += l.imgs.map(im => `<img src='${im}' style='width:420px;margin:2px'>`).join('');
-      h += `<div id='vid${i + 1}'><button onclick='flightVideo(${i + 1})'>flight video</button></div>`;
+          ? `<span class='mid'>anchored - back into the object shown in the top-down view</span>`
+          : `<span class='warn'>loose position - standing spot matters and nothing to anchor on</span>`;
+      h += `<h3>#${i + 1}: ${verdict}. ${pos}. range ${m2(l.range)}, ${l.time}s flight, ${l.bounces} bounces. ${aim}. stand (${l.stand.join(', ')})</h3>`;
+      h += l.imgs.map(im => `<img src='${im}'>`).join('');
+      h += `<div id='vid${i + 1}'><button onclick='flightVideo(${i + 1})'>flight video</button> <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button></div>`;
     });
     res.innerHTML = h;
     flightVideo(1); // auto for the best lineup
@@ -110,16 +175,20 @@ async function flightVideo(n) {
 // ---- walk mode: control a player in the sim ----
 const walk = { on: false, x: 0, y: 0, yaw: 0, pitch: 0, keys: {}, busy: false, last: 0 };
 const pov = document.getElementById('pov');
+function startWalk(x, y, yaw, pitch) {
+  walk.x = x; walk.y = y; walk.yaw = yaw; walk.pitch = pitch;
+  walk.on = true;
+  document.getElementById('walkcard').style.display = 'block';
+  document.getElementById('walkcard').scrollIntoView({ behavior: 'smooth' });
+  povFrame(true);
+}
+function walkTo(x, y, yaw, pitch) { startWalk(x, y, yaw, pitch); }
 document.getElementById('walkbtn').onclick = () => {
   const m = document.getElementById('map').value, c = cams[m];
-  walk.x = standPt ? standPt.X : (targetPt ? targetPt.X : c.cx);
-  walk.y = standPt ? standPt.Y : (targetPt ? targetPt.Y : c.cy);
-  if (targetPt && (standPt || targetPt)) walk.yaw = Math.atan2(targetPt.Y - walk.y, targetPt.X - walk.x) * 180 / Math.PI;
-  walk.pitch = 0;
-  walk.on = true;
-  document.getElementById('walk').style.display = 'block';
-  document.getElementById('walk').scrollIntoView();
-  povFrame(true);
+  const x = standPt ? standPt.X : (targetPt ? targetPt.X : c.cx);
+  const y = standPt ? standPt.Y : (targetPt ? targetPt.Y : c.cy);
+  const yaw = targetPt ? Math.atan2(targetPt.Y - y, targetPt.X - x) * 180 / Math.PI : 0;
+  startWalk(x, y, yaw, 0);
 };
 pov.onclick = () => {
   if (document.pointerLockElement === pov) throwHere();
@@ -127,7 +196,7 @@ pov.onclick = () => {
 };
 document.addEventListener('mousemove', e => {
   if (document.pointerLockElement !== pov) return;
-  walk.yaw -= e.movementX * 0.11;
+  walk.yaw += e.movementX * 0.11;
   walk.pitch = Math.max(-89, Math.min(89, walk.pitch - e.movementY * 0.11));
 });
 document.addEventListener('keydown', e => {
@@ -142,8 +211,8 @@ function stepWalk(dt) {
   let mx = 0, my = 0;
   if (k['w']) { mx += fx; my += fy; }
   if (k['s']) { mx -= fx; my -= fy; }
-  if (k['a']) { mx += -fy; my += fx; }
-  if (k['d']) { mx += fy; my += -fx; }
+  if (k['a']) { mx += fy; my += -fx; }
+  if (k['d']) { mx += -fy; my += fx; }
   const n = Math.hypot(mx, my);
   if (n > 0) { walk.x += mx / n * sp; walk.y += my / n * sp; }
 }
@@ -157,23 +226,23 @@ async function povFrame(force) {
   const q = `/pov?map=${m}&x=${walk.x.toFixed(0)}&y=${walk.y.toFixed(0)}&yaw=${walk.yaw.toFixed(2)}&pitch=${walk.pitch.toFixed(2)}&t=${Date.now()}`;
   await new Promise(res => { pov.onload = res; pov.onerror = res; pov.src = q; });
   document.getElementById('povinfo').textContent =
-    `stand (${walk.x.toFixed(0)}, ${walk.y.toFixed(0)})   yaw ${walk.yaw.toFixed(1)}   pitch ${walk.pitch.toFixed(1)}   [T or click = throw]`;
+    `stand (${walk.x.toFixed(0)}, ${walk.y.toFixed(0)})   yaw ${walk.yaw.toFixed(1)}   pitch ${walk.pitch.toFixed(1)}`;
   walk.busy = false;
   if (walk.on) requestAnimationFrame(() => povFrame());
 }
 async function throwHere() {
   const m = document.getElementById('map').value;
   const slot = document.getElementById('povshot');
-  slot.innerHTML = 'simulating throw + rendering flight (~15s)...';
+  slot.innerHTML = '<p>simulating throw + rendering flight (~15s)...</p>';
   const q = `/shoot?map=${m}&x=${walk.x.toFixed(0)}&y=${walk.y.toFixed(0)}&yaw=${walk.yaw.toFixed(2)}&pitch=${walk.pitch.toFixed(2)}`;
   try {
     const j = await (await fetch(q)).json();
-    if (j.error) { slot.innerHTML = j.error; return; }
+    if (j.error) { slot.innerHTML = `<p>${j.error}</p>`; return; }
     const mtr = v => (v / 100).toFixed(1) + 'm';
-    const d = targetPt ? ` - ${mtr(Math.hypot(j.rest[0] - targetPt.X, j.rest[1] - targetPt.Y))} from your yellow click` : '';
+    const d = targetPt ? ` - <span class='good'>${mtr(Math.hypot(j.rest[0] - targetPt.X, j.rest[1] - targetPt.Y))} from your yellow click</span>` : '';
     slot.innerHTML = `<p>rests at (${j.rest.join(', ')}) after ${j.time}s, ${j.bounces} bounces${d}</p>`
       + (j.video ? `<video autoplay loop muted playsinline controls src='${j.video}' style='width:640px'></video>` : '');
-  } catch (e) { slot.innerHTML = 'throw failed: ' + e; }
+  } catch (e) { slot.innerHTML = '<p>throw failed: ' + e + '</p>'; }
 }
 const img = document.getElementById('img');
 img.onclick = e => {
@@ -190,4 +259,3 @@ img.oncontextmenu = e => {
   refresh();
 };
 </script>
-
