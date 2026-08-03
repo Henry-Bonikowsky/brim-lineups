@@ -37,22 +37,42 @@ pub struct Scene {
 }
 
 impl Scene {
-    /// Lowest ground surface under (x, y): walks down through stacked hits.
+    /// Ground surface under (x, y). Collects all stacked hits walking down and
+    /// picks the one closest to the walkable height the navmesh reports nearby
+    /// (under-map shadow/basement meshes must not win); falls back to the
+    /// lowest hit when no navmesh is near.
     pub fn ground_z(&self, x: f32, y: f32) -> Option<f32> {
         use parry3d::query::{Ray, RayCast};
         let mut z_top = 6000.0f32;
-        let mut floor = None;
+        let mut hits: Vec<f32> = Vec::new();
         for _ in 0..8 {
             let ray = Ray::new(Point3::new(x, y, z_top), V3::new(0.0, 0.0, -1.0));
             match self.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, z_top - self.min_z + 100.0, true) {
                 Some(t) if t > 1.0 => {
                     z_top -= t + 5.0;
-                    floor = Some(z_top + 5.0);
+                    hits.push(z_top + 5.0);
                 }
                 _ => break,
             }
         }
-        floor
+        if hits.is_empty() {
+            return None;
+        }
+        let nav_z = self
+            .stands
+            .iter()
+            .filter(|s| (s.x - x).powi(2) + (s.y - y).powi(2) < 400.0 * 400.0)
+            .min_by(|a, b| {
+                ((a.x - x).powi(2) + (a.y - y).powi(2)).total_cmp(&((b.x - x).powi(2) + (b.y - y).powi(2)))
+            })
+            .map(|s| s.z);
+        match nav_z {
+            Some(nz) => hits
+                .iter()
+                .copied()
+                .min_by(|a, b| (a - nz).abs().total_cmp(&(b - nz).abs())),
+            None => hits.last().copied(),
+        }
     }
 
     pub fn owner_of(&self, tri: u32) -> &str {
