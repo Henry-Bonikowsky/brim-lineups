@@ -1,21 +1,21 @@
-﻿brim-lineups.exe : scene: 825267 tris from 1669 placements (4298 filtered, 518 instanced skipped), 2171 stand points
-At line:1 char:1248
+﻿brim-lineups.exe : scene: 821267 tris from 1649 placements (4318 filtered, 518 instanced skipped), 2171 stand points
+At line:1 char:1200
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 825267 t...71 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene: 821267 t...71 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
+             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
+          (4977, -1285, 810)  1040u  -160.7   -16.1  0.36s   3   100u    100%  (4367, -1499, 799 @ 673u)
+          (5020, -1287, 810)  1080u  -161.5   -15.6  0.37s   3   106u     88%  (4385, -1499, 799 @ 695u)
+           (4117, -616, 810)  1003u   -95.3   -15.6  0.38s   3    41u    100%  (4055, -1281, 799 @ 694u)
+         (5038, -1138, 1210)  1150u  -154.7   -34.7  0.40s   3   147u     88%  (4271, -1500, 799 @ 1031u)
+         (4959, -1147, 1210)  1074u  -154.4   -32.5  0.42s   3    30u     88%  (4130, -1544, 799 @ 1090u)
+           (4148, -530, 810)  1093u   -97.3   -12.4  0.42s   3    61u     88%  (4041, -1364, 800 @ 861u)
+          (4959, -992, 1210)  1150u  -147.4   -30.7  0.43s   3    28u     75%  (4695, -1160, 1199 @ 364u)
+           (3822, -500, 810)  1124u   -79.4   -16.0  0.45s   3   144u     88%  (3941, -1133, 800 @ 670u)
+          (5039, -983, 1210)  1222u  -149.1   -29.0  0.46s   3    29u     62%  (4747, -1158, 1196 @ 389u)
+          (5135, -1500, 810)  1150u  -176.5   -13.7  0.47s   3   118u    100%  (4373, -1547, 799 @ 786u)
 flights: 3619 never stopped, 126623 landed far, 1398 within tol
-solved in 324.7ms: 47 distinct lineups within 150u
-             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive
-          (4977, -1285, 810)  1040u  -160.7   -16.1  0.36s   3   100u    100%
-          (5020, -1287, 810)  1080u  -161.5   -15.6  0.37s   3   106u     88%
-           (4117, -616, 810)  1003u   -95.3   -15.6  0.38s   3    41u    100%
-         (5038, -1138, 1210)  1150u  -154.7   -34.7  0.40s   3   147u     88%
-         (4959, -1147, 1210)  1074u  -154.4   -32.5  0.42s   3    30u     88%
-           (4148, -530, 810)  1093u   -97.3   -12.4  0.42s   3    61u     88%
-          (4959, -992, 1210)  1150u  -147.4   -30.7  0.43s   3    28u     75%
-           (3822, -500, 810)  1124u   -79.4   -16.0  0.45s   3   144u     88%
-          (5039, -983, 1210)  1222u  -149.1   -29.0  0.46s   3    29u     62%
-          (5135, -1500, 810)  1150u  -176.5   -13.7  0.47s   3   118u    100%
+solved in 305.6ms: 47 distinct lineups within 150u
 wrote lineups.json (47 entries)

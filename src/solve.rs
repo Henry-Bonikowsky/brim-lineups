@@ -14,6 +14,7 @@ pub struct Lineup {
     pub bounces: u32,
     pub err: f32,        // rest-to-target distance
     pub forgive: f32,    // fraction of +-0.75 deg jitters still within tol
+    pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
 }
 
 fn dir_from(yaw_deg: f32, pitch_deg: f32) -> V3 {
@@ -77,12 +78,22 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, cfg: &Cfg) -> V
                                 bounces: o.bounces,
                                 err,
                                 forgive: 0.0,
+                                aim_ref: None,
                             });
                         }
                     }
                 }
             }
             if let Some(b) = &mut best {
+                // crosshair reference point: where the aim ray (no gravity) first
+                // hits geometry, i.e. "put your crosshair on this spot"
+                use parry3d::query::{Ray, RayCast};
+                let aim_dir = dir_from(b.yaw, b.pitch);
+                let ray = Ray::new(nalgebra::Point3::from(origin), aim_dir);
+                b.aim_ref = scene
+                    .mesh
+                    .cast_ray(&nalgebra::Isometry3::identity(), &ray, 5.0e4, true)
+                    .map(|t| (origin + aim_dir * t, t));
                 // forgiveness: 8 jitters of +-0.75 deg around the found aim
                 let mut ok = 0;
                 for (jy, jp) in

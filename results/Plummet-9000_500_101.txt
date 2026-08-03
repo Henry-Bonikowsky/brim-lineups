@@ -1,21 +1,21 @@
-﻿brim-lineups.exe : scene: 1234947 tris from 1515 placements (3350 filtered, 669 instanced skipped), 5241 stand points
-At line:1 char:1248
+﻿brim-lineups.exe : scene: 1220331 tris from 1502 placements (3363 filtered, 669 instanced skipped), 5241 stand points
+At line:1 char:1200
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 1234947 ...41 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene: 1220331 ...41 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 4429 never stopped, 248916 landed far, 16290 within tol
-solved in 2.5s: 555 distinct lineups within 150u
-             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive
-            (8018, 765, 105)  1017u   -16.1   -14.1  0.36s   3    23u     62%
-           (8670, 1470, 105)  1025u   -70.2   -14.0  0.36s   3    23u    100%
-            (7978, 660, 105)  1034u   -10.9   -13.9  0.37s   3    39u    100%
-           (9330, 1470, 105)  1025u  -106.8   -11.0  0.37s   3    62u     25%
-           (9425, 1546, 105)  1129u  -110.1   -10.7  0.39s   3    67u     88%
-           (9607, 1459, 105)  1135u  -121.3   -10.7  0.39s   3    57u     62%
-           (8127, 1168, 105)  1099u   -39.4   -13.1  0.39s   3    39u    100%
-           (8365, 1416, 105)  1114u   -53.3   -12.9  0.40s   3    39u    100%
-           (9072, 1532, 105)  1035u   -96.0   -12.9  0.40s   3    92u    100%
-           (8327, 1389, 105)  1115u   -50.9   -12.9  0.40s   3    39u    100%
-wrote lineups.json (555 entries)
+flights: 4433 never stopped, 247935 landed far, 17267 within tol
+solved in 2.1s: 566 distinct lineups within 150u
+             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
+            (8018, 765, 105)  1017u   -16.1   -14.1  0.36s   3    23u     62%  (8706, 567, 100 @ 738u)
+           (8670, 1470, 105)  1025u   -70.2   -14.0  0.36s   3    23u    100%  (8914, 792, 100 @ 743u)
+            (7978, 660, 105)  1034u   -10.9   -13.9  0.37s   3    39u    100%  (8693, 522, 100 @ 750u)
+           (9330, 1470, 105)  1025u  -106.8   -11.0  0.37s   3    62u     25%  (9063, 585, 100 @ 942u)
+           (9822, 1072, 555)  1002u  -144.2   -38.4  0.38s   3    66u    100%  (9178, 607, 100 @ 1014u)
+           (9425, 1546, 105)  1129u  -110.1   -10.7  0.39s   3    67u     88%  (9098, 653, 100 @ 968u)
+           (9607, 1459, 105)  1135u  -121.3   -10.7  0.39s   3    57u     62%  (9109, 641, 100 @ 974u)
+           (8127, 1168, 105)  1099u   -39.4   -13.1  0.39s   3    39u    100%  (8726, 676, 100 @ 796u)
+           (9765, 1163, 560)  1012u  -137.1   -36.3  0.39s   3    77u    100%  (9132, 575, 100 @ 1072u)
+           (9761, 1239, 560)  1061u  -133.8   -37.0  0.40s   3    77u    100%  (9176, 630, 100 @ 1056u)
+wrote lineups.json (566 entries)

@@ -85,12 +85,16 @@ fn main() {
     eprintln!("solved in {:.1?}: {} distinct lineups within {tol}u", t0.elapsed(), lineups.len());
 
     println!(
-        "{:>28} {:>6} {:>7} {:>7} {:>6} {:>3} {:>6} {:>7}",
-        "stand (x, y, z)", "range", "yaw", "pitch", "time", "bnc", "err", "forgive"
+        "{:>28} {:>6} {:>7} {:>7} {:>6} {:>3} {:>6} {:>7}  {}",
+        "stand (x, y, z)", "range", "yaw", "pitch", "time", "bnc", "err", "forgive", "crosshair on (x, y, z @ dist)"
     );
     for l in lineups.iter().take(top) {
+        let aim = match &l.aim_ref {
+            Some((p, d)) => format!("({:.0}, {:.0}, {:.0} @ {:.0}u)", p.x, p.y, p.z, d),
+            None => "(open sky)".into(),
+        };
         println!(
-            "{:>28} {:>5.0}u {:>7.1} {:>7.1} {:>5.2}s {:>3} {:>5.0}u {:>6.0}%",
+            "{:>28} {:>5.0}u {:>7.1} {:>7.1} {:>5.2}s {:>3} {:>5.0}u {:>6.0}%  {aim}",
             format!("({:.0}, {:.0}, {:.0})", l.stand.x, l.stand.y, l.stand.z),
             l.dist,
             l.yaw,
@@ -107,8 +111,12 @@ fn main() {
         .iter()
         .map(|l| {
             format!(
-                "{{\"stand\":[{:.1},{:.1},{:.1}],\"range\":{:.0},\"yaw\":{:.2},\"pitch\":{:.2},\"time\":{:.3},\"bounces\":{},\"err\":{:.1},\"forgive\":{:.2}}}",
-                l.stand.x, l.stand.y, l.stand.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.forgive
+                "{{\"stand\":[{:.1},{:.1},{:.1}],\"range\":{:.0},\"yaw\":{:.2},\"pitch\":{:.2},\"time\":{:.3},\"bounces\":{},\"err\":{:.1},\"forgive\":{:.2},\"aim_ref\":{}}}",
+                l.stand.x, l.stand.y, l.stand.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.forgive,
+                match &l.aim_ref {
+                    Some((p, d)) => format!("[{:.1},{:.1},{:.1},{:.0}]", p.x, p.y, p.z, d),
+                    None => "null".into(),
+                }
             )
         })
         .collect();

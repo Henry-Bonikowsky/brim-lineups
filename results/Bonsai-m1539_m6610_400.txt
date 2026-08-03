@@ -1,21 +1,21 @@
-﻿brim-lineups.exe : scene: 845871 tris from 1609 placements (4173 filtered, 944 instanced skipped), 2263 stand points
-At line:1 char:1248
+﻿brim-lineups.exe : scene: 845571 tris from 1606 placements (4176 filtered, 944 instanced skipped), 2263 stand points
+At line:1 char:1200
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 845871 t...63 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene: 845571 t...63 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 4453 never stopped, 135134 landed far, 1798 within tol
-solved in 410.1ms: 177 distinct lineups within 150u
-             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive
-          (-925, -5575, 340)  1203u  -120.7    -8.9  0.52s   3    44u      0%
-         (-1249, -7816, 410)  1241u   102.5   -12.8  0.53s   3    69u      0%
-         (-1508, -5587, 310)  1024u   -91.7   -11.8  0.53s   3    18u    100%
-         (-1036, -5583, 310)  1144u  -114.1    -9.9  0.58s   3    47u    100%
-          (-752, -5513, 440)  1350u  -125.6   -11.9  0.60s   3    56u      0%
-         (-1033, -5631, 310)  1102u  -119.3   -11.2  0.61s   3    46u    100%
-         (-2685, -6313, 310)  1184u   -16.5   -11.6  0.61s   3   142u     25%
-         (-2663, -7046, 310)  1206u    21.2   -11.4  0.62s   3   145u     62%
-         (-1328, -8152, 410)  1557u    96.8    -9.8  0.62s   3    92u      0%
-         (-2728, -6402, 312)  1206u   -11.9   -11.5  0.62s   3   143u     25%
+             stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
+         (-1475, -5580, 310)  1032u   -93.5   -12.8  0.61s   3    48u     62%  (-1504, -6041, 380 @ 473u)
+         (-1033, -5631, 310)  1102u  -115.3   -12.2  0.61s   3    97u     62%  (-1237, -6063, 382 @ 489u)
+         (-1036, -5583, 310)  1144u  -114.1   -11.9  0.62s   3   116u     62%  (-1239, -6037, 380 @ 508u)
+         (-2685, -6313, 310)  1184u   -15.5   -11.6  0.62s   3   133u     25%  (-2290, -6423, 401 @ 419u)
+         (-2663, -7046, 310)  1206u    22.2   -11.4  0.62s   3   141u     62%  (-2273, -6887, 400 @ 429u)
+         (-2728, -6402, 312)  1206u    -9.9   -11.5  0.63s   3   130u     25%  (-2304, -6476, 400 @ 439u)
+         (-2504, -6334, 320)  1004u   -17.9   -13.6  0.64s   3    36u     62%  (-2130, -6455, 400 @ 405u)
+         (-1310, -5416, 310)  1216u   -99.9   -10.3  0.64s   3    68u     62%  (-1416, -6025, 372 @ 629u)
+         (-2808, -6202, 310)  1333u   -19.8    -9.5  0.66s   3   117u     12%  (-2304, -6384, 395 @ 543u)
+         (-2810, -7037, 310)  1341u    16.6    -9.5  0.66s   3   120u     62%  (-2323, -6892, 400 @ 515u)
+flights: 4452 never stopped, 135161 landed far, 1772 within tol
+solved in 405.3ms: 177 distinct lineups within 150u
 wrote lineups.json (177 entries)
