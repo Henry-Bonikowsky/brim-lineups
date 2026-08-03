@@ -8,7 +8,10 @@ use parry3d::query::{Ray, RayCast};
 #[derive(Clone, Copy)]
 pub struct Cfg {
     pub speed: f32,       // ProjectileSpeed, file value 2900
-    pub gravity: f32,     // |gravity| = 2500 * 0.45 = 1125
+    pub gravity: f32,     // GravityScale 0.45 x world gravity. World gravity is NOT
+                          // in the map files; 2500 was an assumption. Fitted to the
+                          // frame-timed 2026-08-03 clip: 1100 (world ~2440) puts the
+                          // second impact at t=6.05 vs 6.04 measured.
     pub bounciness: f32,  // 0.35
     pub friction: f32,    // 0.65
     pub stop_speed: f32,  // 200
@@ -21,7 +24,7 @@ impl Default for Cfg {
     fn default() -> Self {
         Cfg {
             speed: 2900.0,
-            gravity: 1125.0,
+            gravity: 1100.0,
             bounciness: 0.35,
             friction: 0.65,
             stop_speed: 200.0,

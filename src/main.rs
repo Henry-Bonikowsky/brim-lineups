@@ -48,6 +48,9 @@ fn main() {
     if let Some(v) = get("--speed") {
         cfg.speed = v.parse().unwrap();
     }
+    if let Some(v) = get("--gravity") {
+        cfg.gravity = v.parse().unwrap();
+    }
 
     let mut scene = scene::load(&dir);
     let target: V3 = {
