@@ -176,7 +176,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             let lp = l.pitch + cfg.arc_deg;
             let (sy2, cy2) = l.yaw.to_radians().sin_cos();
             let (sp2, cp2) = lp.to_radians().sin_cos();
-            let Some((_, traj)) = crate::sim::fly_path(cscene, origin, V3::new(cp2 * cy2, cp2 * sy2, sp2), &cfg) else {
+            let Some((_, traj, first_bounce)) = crate::sim::fly_path(cscene, origin, V3::new(cp2 * cy2, cp2 * sy2, sp2), &cfg) else {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"flight failed\"}"));
                 continue;
             };
@@ -189,7 +189,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             use parry3d::query::{Ray, RayCast};
             use rayon::prelude::*;
             (0..FRAMES).into_par_iter().for_each(|f| {
-                let upto = render::flight_frame_index(f, FRAMES, 24, traj.len());
+                let upto = render::flight_frame_index2(f, FRAMES, 16, traj.len(), first_bounce);
                 let i = upto.min(traj.len() - 1);
                 let m = traj[i];
                 let vdir = (traj[(i + 3).min(traj.len() - 1)] - traj[i.saturating_sub(3)]).normalize();

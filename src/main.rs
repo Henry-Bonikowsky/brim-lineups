@@ -208,7 +208,7 @@ fn main() {
         let launch_pitch = l.pitch + cfg.arc_deg;
         let (sy, cy2) = l.yaw.to_radians().sin_cos();
         let (sp, cp) = launch_pitch.to_radians().sin_cos();
-        let (_, traj) = sim::fly_path(&scene, origin, V3::new(cp * cy2, cp * sy, sp), &cfg)
+        let (_, traj, first_bounce) = sim::fly_path(&scene, origin, V3::new(cp * cy2, cp * sy, sp), &cfg)
             .expect("flight");
         // camera: beside and above the path midpoint, fitted by pulling back
         let mid = traj.iter().fold(V3::zeros(), |a, p| a + p) / traj.len() as f32;
@@ -221,7 +221,7 @@ fn main() {
         let cam_pitch = (look.z / look.norm()).asin().to_degrees();
         const FRAMES: usize = 96;
         for f in 0..FRAMES {
-            let upto = render::flight_frame_index(f, FRAMES, 24, traj.len());
+            let upto = render::flight_frame_index2(f, FRAMES, 16, traj.len(), first_bounce);
             let fp = format!("{outdir}/f{f:04}.bmp");
             render::render_flight(&vscene, cam, cam_yaw, cam_pitch, &fp, target, &traj, upto);
         }

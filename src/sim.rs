@@ -49,10 +49,24 @@ pub fn fly_traced(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<Outco
     fly_impl(scene, origin, dir, cfg, true, None)
 }
 
-/// Like fly, but also records the position at every integration step.
-pub fn fly_path(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<(Outcome, Vec<V3>)> {
+/// Like fly, but also records the position at every integration step and the
+/// step index of the FIRST bounce (for video pacing).
+pub fn fly_path(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<(Outcome, Vec<V3>, usize)> {
     let mut path = Vec::new();
-    fly_impl(scene, origin, dir, cfg, false, Some(&mut path)).map(|o| (o, path))
+    let out = fly_impl(scene, origin, dir, cfg, false, Some(&mut path))?;
+    // first bounce ~ first step where height starts rising or motion kinks;
+    // recover it by re-flying is overkill: approximate as the first local
+    // minimum of z after the apex
+    let apex = path
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.z.total_cmp(&b.1.z))
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    let first_bounce = (apex..path.len().saturating_sub(1))
+        .find(|&i| path[i + 1].z > path[i].z + 0.01)
+        .unwrap_or(path.len().saturating_sub(1));
+    Some((out, path, first_bounce))
 }
 
 fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut record: Option<&mut Vec<V3>>) -> Option<Outcome> {
@@ -60,6 +74,8 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
     let mut p = origin;
     let mut v = dir * cfg.speed;
     let mut t = 0.0f32;
+    let mut steps_since_bounce = 1000u32;
+    let mut crevice = 0u32;
     let mut bounces = 0u32;
     if let Some(r) = record.as_deref_mut() {
         r.push(p);
@@ -78,6 +94,24 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
             }
             t += DT * hit.time_of_impact / len;
             p += step * (hit.time_of_impact / len) + n * 0.5;
+            // crevice guard: instant re-contacts (slope/overhang wedges) must
+            // not eat the rebound; slide along the surface instead of another
+            // energy-shredding reflection
+            if steps_since_bounce <= 3 {
+                crevice += 1;
+            } else {
+                crevice = 0;
+            }
+            steps_since_bounce = 0;
+            if crevice >= 2 {
+                let vn0 = v.dot(&n);
+                v -= n * vn0; // kill only the into-surface component
+                bounces += 1;
+                if trace {
+                    eprintln!("  wedge-slide t={t:.2} p=({:.0},{:.0},{:.0}) |v|={:.0}", p.x, p.y, p.z, v.norm());
+                }
+                continue;
+            }
             // per-bounce deadening decoded from Projectile_BaseGrenade bytecode:
             // bounciness = default * lerp(0.5..1.0, degrees-from-down / 90).
             // NOT compounding: the native DefaultBounciness field exists to
@@ -121,6 +155,7 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
         } else {
             p += step;
             t += DT;
+            steps_since_bounce = steps_since_bounce.saturating_add(1);
             if let Some(r) = record.as_deref_mut() {
                 r.push(p);
             }

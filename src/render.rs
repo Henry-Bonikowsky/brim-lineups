@@ -101,14 +101,21 @@ pub fn wide_cam(scene: &Scene, stand: V3, yaw_deg: f32) -> (V3, f32, f32) {
     (best, look.y.atan2(look.x).to_degrees(), (look.z / look.norm()).asin().to_degrees())
 }
 
-/// End-weighted trajectory index for flight videos: most frames go to the
-/// final approach and bounces, with a hold on the rest position.
-pub fn flight_frame_index(f: usize, frames: usize, hold: usize, len: usize) -> usize {
-    if f >= frames - hold {
-        len - 1
+/// Two-phase trajectory index for flight videos: 55% of the frames cover the
+/// flight (launch to first bounce), 45% play the bounce phase in slow motion,
+/// then a hold on the rest position.
+pub fn flight_frame_index2(f: usize, frames: usize, hold: usize, len: usize, first_bounce: usize) -> usize {
+    let live = frames - hold;
+    if f >= live {
+        return len - 1;
+    }
+    let split = (live as f32 * 0.55) as usize;
+    let fb = first_bounce.min(len - 1);
+    if f < split {
+        (f as f32 / split as f32 * fb as f32) as usize
     } else {
-        let frac = f as f32 / (frames - hold) as f32;
-        (((1.0 - (1.0 - frac).powf(1.7)) * len as f32) as usize).min(len - 1)
+        let frac = (f - split) as f32 / (live - split) as f32;
+        (fb + (frac * (len - 1 - fb) as f32) as usize).min(len - 1)
     }
 }
 
