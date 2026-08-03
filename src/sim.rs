@@ -116,7 +116,7 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
                 // with rolling loss on the slide
                 let vn2 = v.dot(&n);
                 let hop = vn2.abs().max(35.0).min(cfg.stop_speed);
-                v = (v - n * vn2) * 0.72 + n * hop;
+                v = (v - n * vn2) * 0.62 + n * hop;
             }
         } else {
             p += step;
