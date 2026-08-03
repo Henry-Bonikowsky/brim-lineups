@@ -37,7 +37,7 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
         .collect()
 }
 
-pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, cfg: &Cfg) -> Vec<Lineup> {
+pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, cfg: &Cfg) -> Vec<Lineup> {
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
     let max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
@@ -99,7 +99,7 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, cfg: &Cfg) -> V
                         site_eyes.push(target + V3::new(a.cos() * ring, a.sin() * ring, 160.0));
                     }
                 }
-                let exposed = site_eyes.iter().any(|se| {
+                let exposed = strict && site_eyes.iter().any(|se| {
                     let v = se - origin;
                     let d = v.norm();
                     let sight = Ray::new(nalgebra::Point3::from(origin), v / d);

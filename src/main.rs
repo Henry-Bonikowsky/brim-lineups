@@ -41,7 +41,7 @@ fn main() {
         cfg.speed = v.parse().unwrap();
     }
 
-    let scene = scene::load(&dir);
+    let mut scene = scene::load(&dir);
     let target: V3 = {
         let x: f32 = tparts[0].parse().expect("target x");
         let y: f32 = tparts[1].parse().expect("target y");
@@ -67,6 +67,35 @@ fn main() {
             V3::new(x, y, tparts[2].parse().expect("target z"))
         }
     };
+    // --stand X,Y[,auto]: evaluate ONLY this standing spot (paired lineup mode).
+    // Z resolves to the ground under X,Y; min-dist is waived.
+    let mut min_dist_override: Option<f32> = None;
+    if let Some(sarg) = get("--stand") {
+        let sp: Vec<&str> = sarg.split(',').map(|x| x.trim()).collect();
+        let sx: f32 = sp[0].parse().expect("stand x");
+        let sy: f32 = sp[1].parse().expect("stand y");
+        use parry3d::query::{Ray, RayCast};
+        let sz = if sp.len() > 2 && sp[2] != "auto" {
+            sp[2].parse().expect("stand z")
+        } else {
+            let mut z_top = 6000.0f32;
+            let mut floor = None;
+            for _ in 0..8 {
+                let ray = Ray::new(nalgebra::Point3::new(sx, sy, z_top), V3::new(0.0, 0.0, -1.0));
+                match scene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, z_top - scene.min_z + 100.0, true) {
+                    Some(t) if t > 1.0 => {
+                        z_top -= t + 5.0;
+                        floor = Some(z_top + 5.0);
+                    }
+                    _ => break,
+                }
+            }
+            floor.expect("no ground under stand x,y")
+        };
+        eprintln!("paired mode: stand locked to ({sx:.0}, {sy:.0}, {sz:.0})");
+        scene.stands = vec![V3::new(sx, sy, sz)];
+        min_dist_override = Some(0.0);
+    }
     if let Some(p) = get("--probe") {
         let c: Vec<f32> = p.split(',').map(|x| x.trim().parse().unwrap()).collect();
         use parry3d::query::{Ray, RayCast};
@@ -126,8 +155,9 @@ fn main() {
         return;
     }
     let t0 = std::time::Instant::now();
-    let min_dist: f32 = get("--min-dist").map(|s| s.parse().unwrap()).unwrap_or(1800.0);
-    let lineups = solve::solve(&scene, target, tol, min_dist, &cfg);
+    let min_dist: f32 =
+        min_dist_override.unwrap_or_else(|| get("--min-dist").map(|s| s.parse().unwrap()).unwrap_or(1800.0));
+    let lineups = solve::solve(&scene, target, tol, min_dist, min_dist_override.is_none(), &cfg);
     eprintln!("solved in {:.1?}: {} distinct lineups within {tol}u", t0.elapsed(), lineups.len());
 
     println!(

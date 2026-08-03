@@ -4,12 +4,14 @@ body { background:#14181c; color:#dde; font:14px/1.5 system-ui; margin:20px }
 select { font-size:16px; padding:4px } .wrap { position:relative; display:inline-block; margin-top:12px }
 img { width:768px; cursor:crosshair } #out { margin-top:10px; font-family:consolas,monospace; background:#0a0d10; padding:10px; border-radius:6px }
 #dot { position:absolute; width:12px; height:12px; border:2px solid #ffd166; border-radius:50%; transform:translate(-50%,-50%); display:none; pointer-events:none }
+#dot2 { position:absolute; width:12px; height:12px; border:2px solid #6f6; border-radius:50%; transform:translate(-50%,-50%); display:none; pointer-events:none }
 </style>
-<h1>Pick a molly target</h1>
-<p>Choose a map, click the exact landing spot (your plant spot). Copy the command it gives you,
-or just tell Claude the coordinates.</p>
+<h1>Pick a molly lineup</h1>
+<p><b>Left-click</b> = landing spot (yellow). <b>Right-click</b> = standing spot (green, optional).
+With both set you get the exact lineup for that pair; with only a landing spot you get every
+covered lineup to it. Copy the command, or tell Claude the numbers.</p>
 <select id="map"></select>
-<div class="wrap"><img id="img"><div id="dot"></div></div>
+<div class="wrap"><img id="img"><div id="dot"></div><div id="dot2"></div></div>
 <div id="out">click the map...</div>
 <script>
 const cams = { "Plummet": { "cx": 6375, "yaw": 0, "ortho": 13312, "cy": 6025 }, "Juliett": { "cx": 200, "yaw": 0, "ortho": 12800, "cy": 0 }, "Rook": { "cx": 0.004757, "yaw": 1033.3136, "ortho": 14336, "cy": -375 }, "Ascent": { "cx": 1050, "yaw": 0, "ortho": 14336, "cy": -4500 }, "Jam": { "cx": 5775, "yaw": 0, "ortho": 13824, "cy": 624.9979 }, "Foxtrot": { "cx": 4775, "yaw": 0, "ortho": 14336, "cy": 500 }, "Duality": { "cx": 7900, "yaw": 0, "ortho": 16896, "cy": -1300 }, "Pitt": { "cx": 5325, "yaw": 0, "ortho": 12800, "cy": 250 }, "Infinity": { "cx": 0, "yaw": 0, "ortho": 12400, "cy": 0 }, "Triad": { "cx": 1900, "yaw": 0, "ortho": 13312, "cy": -7900 }, "Bonsai": { "cx": 2529, "yaw": 0, "ortho": 12800, "cy": -4380 }, "Canyon": { "cx": 8395.34, "yaw": 0, "ortho": 12800, "cy": -728.98 }, "Port": { "cx": -2700, "yaw": 0, "ortho": 13824, "cy": 550 } } ;
@@ -19,7 +21,8 @@ const cams = { "Plummet": { "cx": 6375, "yaw": 0, "ortho": 13312, "cy": 6025 }, 
   sel.onchange = () => { document.getElementById('img').src = sel.value + '.png'; document.getElementById('dot').style.display = 'none'; };
   sel.onchange();
 }
-document.getElementById('img').onclick = e => {
+let targetPt = null, standPt = null;
+function toWorld(e) {
   const m = document.getElementById('map').value, c = cams[m];
   const r = e.target.getBoundingClientRect();
   const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
@@ -27,13 +30,33 @@ document.getElementById('img').onclick = e => {
   const ux = Math.cos(th), uy = Math.sin(th);      // image-up axis in world
   const rx = -uy, ry = ux;                          // image-right axis
   const du = (u - 0.5) * c.ortho, dv = (0.5 - v) * c.ortho;
-  const X = c.cx + rx * du + ux * dv;
-  const Y = c.cy + ry * du + uy * dv;
-  const dot = document.getElementById('dot');
-  dot.style.left = (u * 100) + '%'; dot.style.top = (v * 100) + '%'; dot.style.display = 'block';
-  document.getElementById('out').textContent =
-    `target: ${X.toFixed(0)}, ${Y.toFixed(0)}\n` +
-    `.\\target\\release\\brim-lineups.exe "..\\ValoBoard\\third_party\\valorant_dump\\${m}" --target "${X.toFixed(0)},${Y.toFixed(0)},auto" --render .\\out --top 5`;
+  return { X: c.cx + rx * du + ux * dv, Y: c.cy + ry * du + uy * dv, u, v };
+}
+function refresh() {
+  const m = document.getElementById('map').value;
+  let txt = '';
+  if (targetPt) txt += `land at:  ${targetPt.X.toFixed(0)}, ${targetPt.Y.toFixed(0)}\n`;
+  if (standPt) txt += `stand at: ${standPt.X.toFixed(0)}, ${standPt.Y.toFixed(0)}\n`;
+  if (targetPt) {
+    txt += `\n.\\target\\release\\brim-lineups.exe "..\\ValoBoard\\third_party\\valorant_dump\\${m}" --target "${targetPt.X.toFixed(0)},${targetPt.Y.toFixed(0)},auto"`;
+    if (standPt) txt += ` --stand "${standPt.X.toFixed(0)},${standPt.Y.toFixed(0)},auto" --tol 250`;
+    txt += ` --render .\\out --top 5`;
+  }
+  document.getElementById('out').textContent = txt || 'click the map...';
+}
+const img = document.getElementById('img');
+img.onclick = e => {
+  targetPt = toWorld(e);
+  const d = document.getElementById('dot');
+  d.style.left = (targetPt.u * 100) + '%'; d.style.top = (targetPt.v * 100) + '%'; d.style.display = 'block';
+  refresh();
+};
+img.oncontextmenu = e => {
+  e.preventDefault();
+  standPt = toWorld(e);
+  const d = document.getElementById('dot2');
+  d.style.left = (standPt.u * 100) + '%'; d.style.top = (standPt.v * 100) + '%'; d.style.display = 'block';
+  refresh();
 };
 </script>
 
