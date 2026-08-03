@@ -4,8 +4,11 @@
 
 use crate::scene::{Scene, V3};
 
+// 16:10 to match Henry's ACTUAL game resolution (1152x720): with a fixed
+// 103 deg horizontal FOV the vertical FOV depends on aspect, so any UI
+// reference off screen center only transfers if the aspect matches
 const DEF_W: usize = 960;
-const DEF_H: usize = 540;
+const DEF_H: usize = 600;
 const HFOV_DEG: f32 = 103.0;
 /// world units per ground-texture repeat (planar mapping; no UVs in the dump)
 const GROUND_TILE: f32 = 400.0;

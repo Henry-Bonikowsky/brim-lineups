@@ -35,7 +35,7 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32) -> Option<(&'stati
     let right = V3::new(-sy, cy, 0.0);
     let up = fwd.cross(&right).normalize();
     let tan_h = (103.0f32.to_radians() / 2.0).tan();
-    let tan_v = tan_h * 9.0 / 16.0;
+    let tan_v = tan_h * 720.0 / 1152.0; // Henry's 16:10 game aspect
     let id = nalgebra::Isometry3::identity();
     let depth_at = |fx: f32, fy: f32| -> f32 {
         let d = (fwd + right * ((fx * 2.0 - 1.0) * tan_h) + up * ((1.0 - fy * 2.0) * tan_v)).normalize();

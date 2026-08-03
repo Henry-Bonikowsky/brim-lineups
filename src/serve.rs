@@ -242,7 +242,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 // width param: walking uses 640 (fast), idle refines at 1152
                 let w = get("w").and_then(|v| v.parse::<usize>().ok()).unwrap_or(640).clamp(320, 1152) / 8 * 8;
                 std::thread::spawn(move || {
-                    let bytes = render::render_pov_bytes(&vs, eye, yaw, pitch, w, w * 9 / 16);
+                    let bytes = render::render_pov_bytes(&vs, eye, yaw, pitch, w, w * 5 / 8);
                     let _ = req.respond(
                         tiny_http::Response::from_data(bytes)
                             .with_header("Content-Type: image/bmp".parse::<tiny_http::Header>().unwrap()),
@@ -402,7 +402,7 @@ fn flight_video(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, li
         render::render_flight_sized(
             vscene, cam, cam_yaw, cam_pitch,
             fdir.join(format!("f{f:04}.bmp")).to_str().unwrap(),
-            target, traj, i, 640, 360,
+            target, traj, i, 640, 400,
         );
     });
     let out = format!("{live}/{run}_flight.mp4");
