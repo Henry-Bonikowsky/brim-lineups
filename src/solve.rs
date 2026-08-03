@@ -37,7 +37,12 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
         .collect()
 }
 
+/// strict=true: full-map hunt (covered + hidden-from-site gates, one best per
+/// stand, deduped, ranked by mid-range preference + time). strict=false
+/// (paired mode, one locked stand): every distinct working ANGLE FAMILY from
+/// that stand (pitch buckets), ranked by time.
 pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, cfg: &Cfg) -> Vec<Lineup> {
+    let paired = !strict && scene.stands.len() == 1;
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
     let max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
@@ -52,7 +57,10 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                 return vec![].into_iter();
             }
             let yaw0 = delta.y.atan2(delta.x).to_degrees();
+            // paired mode keeps the best lineup per ~8 deg pitch family so
+            // drastically different working angles all surface
             let mut best: Option<Lineup> = None;
+            let mut families: std::collections::HashMap<i32, Lineup> = Default::default();
             for (ai, base) in launch_angles(cfg.speed, cfg.gravity, d, delta.z).into_iter().enumerate() {
                 // refine around the vacuum solution: geometry + bounces move the
                 // landing spot, the sim is the truth. The LOW arc gets a wider
@@ -71,21 +79,41 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                         };
                         let err = (o.rest - target).norm();
                         if err < tol { &n_near } else { &n_far }.fetch_add(1, Relaxed);
-                        if err < tol && best.as_ref().is_none_or(|b| o.time < b.time) {
-                            best = Some(Lineup {
-                                dist: d,
-                                stand: *stand,
-                                yaw,
-                                pitch: pitch - cfg.arc_deg,
-                                time: o.time,
-                                bounces: o.bounces,
-                                err,
-                                forgive: 0.0,
-                                aim_ref: None,
-                            });
+                        if err >= tol {
+                            continue;
+                        }
+                        let cand = Lineup {
+                            dist: d,
+                            stand: *stand,
+                            yaw,
+                            pitch: pitch - cfg.arc_deg,
+                            time: o.time,
+                            bounces: o.bounces,
+                            err,
+                            forgive: 0.0,
+                            aim_ref: None,
+                        };
+                        if paired {
+                            let key = (pitch / 8.0).round() as i32;
+                            match families.get(&key) {
+                                Some(cur) if cur.time <= cand.time => {}
+                                _ => {
+                                    families.insert(key, cand);
+                                }
+                            }
+                        } else if best.as_ref().is_none_or(|b| cand.time < b.time) {
+                            best = Some(cand);
                         }
                     }
                 }
+            }
+            if paired {
+                let mut out: Vec<Lineup> = families.into_values().collect();
+                for b in &mut out {
+                    finish(scene, target, tol, cfg, origin, b);
+                }
+                out.sort_by(|a, b| a.time.total_cmp(&b.time));
+                return out.into_iter();
             }
             if let Some(b) = &mut best {
                 // a LINEUP is thrown from cover: nobody standing anywhere around
@@ -111,25 +139,7 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                 if exposed {
                     return vec![].into_iter();
                 }
-                let aim_dir = dir_from(b.yaw, b.pitch);
-                let ray = Ray::new(nalgebra::Point3::from(origin), aim_dir);
-                b.aim_ref = scene
-                    .mesh
-                    .cast_ray(&nalgebra::Isometry3::identity(), &ray, 5.0e4, true)
-                    .map(|t| (origin + aim_dir * t, t));
-                // forgiveness: 8 jitters of +-0.75 deg around the found aim
-                let mut ok = 0;
-                for (jy, jp) in
-                    [(0.75, 0.0), (-0.75, 0.0), (0.0, 0.75), (0.0, -0.75), (0.75, 0.75), (-0.75, 0.75), (0.75, -0.75), (-0.75, -0.75)]
-                {
-                    let launch_pitch = b.pitch + cfg.arc_deg + jp;
-                    if let Some(o) = fly(scene, origin, dir_from(b.yaw + jy, launch_pitch), cfg) {
-                        if (o.rest - target).norm() < tol {
-                            ok += 1;
-                        }
-                    }
-                }
-                b.forgive = ok as f32 / 8.0;
+                finish(scene, target, tol, cfg, origin, b);
             }
             best.into_iter().collect::<Vec<_>>().into_iter()
         })
@@ -141,6 +151,11 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
         n_far.load(Relaxed),
         n_near.load(Relaxed)
     );
+    if paired {
+        // angle families from the locked stand, fastest first
+        all.sort_by(|a, b| a.time.total_cmp(&b.time));
+        return all;
+    }
     // dedup: one lineup per 200u XY cell, keep the fastest
     let mut by_cell: std::collections::HashMap<(i64, i64), Lineup> = Default::default();
     for l in all.drain(..) {
@@ -153,6 +168,32 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
         }
     }
     let mut out: Vec<Lineup> = by_cell.into_values().collect();
-    out.sort_by(|a, b| a.time.total_cmp(&b.time));
+    // rank: mid-range stands preferred (sweet spot ~3000u), then speed
+    let key = |l: &Lineup| (l.dist - 3000.0).abs() / 1500.0 + l.time * 0.35;
+    out.sort_by(|a, b| key(a).total_cmp(&key(b)));
     out
+}
+
+/// Post-processing shared by both modes: crosshair reference point + aim
+/// forgiveness for a confirmed lineup.
+fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Lineup) {
+    use parry3d::query::{Ray, RayCast};
+    let aim_dir = dir_from(b.yaw, b.pitch);
+    let ray = Ray::new(nalgebra::Point3::from(origin), aim_dir);
+    b.aim_ref = scene
+        .mesh
+        .cast_ray(&nalgebra::Isometry3::identity(), &ray, 5.0e4, true)
+        .map(|t| (origin + aim_dir * t, t));
+    let mut ok = 0;
+    for (jy, jp) in
+        [(0.75, 0.0), (-0.75, 0.0), (0.0, 0.75), (0.0, -0.75), (0.75, 0.75), (-0.75, 0.75), (0.75, -0.75), (-0.75, -0.75)]
+    {
+        let launch_pitch = b.pitch + cfg.arc_deg + jp;
+        if let Some(o) = fly(scene, origin, dir_from(b.yaw + jy, launch_pitch), cfg) {
+            if (o.rest - target).norm() < tol {
+                ok += 1;
+            }
+        }
+    }
+    b.forgive = ok as f32 / 8.0;
 }
