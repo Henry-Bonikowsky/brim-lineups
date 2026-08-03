@@ -1,21 +1,17 @@
-﻿brim-lineups.exe : scene: 1126119 tris from 2324 placements (3981 filtered, 473 instanced skipped), 3059 stand points
-At line:1 char:1266
+﻿brim-lineups.exe : scene[collision]: 2213802 tris from 2771 placements (4007 filtered, 1942 instances expanded), 3059 
+stand points
+At line:1 char:1374
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 1126119 ...59 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene[collision...59 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 7077 never stopped, 195041 landed far, 22 within tol
-solved in 574.6ms: 12 distinct lineups within 150u
+flights: 5785 never stopped, 196349 landed far, 6 within tol
+solved in 645.0ms: 2 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (-3985, 3334, 130)  2196u   174.7    -4.0  0.90s   3   137u     25%  (-5654, 3490, 189 @ 1681u)
           (-4027, 3327, 130)  2155u   174.4    -4.2  0.91s   3   137u     25%  (-5640, 3485, 185 @ 1625u)
-         (-3534, -1687, 110)  5820u   116.0    59.0  5.80s   2   149u      0%  (open sky)
-         (-3602, -1652, 110)  5758u   115.5    59.3  5.81s   2   149u      0%  (open sky)
-         (-3622, -1569, 110)  5676u   115.7    59.8  5.83s   2   149u      0%  (open sky)
-           (-306, -392, 110)  7042u   146.4    52.1  5.89s   3   142u      0%  (open sky)
-          (-1038, -417, 110)  6460u   142.7    55.9  6.05s   3   144u      0%  (open sky)
-           (-725, -675, 110)  6866u   142.5    52.7  6.06s   3   150u      0%  (open sky)
-           (-680, -550, 110)  6826u   143.6    53.1  6.06s   3   149u      0%  (open sky)
-           (-970, -430, 110)  6522u   142.9    55.4  6.07s   3   144u      0%  (open sky)
-wrote lineups.json (12 entries)
+scene[visual]: 2782212 tris from 4005 placements (2773 filtered, 2844 instances expanded), 3059 stand points
+rendered .\cards\renders3\Port-m6175_3500_98_r1.bmp + stand + wide
+rendered .\cards\renders3\Port-m6175_3500_98_r2.bmp + stand + wide
+wrote lineups.json (2 entries)

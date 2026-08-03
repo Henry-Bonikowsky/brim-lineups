@@ -1,12 +1,13 @@
-﻿brim-lineups.exe : scene: 613549 tris from 1144 placements (2653 filtered, 624 instanced skipped), 2794 stand points
-At line:1 char:1266
+﻿brim-lineups.exe : scene[collision]: 1337694 tris from 1663 placements (2758 filtered, 2396 instances expanded), 2794 
+stand points
+At line:1 char:1374
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 613549 t...94 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene[collision...94 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 12 never stopped, 112855 landed far, 83 within tol
-solved in 280.9ms: 43 distinct lineups within 150u
+flights: 9 never stopped, 112866 landed far, 75 within tol
+solved in 364.6ms: 39 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (9717, -3262, 610)  2437u  -139.3    -3.4  0.86s   3   128u     12%  (7902, -4823, 641 @ 2398u)
           (9775, -2897, 610)  2722u  -134.1    -1.9  0.96s   3   126u     25%  (7207, -5550, 663 @ 3695u)
@@ -18,4 +19,19 @@ solved in 280.9ms: 43 distinct lineups within 150u
          (10729, -2033, 610)  4008u  -135.6     3.7  1.76s   3   148u      0%  (7965, -4736, 1032 @ 3874u)
          (10748, -1959, 610)  4074u  -135.1     4.0  1.79s   3   147u      0%  (7965, -4735, 1059 @ 3941u)
             (4437, -81, 410)  5791u   -55.3    56.5  4.77s   2   128u      0%  (open sky)
-wrote lineups.json (43 entries)
+           (11191, 942, 608)  6649u  -119.5    52.4  4.96s   3   139u      0%  (open sky)
+          (6554, -6136, 510)  1847u    45.0    74.9  5.33s   2    82u     50%  (open sky)
+scene[visual]: 2415366 tris from 2570 placements (1851 filtered, 4358 instances expanded), 2794 stand points
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r1.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r2.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r3.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r4.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r5.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r6.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r7.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r8.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r9.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r10.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r11.bmp + stand + wide
+rendered .\cards\renders3\Foxtrot-7815_m4785_621_r12.bmp + stand + wide
+wrote lineups.json (39 entries)

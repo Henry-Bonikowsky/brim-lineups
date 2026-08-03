@@ -92,7 +92,31 @@ fn load_obj(path: &Path) -> Option<(Vec<[f32; 3]>, Vec<[u32; 3]>)> {
     Some((vs, fs))
 }
 
+/// Rotation matrix (rows = rotated axes) from a UE quaternion.
+fn quat_rotm(x: f32, y: f32, z: f32, w: f32) -> [[f32; 3]; 3] {
+    let (x2, y2, z2) = (x + x, y + y, z + z);
+    let (xx, yy, zz) = (x * x2, y * y2, z * z2);
+    let (xy, xz, yz) = (x * y2, x * z2, y * z2);
+    let (wx, wy, wz) = (w * x2, w * y2, w * z2);
+    [
+        [1.0 - (yy + zz), xy + wz, xz - wy],
+        [xy - wz, 1.0 - (xx + zz), yz + wx],
+        [xz + wy, yz - wx, 1.0 - (xx + yy)],
+    ]
+}
+
+/// Collision scene for the flight sim (strict molly-blocking filter).
 pub fn load(dir: &Path) -> Scene {
+    load_ex(dir, false)
+}
+
+/// Visual scene for renders: everything the player sees (decorative and
+/// no-collision meshes included; only backdrop and invisible volumes dropped).
+pub fn load_visual(dir: &Path) -> Scene {
+    load_ex(dir, true)
+}
+
+fn load_ex(dir: &Path, visual: bool) -> Scene {
     // --- placed meshes -> world triangles
     let inst: Vec<Value> = serde_json::from_str::<Value>(
         &std::fs::read_to_string(dir.join("instances.json")).expect("instances.json"),
@@ -115,19 +139,23 @@ pub fn load(dir: &Path) -> Scene {
         if !mesh.contains("/Environment/")
             || i["component"].as_str().unwrap_or("") == "GameObjectMesh"
             || UMAP_BLACKLIST.iter().any(|b| umap.contains(b))
-            || MESH_BLACKLIST.iter().any(|b| mesh.contains(b))
         {
             skipped_umap += 1;
             continue;
         }
-        if !i["perInstance"].is_null() {
-            skipped_inst += 1; // instanced foliage/clutter; not handled in v1
+        if !visual && MESH_BLACKLIST.iter().any(|b| mesh.contains(b)) {
+            skipped_umap += 1;
+            continue;
+        }
+        if visual && (mesh.contains("Sky") || mesh.contains("Vista")) {
+            skipped_umap += 1;
             continue;
         }
         // component collision override: cosmetics (glow columns, outlines, FX
-        // shells) carry NoCollision and must not block the molly
+        // shells) carry NoCollision and must not block the molly (but they ARE
+        // visible, so the visual scene keeps them)
         let coll = &i["collision"];
-        if !coll.is_null() {
+        if !visual && !coll.is_null() {
             let enabled = coll["enabled"].as_str().unwrap_or("");
             let profile = coll["profile"].as_str().unwrap_or("");
             if enabled == "ECollisionEnabled::NoCollision"
@@ -148,7 +176,7 @@ pub fn load(dir: &Path) -> Scene {
         let rot = rot3(&i["rotation"]);
         let scale = xyz(&i["scale"], 1.0);
         let m = rotm(rot[0], rot[1], rot[2]);
-        let xf = |v: [f32; 3]| -> [f32; 3] {
+        let comp = |v: [f32; 3]| -> [f32; 3] {
             let l = [v[0] * scale[0], v[1] * scale[1], v[2] * scale[2]];
             [
                 loc[0] + l[0] * m[0][0] + l[1] * m[1][0] + l[2] * m[2][0],
@@ -157,8 +185,32 @@ pub fn load(dir: &Path) -> Scene {
             ]
         };
         tri_owner.push((tris.len() as u32, format!("{umap}:{}", i["component"].as_str().unwrap_or("?"))));
-        for f in fs.iter() {
-            tris.push([xf(vs[f[0] as usize]), xf(vs[f[1] as usize]), xf(vs[f[2] as usize])]);
+        if let Some(insts) = i["perInstance"].as_array() {
+            // instanced meshes (benches, props, clutter): per-instance transform
+            // relative to the component, then the component world transform
+            for inst in insts {
+                let q = &inst["Rotation"];
+                let g = |k: &str| q.get(k).and_then(Value::as_f64).map(|x| x as f32).unwrap_or(0.0);
+                let im = quat_rotm(g("X"), g("Y"), g("Z"), q.get("W").and_then(Value::as_f64).map(|x| x as f32).unwrap_or(1.0));
+                let it = xyz(&inst["Translation"], 0.0);
+                let is = xyz(&inst["Scale3D"], 1.0);
+                let xf = |v: [f32; 3]| -> [f32; 3] {
+                    let l = [v[0] * is[0], v[1] * is[1], v[2] * is[2]];
+                    comp([
+                        it[0] + l[0] * im[0][0] + l[1] * im[1][0] + l[2] * im[2][0],
+                        it[1] + l[0] * im[0][1] + l[1] * im[1][1] + l[2] * im[2][1],
+                        it[2] + l[0] * im[0][2] + l[1] * im[1][2] + l[2] * im[2][2],
+                    ])
+                };
+                for f in fs.iter() {
+                    tris.push([xf(vs[f[0] as usize]), xf(vs[f[1] as usize]), xf(vs[f[2] as usize])]);
+                }
+            }
+            skipped_inst += insts.len(); // counted as expanded now
+        } else {
+            for f in fs.iter() {
+                tris.push([comp(vs[f[0] as usize]), comp(vs[f[1] as usize]), comp(vs[f[2] as usize])]);
+            }
         }
         used += 1;
     }
@@ -238,7 +290,8 @@ pub fn load(dir: &Path) -> Scene {
 
     let min_z = tris.iter().flat_map(|t| t.iter().map(|v| v[2])).fold(f32::MAX, f32::min);
     eprintln!(
-        "scene: {} tris from {used} placements ({skipped_umap} filtered, {skipped_inst} instanced skipped), {} stand points",
+        "scene[{}]: {} tris from {used} placements ({skipped_umap} filtered, {skipped_inst} instances expanded), {} stand points",
+        if visual { "visual" } else { "collision" },
         tris.len(),
         stands.len()
     );

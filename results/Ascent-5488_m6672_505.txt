@@ -1,28 +1,37 @@
-﻿.\target\release\brim-lineups.exe : scene: 704393 tris from 1165 placements (3319 filtered, 960 instanced skipped), 
-2824 stand points
-At line:1 char:386
-+ ... im-lineups; .\target\release\brim-lineups.exe "C:\dev\active\ValoBoar ...
+﻿brim-lineups.exe : scene[collision]: 1702454 tris from 1874 placements (3570 filtered, 2729 instances expanded), 2824 
+stand points
+At line:1 char:1374
++ ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 704393 t...24 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene[collision...24 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-target z auto-resolved to 500
-flights: 2256 never stopped, 146997 landed far, 3117 within tol
-solved in 890.7ms: 410 distinct lineups within 150u
+flights: 370 never stopped, 149172 landed far, 2738 within tol
+solved in 878.0ms: 389 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-          (6613, -8330, 510)  2004u   122.2    -5.6  0.80s   3    47u    100%  (5609, -6733, 500 @ 1896u)
-          (6642, -8095, 810)  1832u   127.1   -16.0  0.80s   3    21u     75%  (5620, -6741, 500 @ 1764u)
-          (6284, -5039, 410)  1817u  -116.0    -2.7  0.81s   3   113u     38%  (5572, -6500, 509 @ 1627u)
-          (6550, -8198, 810)  1859u   122.8   -15.6  0.82s   3    22u     75%  (5611, -6743, 500 @ 1798u)
-          (6203, -4992, 410)  1826u  -113.1    -2.6  0.82s   3   103u     75%  (5561, -6500, 510 @ 1641u)
-          (6522, -4481, 410)  2422u  -115.3     0.4  0.82s   3    90u     38%  (5428, -6798, 602 @ 2562u)
-          (6292, -4740, 410)  2092u  -112.6    -1.2  0.93s   3    99u     50%  (5435, -6798, 536 @ 2230u)
-           (3299, -482, 410)  6566u   -70.5    25.6  3.08s   3   138u     12%  (open sky)
-            (2755, 231, 740)  7425u   -68.4    27.1  3.19s   3   137u     50%  (open sky)
-             (2965, 89, 760)  7216u   -69.5    24.6  3.30s   3    96u     50%  (open sky)
-rendered .\cards\renders\Ascent-5488_m6672_505_r1.bmp
-rendered .\cards\renders\Ascent-5488_m6672_505_r2.bmp
-rendered .\cards\renders\Ascent-5488_m6672_505_r3.bmp
-rendered .\cards\renders\Ascent-5488_m6672_505_r4.bmp
-rendered .\cards\renders\Ascent-5488_m6672_505_r5.bmp
-wrote lineups.json (410 entries)
+          (6642, -8095, 810)  1832u   127.1   -14.8  0.75s   3    76u     75%  (5537, -6631, 500 @ 1898u)
+          (6550, -8198, 810)  1859u   122.8   -14.5  0.76s   3    77u     75%  (5533, -6622, 500 @ 1937u)
+          (6613, -8330, 510)  2004u   122.2    -5.5  0.76s   3    57u    100%  (5582, -6690, 500 @ 1946u)
+          (6532, -4648, 410)  2277u  -118.3    -0.2  0.79s   3    85u      0%  (5092, -7324, 575 @ 3038u)
+          (6284, -5039, 410)  1817u  -115.0    -2.5  0.87s   3    78u     25%  (5607, -6492, 514 @ 1604u)
+          (6203, -4992, 410)  1826u  -112.1    -2.5  0.87s   3    66u     25%  (5595, -6492, 515 @ 1620u)
+          (6292, -4740, 410)  2092u  -112.6    -1.1  0.97s   3   100u     62%  (5435, -6798, 542 @ 2230u)
+          (6522, -4481, 410)  2422u  -113.3     1.5  1.10s   3    75u     62%  (5526, -6798, 651 @ 2523u)
+           (3318, -545, 410)  6500u   -70.5    25.1  3.05s   3   139u     12%  (open sky)
+            (2755, 231, 740)  7425u   -68.4    26.2  3.20s   3   137u     38%  (open sky)
+             (2965, 89, 760)  7216u   -69.5    24.6  3.32s   3    95u     62%  (open sky)
+            (3035, -74, 410)  7040u   -69.6    28.9  3.47s   3   104u     62%  (open sky)
+scene[visual]: 2406808 tris from 3191 placements (2253 filtered, 4964 instances expanded), 2824 stand points
+rendered .\cards\renders3\Ascent-5488_m6672_505_r1.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r2.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r3.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r4.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r5.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r6.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r7.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r8.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r9.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r10.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r11.bmp + stand + wide
+rendered .\cards\renders3\Ascent-5488_m6672_505_r12.bmp + stand + wide
+wrote lineups.json (389 entries)

@@ -1,12 +1,13 @@
-﻿brim-lineups.exe : scene: 775682 tris from 1398 placements (3112 filtered, 709 instanced skipped), 2315 stand points
-At line:1 char:1266
+﻿brim-lineups.exe : scene[collision]: 1930382 tris from 2001 placements (3218 filtered, 3039 instances expanded), 2315 
+stand points
+At line:1 char:1374
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 775682 t...15 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene[collision...15 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 56 never stopped, 122642 landed far, 2132 within tol
-solved in 455.8ms: 190 distinct lineups within 150u
+flights: 24 never stopped, 122774 landed far, 2032 within tol
+solved in 482.3ms: 175 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (6836, -2779, 710)  1900u  -123.2   -20.4  0.67s   3   110u     62%  (6549, -3218, 690 @ 559u)
           (7987, -4865, 260)  2184u   165.8    -3.4  0.86s   3   131u     75%  (5750, -4301, 297 @ 2311u)
@@ -18,4 +19,19 @@ solved in 455.8ms: 190 distinct lineups within 150u
           (4368, -6006, 260)  2183u    45.2    -7.4  1.08s   3    87u     38%  (5367, -5001, 250 @ 1429u)
           (7039, -2291, 710)  2424u  -121.3   -12.6  1.11s   3   115u     12%  (6585, -3036, 690 @ 894u)
           (4141, -6043, 260)  2368u    41.8    -6.3  1.13s   3   109u     38%  (5386, -4931, 250 @ 1679u)
-wrote lineups.json (190 entries)
+           (9633, 1164, 410)  6731u  -126.2    20.7  2.81s   3   108u     38%  (open sky)
+          (10210, 1560, 410)  7387u  -127.2    25.9  3.08s   3   143u     62%  (open sky)
+scene[visual]: 2595241 tris from 3172 placements (2047 filtered, 5303 instances expanded), 2315 stand points
+rendered .\cards\renders3\Pitt-5852_m4405_251_r1.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r2.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r3.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r4.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r5.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r6.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r7.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r8.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r9.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r10.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r11.bmp + stand + wide
+rendered .\cards\renders3\Pitt-5852_m4405_251_r12.bmp + stand + wide
+wrote lineups.json (175 entries)

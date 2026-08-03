@@ -155,6 +155,8 @@ fn main() {
     // synthetic first-person screenshots for the top lineups: match your screen
     // to the image and the aim is reproduced (no angle HUD needed in game)
     if let Some(prefix) = get("--render") {
+        // renders show what the player SEES: include decorative/no-collision meshes
+        let scene = scene::load_visual(&dir);
         for (i, l) in lineups.iter().take(get("--render-top").map(|s| s.parse().unwrap()).unwrap_or(3)).enumerate() {
             let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
             let path = format!("{prefix}_r{}.bmp", i + 1);
@@ -165,9 +167,9 @@ fn main() {
             render::render_grid(&scene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &spath);
             // wide context: drone shot from behind-above the stand along the throw
             let (syw, cyw) = l.yaw.to_radians().sin_cos();
-            let wide_eye = l.stand + V3::new(-cyw * 700.0, -syw * 700.0, 650.0);
+            let wide_eye = l.stand + V3::new(-cyw * 750.0, -syw * 750.0, 1000.0);
             let wpath = format!("{prefix}_w{}.bmp", i + 1);
-            render::render_marked(&scene, wide_eye, l.yaw, -38.0, &wpath, l.stand + V3::new(0.0, 0.0, 40.0));
+            render::render_marked(&scene, wide_eye, l.yaw, -50.0, &wpath, l.stand + V3::new(0.0, 0.0, 40.0));
             eprintln!("rendered {path} + stand + wide");
         }
     }

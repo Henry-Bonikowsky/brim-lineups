@@ -1,10 +1,13 @@
-﻿brim-lineups.exe : scene: 845571 tris from 1606 placements (4176 filtered, 944 instanced skipped), 2263 stand points
-At line:1 char:1266
+﻿brim-lineups.exe : scene[collision]: 1906881 tris from 2470 placements (4256 filtered, 3499 instances expanded), 2263 
+stand points
+At line:1 char:1374
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 845571 t...63 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene[collision...63 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
+flights: 7729 never stopped, 104885 landed far, 246 within tol
+solved in 496.6ms: 56 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (5855, -6369, 110)  1806u    -3.1   -11.1  0.61s   3   100u     12%  (7004, -6431, 59 @ 1173u)
           (5868, -6160, 110)  1820u   -10.7   -11.0  0.62s   3    95u     12%  (7004, -6374, 61 @ 1177u)
@@ -16,6 +19,19 @@ At line:1 char:1266
           (5721, -6280, 410)  1948u    -4.4   -18.4  0.68s   3   120u     25%  (7470, -6414, 0 @ 1849u)
           (5702, -6633, 110)  1960u     2.0    -9.8  0.68s   3   117u     12%  (7004, -6588, 59 @ 1323u)
           (5844, -7371, 110)  2013u    25.7    -9.4  0.69s   3   103u     12%  (7002, -6813, 72 @ 1303u)
-flights: 8367 never stopped, 104247 landed far, 246 within tol
-solved in 412.9ms: 56 distinct lineups within 150u
+          (5764, -5801, 110)  2017u   -20.2    -9.4  0.70s   3    99u     25%  (7003, -6256, 67 @ 1338u)
+          (5669, -6963, 110)  2042u    12.2    -9.2  0.70s   3   109u     25%  (7003, -6675, 65 @ 1382u)
+scene[visual]: 2493806 tris from 3728 placements (2998 filtered, 4773 instances expanded), 2263 stand points
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r1.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r2.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r3.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r4.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r5.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r6.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r7.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r8.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r9.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r10.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r11.bmp + stand + wide
+rendered .\cards\renders3\Bonsai-7657_m6497_0_r12.bmp + stand + wide
 wrote lineups.json (56 entries)

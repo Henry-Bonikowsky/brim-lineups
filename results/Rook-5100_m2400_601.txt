@@ -1,16 +1,22 @@
 ﻿brim-lineups.exe : navmesh sparse (4 pts); targeting-mesh fallback added 1112
-At line:1 char:1266
+At line:1 char:1374
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (navmesh sparse ...back added 1112:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-scene: 3208841 tris from 2533 placements (3883 filtered, 647 instanced skipped), 1116 stand points
-flights: 297 never stopped, 45254 landed far, 169 within tol
-solved in 147.2ms: 4 distinct lineups within 150u
+scene[collision]: 3789363 tris from 2957 placements (4106 filtered, 1482 instances expanded), 1116 stand points
+flights: 260 never stopped, 45291 landed far, 169 within tol
+solved in 146.0ms: 4 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (3498, -4003, 597)  2266u    46.0    -2.6  0.88s   3    43u     50%  (5100, -2343, 667 @ 2309u)
           (3228, -4267, 597)  2643u    46.9    -2.5  1.09s   3    90u    100%  (5100, -2265, 654 @ 2743u)
           (2935, -2253, 597)  2170u    -3.9    -1.2  1.21s   3    63u     25%  (4200, -2339, 746 @ 1268u)
           (3207, -2125, 597)  1913u    -6.3    -1.8  1.57s   3   132u     12%  (4200, -2234, 741 @ 1000u)
+navmesh sparse (4 pts); targeting-mesh fallback added 1112
+scene[visual]: 4715084 tris from 4294 placements (2769 filtered, 3039 instances expanded), 1116 stand points
+rendered .\cards\renders3\Rook-5100_m2400_601_r1.bmp + stand + wide
+rendered .\cards\renders3\Rook-5100_m2400_601_r2.bmp + stand + wide
+rendered .\cards\renders3\Rook-5100_m2400_601_r3.bmp + stand + wide
+rendered .\cards\renders3\Rook-5100_m2400_601_r4.bmp + stand + wide
 wrote lineups.json (4 entries)

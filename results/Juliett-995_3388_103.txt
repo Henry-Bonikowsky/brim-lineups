@@ -1,12 +1,13 @@
-﻿brim-lineups.exe : scene: 720426 tris from 1683 placements (3546 filtered, 545 instanced skipped), 1950 stand points
-At line:1 char:1266
+﻿brim-lineups.exe : scene[collision]: 1286716 tris from 2154 placements (3620 filtered, 1819 instances expanded), 1950 
+stand points
+At line:1 char:1374
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 720426 t...50 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene[collision...50 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 1066 never stopped, 130619 landed far, 2595 within tol
-solved in 650.8ms: 228 distinct lineups within 150u
+flights: 800 never stopped, 130889 landed far, 2591 within tol
+solved in 587.0ms: 226 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
            (2786, 2280, 310)  2106u   146.3   -11.3  0.72s   3   121u     88%  (1185, 3350, 100 @ 1964u)
            (2847, 2266, 310)  2166u   146.8   -10.8  0.74s   3   125u     88%  (1158, 3371, 100 @ 2055u)
@@ -18,4 +19,19 @@ solved in 650.8ms: 228 distinct lineups within 150u
            (3332, 2038, 310)  2699u   149.0    -6.8  1.01s   3    71u     25%  (1013, 3432, 165 @ 2724u)
            (3233, 1897, 310)  2690u   144.3    -6.8  1.14s   3    83u     50%  (1013, 3490, 158 @ 2752u)
            (4279, 4445, 110)  3450u  -160.2     6.5  1.82s   3   128u     12%  (2703, 3876, 477 @ 1686u)
-wrote lineups.json (228 entries)
+           (4469, 4603, 110)  3680u  -158.7     6.7  1.82s   3   100u     12%  (991, 3248, 724 @ 3759u)
+           (4508, 4449, 110)  3670u  -161.2     6.7  1.82s   3   102u     25%  (991, 3251, 719 @ 3741u)
+scene[visual]: 1780252 tris from 3436 placements (2338 filtered, 3115 instances expanded), 1950 stand points
+rendered .\cards\renders3\Juliett-995_3388_103_r1.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r2.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r3.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r4.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r5.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r6.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r7.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r8.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r9.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r10.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r11.bmp + stand + wide
+rendered .\cards\renders3\Juliett-995_3388_103_r12.bmp + stand + wide
+wrote lineups.json (226 entries)

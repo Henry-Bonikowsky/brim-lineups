@@ -1,13 +1,13 @@
 ﻿brim-lineups.exe : navmesh sparse (4 pts); targeting-mesh fallback added 1112
-At line:1 char:1266
+At line:1 char:1374
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (navmesh sparse ...back added 1112:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-scene: 3208841 tris from 2533 placements (3883 filtered, 647 instanced skipped), 1116 stand points
-flights: 539 never stopped, 68891 landed far, 1400 within tol
-solved in 635.6ms: 297 distinct lineups within 150u
+scene[collision]: 3789363 tris from 2957 placements (4106 filtered, 1482 instances expanded), 1116 stand points
+flights: 363 never stopped, 69092 landed far, 1375 within tol
+solved in 444.3ms: 288 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
          (-5120, -1308, 697)  1898u     3.3    -9.9  0.64s   3   146u     38%  (-4400, -1267, 746 @ 732u)
          (-5060, -1452, 697)  1852u     7.8    -8.3  0.75s   3    51u     38%  (-4400, -1361, 775 @ 673u)
@@ -19,4 +19,20 @@ solved in 635.6ms: 297 distinct lineups within 150u
            (3648, -499, 497)  6908u  -174.2    47.7  4.31s   3    86u      0%  (open sky)
             (3197, 727, 397)  6704u  -163.3    49.0  4.35s   3    90u     12%  (2567, 538, 1328 @ 1002u)
            (3450, -700, 497)  6693u  -175.7    49.6  4.40s   3   103u     12%  (open sky)
-wrote lineups.json (297 entries)
+           (3296, -853, 497)  6531u  -177.0    50.9  4.47s   3   113u     12%  (2436, -899, 1731 @ 1365u)
+           (3157, -467, 497)  6424u  -173.4    51.7  4.47s   3   120u     12%  (2412, -552, 1620 @ 1208u)
+navmesh sparse (4 pts); targeting-mesh fallback added 1112
+scene[visual]: 4715084 tris from 4294 placements (2769 filtered, 3039 instances expanded), 1116 stand points
+rendered .\cards\renders3\Rook-m3225_m1200_601_r1.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r2.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r3.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r4.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r5.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r6.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r7.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r8.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r9.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r10.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r11.bmp + stand + wide
+rendered .\cards\renders3\Rook-m3225_m1200_601_r12.bmp + stand + wide
+wrote lineups.json (288 entries)

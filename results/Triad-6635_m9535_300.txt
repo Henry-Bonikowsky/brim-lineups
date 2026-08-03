@@ -1,21 +1,37 @@
-﻿brim-lineups.exe : scene: 734780 tris from 1210 placements (3551 filtered, 917 instanced skipped), 2387 stand points
-At line:1 char:1266
+﻿brim-lineups.exe : scene[collision]: 1691072 tris from 2008 placements (3670 filtered, 3381 instances expanded), 2387 
+stand points
+At line:1 char:1374
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (scene: 734780 t...87 stand points:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (scene[collision...87 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 3451 never stopped, 125863 landed far, 916 within tol
-solved in 545.6ms: 189 distinct lineups within 150u
+flights: 2752 never stopped, 126919 landed far, 559 within tol
+solved in 464.0ms: 139 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
          (5280, -10721, 310)  1801u    42.2    -8.0  0.58s   3   144u      0%  (5877, -10179, 372 @ 815u)
-          (5563, -8061, 310)  1822u   -53.0    -6.8  0.67s   3   149u     25%  (6176, -8874, 363 @ 1025u)
-          (5967, -7676, 310)  1976u   -69.2    -3.8  0.67s   3   139u     38%  (6612, -9377, 365 @ 1823u)
-          (4857, -9909, 310)  1817u     9.9    -5.9  0.68s   3   103u     25%  (6542, -9616, 309 @ 1720u)
-          (5578, -7974, 310)  1885u   -55.9    -6.4  0.74s   3   141u     25%  (6187, -8874, 363 @ 1093u)
-          (6750, -7510, 110)  2028u   -94.3     1.3  0.74s   3    84u      0%  (6649, -8873, 316 @ 1367u)
-          (5772, -7825, 310)  1915u   -63.2    -6.2  0.74s   3   137u     25%  (6302, -8875, 358 @ 1183u)
-          (4984, -8684, 310)  1858u   -25.3    -6.6  0.76s   3   123u     75%  (5877, -9106, 371 @ 995u)
-          (5578, -7676, 310)  2139u   -60.4    -4.7  0.82s   3   139u     25%  (6258, -8872, 371 @ 1381u)
-          (5034, -8669, 310)  1820u   -26.4    -8.8  0.82s   3   141u     25%  (6099, -9198, 300 @ 1203u)
-wrote lineups.json (189 entries)
+         (5155, -10601, 310)  1824u    34.8    -4.8  0.62s   3   126u     38%  (6566, -9622, 340 @ 1723u)
+          (4857, -9909, 310)  1817u     9.9    -3.9  0.66s   3   143u      0%  (6546, -9615, 369 @ 1718u)
+         (4966, -10730, 310)  2052u    35.6    -3.3  0.69s   3   145u      0%  (6543, -9601, 374 @ 1943u)
+          (6577, -7562, 110)  1974u   -87.3    -0.9  0.83s   3   101u     38%  (6611, -8283, 274 @ 722u)
+          (6750, -7510, 110)  2028u   -92.3    -0.7  0.86s   3    90u     25%  (6719, -8287, 276 @ 778u)
+          (6582, -7256, 110)  2280u   -87.7     0.3  0.99s   3    58u     12%  (6627, -8355, 290 @ 1101u)
+          (6958, -6998, 110)  2557u   -96.3     1.3  1.13s   3    45u     25%  (6609, -10185, 361 @ 3207u)
+          (6470, -6975, 110)  2565u   -85.3     1.4  1.13s   3    45u     12%  (6733, -10184, 363 @ 3221u)
+          (6617, -6943, 110)  2592u   -88.6     1.5  1.14s   3    45u     12%  (6696, -10183, 369 @ 3242u)
+         (1465, -12673, 313)  6048u    31.3    56.6  4.85s   3   139u     12%  (open sky)
+            (2, -11613, 310)  6951u    17.4    50.0  4.87s   3   135u     12%  (open sky)
+scene[visual]: 2700001 tris from 3048 placements (2630 filtered, 5694 instances expanded), 2387 stand points
+rendered .\cards\renders3\Triad-6635_m9535_300_r1.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r2.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r3.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r4.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r5.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r6.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r7.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r8.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r9.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r10.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r11.bmp + stand + wide
+rendered .\cards\renders3\Triad-6635_m9535_300_r12.bmp + stand + wide
+wrote lineups.json (139 entries)
