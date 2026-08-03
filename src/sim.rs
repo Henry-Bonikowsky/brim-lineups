@@ -114,12 +114,14 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
             }
             // per-bounce angle factor decoded from Projectile_BaseGrenade
             // bytecode (InterpolateRange 0..90 -> 0.5..1.0 of the flight
-            // direction's angle from straight down). Direction flipped per
-            // Henry's in-game observations: STEEP impacts keep full bounce
-            // (spiked mollies rebound hard), grazing impacts halve it.
+            // direction's angle from straight down): steep impacts are
+            // DEADENED (0.5x), grazing impacts keep full bounce. Confirmed by
+            // the 2026-08-02 observer-cam clip: a near-vertical drop rebounds
+            // one short hop and dies; the flipped direction sent the sim
+            // skipping 6m+ across a roof on a pair that works in reality.
             // NOT compounding: DefaultBounciness resets each bounce.
             let deg = (-v.z / v.norm()).clamp(-1.0, 1.0).acos().to_degrees();
-            let bounciness = cfg.bounciness * (1.0 - 0.5 * (deg / 90.0).clamp(0.0, 1.0));
+            let bounciness = cfg.bounciness * (0.5 + 0.5 * (deg / 90.0).clamp(0.0, 1.0));
             let vn = v.dot(&n);
             let vt = v - n * vn;
             // tangential friction scales with impact steepness (grazing skips

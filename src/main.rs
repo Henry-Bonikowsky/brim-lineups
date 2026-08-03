@@ -54,21 +54,8 @@ fn main() {
         let x: f32 = tparts[0].parse().expect("target x");
         let y: f32 = tparts[1].parse().expect("target y");
         if tparts[2] == "auto" {
-            // ground floor at (x, y): walk down through stacked hits, keep the lowest
-            use parry3d::query::{Ray, RayCast};
-            let mut z_top = 6000.0f32;
-            let mut floor = None;
-            for _ in 0..8 {
-                let ray = Ray::new(nalgebra::Point3::new(x, y, z_top), V3::new(0.0, 0.0, -1.0));
-                match scene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, z_top - scene.min_z + 100.0, true) {
-                    Some(t) if t > 1.0 => {
-                        z_top -= t + 5.0;
-                        floor = Some(z_top + 5.0);
-                    }
-                    _ => break,
-                }
-            }
-            let z = floor.expect("no ground found at target x,y");
+            // same navmesh-snapped ground resolution the server uses
+            let z = scene.ground_z(x, y).expect("no ground found at target x,y");
             eprintln!("target z auto-resolved to {z:.0}");
             V3::new(x, y, z)
         } else {
