@@ -1,0 +1,58 @@
+# brim-lineups
+
+Computes every physically possible Brimstone incendiary lineup to a chosen target spot on
+any VALORANT map, ranked by time-to-land, using physics constants and 3D geometry extracted
+from the game files (patch 13.02). See `C:\dev\research\brim-molly-physics.md` for the
+extraction and the math.
+
+## Data prerequisite
+
+Per-map dumps produced by `ValoBoard/tools/valo_dump` (`map` mode), at
+`ValoBoard/third_party/valorant_dump/<Map>/` (instances.json + meshes/*.obj + navmesh.json).
+
+## Usage
+
+```
+cargo run --release -- <mapDumpDir> --target X,Y,Z [options]
+
+--target X,Y,Z   landing spot in UE world units (site centers are in <Map>_Mode_BombMode.json
+                 / <Map>_Gameplay.json, Bomb_Site_Outline actors)
+--tol 150        landing tolerance in units
+--min-dist 1000  ignore trivial close tosses; lineups are throws from range
+--top 15         rows printed (full set goes to lineups.json)
+--eye 150        launch origin height above the stand point   [calibration knob]
+--arc 8          UpwardArc: launch pitch minus crosshair pitch [calibration knob]
+--speed 2900     ProjectileSpeed from the files
+
+--probe X,Y,Z    debug: raycasts down/up/north at a point, names the hit mesh
+--throw X,Y,Z,yaw,pitch   debug: trace one throw bounce by bounce
+```
+
+Output columns: stand position, range, crosshair yaw/pitch (deg), flight time, bounces,
+landing error, forgiveness (fraction of +-0.75 deg aim jitters still inside tolerance).
+
+## Physics model (from the game files)
+
+Launch 2900 u/s, gravity 1125 u/s^2 (world -2500 x scale 0.45), restitution 0.35,
+friction 0.65, stop under 200 u/s, per-bounce restitution deadening
+`b *= lerp(0.5..1.0, angle-from-vertical / 90)` (decoded from Projectile_BaseGrenade
+bytecode). Collision surface: /Game/Environment/ meshes with live collision (the molly
+ignores the Projectile channel, so BVProjectile/BVPawn volumes are excluded; NoCollision /
+trigger components filtered).
+
+## Native unknowns (why --eye and --arc exist)
+
+The exact launch origin and the UpwardArc/UpwardShift combination live in native code, not
+the files. Defaults: origin = stand + 150u, launch pitch = crosshair + 8 deg. Calibrate
+in-game: stand on a computed lineup, aim at the computed yaw/pitch, compare the landing;
+adjust --eye (shifts short/long uniformly at all ranges) and --arc (shifts reported pitch).
+
+## Verified
+
+- Bounce/flight self-test: `cargo test --release` (45-deg parabola lands at vacuum range on
+  a flat scene and the bounce chain terminates).
+- Haven A site: 186 distinct lineups beyond 2000u, top entries are flat ~1s throws from
+  A Long/Lobby ground; B site center correctly yields none within 150u (it sits under the
+  temple roof).
+- Lotus: 147 lineups to a site from 2000u+, several 100% forgiveness / 5u error.
+- Not yet verified in-game: the two calibration knobs. That is the make-or-break check.
