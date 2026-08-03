@@ -80,6 +80,16 @@ foreach ($mapFile in (Get-ChildItem "$root\results\*.json" | Group-Object { ($_.
             }
             $tables += "</details>"
         }
+        $vids = Get-ChildItem "$root\cards\videos\$($f.BaseName)_*.mp4" -ErrorAction SilentlyContinue | Sort-Object Name
+        if ($vids) {
+            $tables += "<details><summary>flight videos (simulated molly, yellow trail, ring = target)</summary>"
+            foreach ($v in $vids) {
+                $vn = $v.Name
+                $num = if ($vn -match "_(\d+)\.mp4$") { $Matches[1] } else { "?" }
+                $tables += "<div>#$num</div><video controls loop src='videos/$($vn)?v=$($v.LastWriteTime.Ticks)' style='width:640px;margin:4px 0'></video>"
+            }
+            $tables += "</details>"
+        }
         $siteIdx++
     }
     $html += "</svg></div>$tables</div>"
