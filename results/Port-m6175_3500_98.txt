@@ -1,21 +1,21 @@
 ﻿brim-lineups.exe : scene: 1126119 tris from 2324 placements (3981 filtered, 473 instanced skipped), 3059 stand points
-At line:1 char:1200
+At line:1 char:1266
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene: 1126119 ...59 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 7131 never stopped, 219458 landed far, 91 within tol
-solved in 547.4ms: 24 distinct lineups within 150u
+flights: 7077 never stopped, 195041 landed far, 22 within tol
+solved in 574.6ms: 12 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-          (-5033, 3491, 110)  1142u   177.5   -10.0  0.52s   3   145u     62%  (-5624, 3516, 181 @ 600u)
-          (-6264, 2436, 110)  1068u    85.2   -11.9  0.53s   3   148u     25%  (-6231, 2839, 200 @ 413u)
-          (-6189, 2420, 110)  1080u    90.3   -11.7  0.53s   3   149u     12%  (-6191, 2923, 181 @ 513u)
-          (-5028, 3969, 110)  1239u  -157.8    -8.9  0.55s   3   145u     62%  (-5632, 3722, 183 @ 660u)
-          (-5040, 4014, 110)  1246u  -155.6    -8.8  0.55s   3   146u     50%  (-5635, 3745, 184 @ 661u)
-          (-4925, 3622, 110)  1256u  -175.4    -8.7  0.56s   3   146u     62%  (-5615, 3567, 179 @ 701u)
-          (-4992, 3959, 110)  1269u  -158.8    -8.6  0.56s   3   146u     62%  (-5628, 3712, 182 @ 690u)
-          (-4871, 3527, 110)  1305u  -179.8    -8.2  0.57s   3   147u     50%  (-5612, 3524, 178 @ 749u)
-          (-4983, 4039, 110)  1308u  -154.7    -8.2  0.58s   3   144u     62%  (-5629, 3733, 183 @ 722u)
-          (-5040, 4336, 110)  1410u  -143.6    -8.2  0.62s   3   150u     62%  (-5622, 3907, 181 @ 731u)
-wrote lineups.json (24 entries)
+          (-3985, 3334, 130)  2196u   174.7    -4.0  0.90s   3   137u     25%  (-5654, 3490, 189 @ 1681u)
+          (-4027, 3327, 130)  2155u   174.4    -4.2  0.91s   3   137u     25%  (-5640, 3485, 185 @ 1625u)
+         (-3534, -1687, 110)  5820u   116.0    59.0  5.80s   2   149u      0%  (open sky)
+         (-3602, -1652, 110)  5758u   115.5    59.3  5.81s   2   149u      0%  (open sky)
+         (-3622, -1569, 110)  5676u   115.7    59.8  5.83s   2   149u      0%  (open sky)
+           (-306, -392, 110)  7042u   146.4    52.1  5.89s   3   142u      0%  (open sky)
+          (-1038, -417, 110)  6460u   142.7    55.9  6.05s   3   144u      0%  (open sky)
+           (-725, -675, 110)  6866u   142.5    52.7  6.06s   3   150u      0%  (open sky)
+           (-680, -550, 110)  6826u   143.6    53.1  6.06s   3   149u      0%  (open sky)
+           (-970, -430, 110)  6522u   142.9    55.4  6.07s   3   144u      0%  (open sky)
+wrote lineups.json (12 entries)

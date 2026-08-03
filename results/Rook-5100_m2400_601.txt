@@ -1,22 +1,16 @@
 ﻿brim-lineups.exe : navmesh sparse (4 pts); targeting-mesh fallback added 1112
-At line:1 char:1200
+At line:1 char:1266
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (navmesh sparse ...back added 1112:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 scene: 3208841 tris from 2533 placements (3883 filtered, 647 instanced skipped), 1116 stand points
-flights: 297 never stopped, 49702 landed far, 566 within tol
-solved in 132.4ms: 25 distinct lineups within 150u
+flights: 297 never stopped, 45254 landed far, 169 within tol
+solved in 147.2ms: 4 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
-          (4298, -1685, 597)  1074u   -41.7   -13.0  0.37s   3    21u    100%  (4856, -2182, 600 @ 767u)
-          (4642, -1455, 597)  1050u   -64.1   -13.3  0.37s   3    23u    100%  (4879, -1944, 644 @ 558u)
-          (4137, -2130, 597)  1000u   -14.7   -12.9  0.38s   3    48u     62%  (4863, -2320, 600 @ 771u)
-          (5070, -3407, 597)  1007u    90.3   -13.8  0.39s   3    35u    100%  (5066, -2703, 599 @ 724u)
-          (4687, -3407, 597)  1088u    69.7   -12.8  0.40s   3    33u    100%  (4950, -2696, 600 @ 777u)
-          (4343, -3198, 597)  1100u    47.5   -12.7  0.42s   3     7u    100%  (4861, -2633, 600 @ 785u)
-          (3902, -1760, 597)  1359u   -28.1   -10.0  0.48s   3    23u    100%  (4762, -2220, 600 @ 991u)
-          (5728, -3273, 597)  1076u   123.7   -14.9  0.48s   3   148u     38%  (5370, -2737, 600 @ 667u)
-          (3802, -1987, 597)  1363u   -18.7   -11.0  0.50s   3    93u    100%  (4428, -2198, 644 @ 674u)
-          (3973, -3387, 597)  1498u    42.2    -8.8  0.53s   3    23u    100%  (4796, -2640, 600 @ 1124u)
-wrote lineups.json (25 entries)
+          (3498, -4003, 597)  2266u    46.0    -2.6  0.88s   3    43u     50%  (5100, -2343, 667 @ 2309u)
+          (3228, -4267, 597)  2643u    46.9    -2.5  1.09s   3    90u    100%  (5100, -2265, 654 @ 2743u)
+          (2935, -2253, 597)  2170u    -3.9    -1.2  1.21s   3    63u     25%  (4200, -2339, 746 @ 1268u)
+          (3207, -2125, 597)  1913u    -6.3    -1.8  1.57s   3   132u     12%  (4200, -2234, 741 @ 1000u)
+wrote lineups.json (4 entries)

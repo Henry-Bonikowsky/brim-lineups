@@ -85,9 +85,20 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, cfg: &Cfg) -> V
                 }
             }
             if let Some(b) = &mut best {
-                // crosshair reference point: where the aim ray (no gravity) first
-                // hits geometry, i.e. "put your crosshair on this spot"
+                // a LINEUP is thrown from cover: reject stands with a clear
+                // eye-to-target sightline (you would be visible from the landing
+                // spot); those are on-site tosses, not lineups
                 use parry3d::query::{Ray, RayCast};
+                let to_target = target + V3::new(0.0, 0.0, 64.0) - origin;
+                let td = to_target.norm();
+                let sight = Ray::new(nalgebra::Point3::from(origin), to_target / td);
+                let exposed = scene
+                    .mesh
+                    .cast_ray(&nalgebra::Isometry3::identity(), &sight, td - 60.0, true)
+                    .is_none();
+                if exposed {
+                    return vec![].into_iter();
+                }
                 let aim_dir = dir_from(b.yaw, b.pitch);
                 let ray = Ray::new(nalgebra::Point3::from(origin), aim_dir);
                 b.aim_ref = scene
