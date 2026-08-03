@@ -101,7 +101,13 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                             n_none.fetch_add(1, Relaxed);
                             continue;
                         };
-                        let err = (o.rest - target).norm();
+                        // success = the FIRE covers the clicked spot: rest within
+                        // the 450u patch radius horizontally and within the
+                        // fire's vertical reach (ZLayerTolerance 200, StepUp 110
+                        // / StepDown 210 from the patch files)
+                        let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+                        let dz = (o.rest.z - target.z).abs();
+                        let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
                         if err < tol { &n_near } else { &n_far }.fetch_add(1, Relaxed);
                         let cand = Lineup {
                             dist: d,
@@ -233,7 +239,9 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
     {
         let launch_pitch = b.pitch + cfg.arc_deg + jp;
         if let Some(o) = fly(scene, origin, dir_from(b.yaw + jy, launch_pitch), cfg) {
-            let dev = (o.rest - target).norm();
+            let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+            let dz = (o.rest.z - target.z).abs();
+            let dev = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
             worst = worst.max(dev);
             if dev < tol {
                 ok += 1;

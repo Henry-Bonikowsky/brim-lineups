@@ -13,7 +13,8 @@ use std::io::Read as _;
 pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
     let server = tiny_http::Server::http(("127.0.0.1", port)).expect("bind");
     eprintln!("serving http://localhost:{port}/picker.html (dumps at {dumps_root})");
-    let mut cache: Option<(String, Scene, Scene)> = None; // (map, collision, visual)
+    // LRU of the 3 most recent maps' scenes (collision + visual)
+    let mut cache_lru: Vec<(String, Scene, Scene)> = Vec::new();
     let live = format!("{cards_dir}/live");
     std::fs::create_dir_all(&live).ok();
 
@@ -45,14 +46,20 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 }
             };
             let stand = get("sx").and_then(|sx| Some((sx.parse::<f32>().ok()?, get("sy")?.parse::<f32>().ok()?)));
-            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(200.0);
+            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(450.0);
 
-            if cache.as_ref().map(|(m, _, _)| m != &map).unwrap_or(true) {
+            if let Some(pos) = cache_lru.iter().position(|(m, _, _)| m == &map) {
+                let e = cache_lru.remove(pos);
+                cache_lru.push(e);
+            } else {
                 let dir = std::path::PathBuf::from(dumps_root).join(&map);
                 eprintln!("loading scenes for {map}...");
-                cache = Some((map.clone(), scene::load(&dir), scene::load_visual(&dir)));
+                cache_lru.push((map.clone(), scene::load(&dir), scene::load_visual(&dir)));
+                if cache_lru.len() > 3 {
+                    cache_lru.remove(0);
+                }
             }
-            let (_, cscene, vscene) = cache.as_mut().unwrap();
+            let (_, cscene, vscene) = cache_lru.last_mut().unwrap();
             let cfg = Cfg::default();
             let Some(tz) = cscene.ground_z(tx, ty) else {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no ground at target\"}"));
@@ -80,14 +87,20 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis();
+            {
+                use rayon::prelude::*;
+                lineups.par_iter().take(5).enumerate().for_each(|(i, l)| {
+                    let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
+                    let base = format!("live/{run}_{}", i + 1);
+                    render::render(vscene, eye, l.yaw, l.pitch, &format!("{cards_dir}/{base}_r.bmp"));
+                    render::render_grid(vscene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &format!("{cards_dir}/{base}_s.bmp"));
+                    let (wide_eye, wyaw, wpitch) = render::wide_cam(vscene, l.stand, l.yaw);
+                    render::render_marked(vscene, wide_eye, wyaw, wpitch, &format!("{cards_dir}/{base}_w.bmp"), l.stand + V3::new(0.0, 0.0, 40.0));
+                });
+            }
             let mut rows = Vec::new();
             for (i, l) in lineups.iter().take(5).enumerate() {
-                let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
                 let base = format!("live/{run}_{}", i + 1);
-                render::render(vscene, eye, l.yaw, l.pitch, &format!("{cards_dir}/{base}_r.bmp"));
-                render::render_grid(vscene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &format!("{cards_dir}/{base}_s.bmp"));
-                let (wide_eye, wyaw, wpitch) = render::wide_cam(vscene, l.stand, l.yaw);
-                render::render_marked(vscene, wide_eye, wyaw, wpitch, &format!("{cards_dir}/{base}_w.bmp"), l.stand + V3::new(0.0, 0.0, 40.0));
                 let aim = l
                     .aim_ref
                     .map(|(p, d)| format!("[{:.0},{:.0},{:.0},{:.0}]", p.x, p.y, p.z, d))
@@ -125,13 +138,19 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 continue;
             };
             let stand = get("sx").and_then(|sx| Some((sx.parse::<f32>().ok()?, get("sy")?.parse::<f32>().ok()?)));
-            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(200.0);
+            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(450.0);
             let n: usize = get("n").and_then(|v| v.parse().ok()).unwrap_or(1);
-            if cache.as_ref().map(|(m, _, _)| m != &map).unwrap_or(true) {
+            if let Some(pos) = cache_lru.iter().position(|(m, _, _)| m == &map) {
+                let e = cache_lru.remove(pos);
+                cache_lru.push(e);
+            } else {
                 let dir = std::path::PathBuf::from(dumps_root).join(&map);
-                cache = Some((map.clone(), scene::load(&dir), scene::load_visual(&dir)));
+                cache_lru.push((map.clone(), scene::load(&dir), scene::load_visual(&dir)));
+                if cache_lru.len() > 3 {
+                    cache_lru.remove(0);
+                }
             }
-            let (_, cscene, vscene) = cache.as_mut().unwrap();
+            let (_, cscene, vscene) = cache_lru.last_mut().unwrap();
             let cfg = Cfg::default();
             let Some(tz) = cscene.ground_z(tx, ty) else {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no ground\"}"));
@@ -168,7 +187,8 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             std::fs::create_dir_all(&fdir).ok();
             const FRAMES: usize = 90;
             use parry3d::query::{Ray, RayCast};
-            for f in 0..FRAMES {
+            use rayon::prelude::*;
+            (0..FRAMES).into_par_iter().for_each(|f| {
                 let upto = render::flight_frame_index(f, FRAMES, 24, traj.len());
                 let i = upto.min(traj.len() - 1);
                 let m = traj[i];
@@ -197,13 +217,13 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                     640,
                     360,
                 );
-            }
+            });
             let out = format!("{live}/{run}_flight.mp4");
             let st = std::process::Command::new("ffmpeg")
                 .args([
                     "-y", "-v", "error", "-framerate", "16",
                     "-i", fdir.join("f%04d.bmp").to_str().unwrap(),
-                    "-c:v", "libx264", "-pix_fmt", "yuv420p", &out,
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", &out,
                 ])
                 .status();
             std::fs::remove_dir_all(&fdir).ok();

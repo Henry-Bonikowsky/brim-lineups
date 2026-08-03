@@ -35,7 +35,8 @@ fn main() {
     };
     let target_raw = get("--target").expect("--target X,Y,Z (or X,Y,auto) required");
     let tparts: Vec<&str> = target_raw.split(',').map(|x| x.trim()).collect();
-    let tol: f32 = get("--tol").map(|s| s.parse().unwrap()).unwrap_or(150.0);
+    // default tolerance = the molotov fire patch radius from the game files
+    let tol: f32 = get("--tol").map(|s| s.parse().unwrap()).unwrap_or(450.0);
     let top: usize = get("--top").map(|s| s.parse().unwrap()).unwrap_or(15);
     let mut cfg = sim::Cfg::default();
     if let Some(v) = get("--eye") {

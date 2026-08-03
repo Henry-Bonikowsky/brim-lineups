@@ -175,6 +175,14 @@ fn render_ex(
         if cam.iter().any(|c| c.z < 1.0) {
             continue;
         }
+        // early frustum reject: whole triangle outside one screen edge
+        if cam.iter().all(|c| c.x > c.z * tan_h)
+            || cam.iter().all(|c| c.x < -c.z * tan_h)
+            || cam.iter().all(|c| c.y > c.z * tan_v)
+            || cam.iter().all(|c| c.y < -c.z * tan_v)
+        {
+            continue;
+        }
         let scr: Vec<(f32, f32, f32)> = cam
             .iter()
             .map(|c| {

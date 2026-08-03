@@ -56,15 +56,17 @@ async function solveNow(m) {
   const res = document.getElementById('results');
   res.innerHTML = '<p>solving' + (standPt ? ' (paired)' : '') + '... first click on a map loads it (~20s), later clicks are fast</p>';
   let q = `/solve?map=${m}&tx=${targetPt.X.toFixed(0)}&ty=${targetPt.Y.toFixed(0)}`;
-  if (standPt) q += `&sx=${standPt.X.toFixed(0)}&sy=${standPt.Y.toFixed(0)}&tol=250`;
+  if (standPt) q += `&sx=${standPt.X.toFixed(0)}&sy=${standPt.Y.toFixed(0)}`;
   try {
     const j = await (await fetch(q)).json();
     if (j.error) { res.innerHTML = `<p>${j.error}</p>`; solving = false; return; }
-    let h = `<p>${j.count} lineups to (${j.target.join(', ')}) - top ${j.lineups.length}:</p>`;
+    let h = `<p>${j.count} working lineups to (${j.target.join(', ')}) - top ${j.lineups.length}:</p>`;
     j.lineups.forEach((l, i) => {
       const aim = l.aim_ref ? `crosshair on (${l.aim_ref[0]}, ${l.aim_ref[1]}, ${l.aim_ref[2]}) at ${l.aim_ref[3]}u` : 'crosshair: open sky';
-      const frag = (l.err > 260 ? ` <span style='color:#fa6'>NO clean lineup - this is the closest miss (${l.err}u off)</span>` : '') + (l.spread > 400 ? ` <span style='color:#f88'>fragile: aim error scatters up to ${l.spread}u</span>` : '');
-      h += `<h3>#${i + 1}: stand (${l.stand.join(', ')}), range ${l.range}u, yaw ${l.yaw}, pitch ${l.pitch}, ${l.time}s, ${l.bounces} bounces, err ${l.err}u, forgive ${(l.forgive * 100).toFixed(0)}%.${frag} ${aim}</h3>`;
+      const verdict = l.err <= 450
+        ? `<span style='color:#7f7'>fire covers your spot</span> (rests ${l.err}u away)`
+        : `<span style='color:#fa6'>fire does NOT reach - closest possible rests ${l.err}u away</span>`;
+      h += `<h3>#${i + 1}: ${verdict}. stand (${l.stand.join(', ')}), range ${l.range}u, ${l.time}s flight, ${l.bounces} bounces. ${aim}</h3>`;
       h += l.imgs.map(im => `<img src='${im}' style='width:420px;margin:2px'>`).join('');
       h += `<div id='vid${i + 1}'><button onclick='flightVideo(${i + 1})'>flight video</button></div>`;
     });
@@ -81,7 +83,7 @@ async function flightVideo(n) {
   if (!slot || !targetPt) return;
   slot.innerHTML = 'rendering flight video (~20s)...';
   let q = `/video?map=${m}&tx=${targetPt.X.toFixed(0)}&ty=${targetPt.Y.toFixed(0)}&n=${n}`;
-  if (standPt) q += `&sx=${standPt.X.toFixed(0)}&sy=${standPt.Y.toFixed(0)}&tol=250`;
+  if (standPt) q += `&sx=${standPt.X.toFixed(0)}&sy=${standPt.Y.toFixed(0)}`;
   try {
     const j = await (await fetch(q)).json();
     slot.innerHTML = j.video
