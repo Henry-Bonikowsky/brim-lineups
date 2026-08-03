@@ -112,21 +112,19 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
                 }
                 continue;
             }
-            // per-bounce angle factor (Projectile_BaseGrenade bytecode,
-            // InterpolateRange 0..90 -> 0.5..1.0): the angle is vs the IMPACT
-            // SURFACE, not world-down. Head-on impacts are deadened (0.5x),
-            // grazing impacts keep full bounce. For flat ground this equals
-            // the old from-straight-down reading (the observer-cam clip and
-            // both anchors validate that case unchanged); for walls it kills
-            // the careening head-on rebounds the sim showed but the game does
-            // not. NOT compounding: DefaultBounciness resets each bounce.
+            // Bounciness is FLAT 0.35, no angle factor. Proven by the
+            // 2026-08-03 clip: throw released t=0, second impact (tower
+            // flash) at t=6.04; the max possible single arc is 5.16s, so
+            // bounce 1 happened at ~4.35s and the ~1.6s second arc requires
+            // restitution ~0.35-0.40 of a 2500u/s impact: plain DefaultBounciness,
+            // nothing deadened. The bytecode's InterpolateRange 0..90 ->
+            // 0.5..1.0 curve is the FRICTION angle scale (UE
+            // bBounceAngleAffectsFriction), which lives below.
+            let bounciness = cfg.bounciness;
             let vn = v.dot(&n);
-            let deg = (vn.abs() / v.norm().max(1.0)).clamp(0.0, 1.0).acos().to_degrees();
-            let bounciness = cfg.bounciness * (0.5 + 0.5 * (deg / 90.0).clamp(0.0, 1.0));
             let vt = v - n * vn;
             // tangential friction scales with impact steepness (grazing skips
-            // barely rub the surface; the native bBounceAngleAffectsFriction
-            // behavior the real molly visibly has: it hops and skips a lot)
+            // barely rub the surface): the bBounceAngleAffectsFriction curve
             let steep = (vn.abs() / v.norm().max(1.0)).clamp(0.0, 1.0);
             v = vt * (1.0 - cfg.friction * steep) - n * vn * bounciness;
             bounces += 1;

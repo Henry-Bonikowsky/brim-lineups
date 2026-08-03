@@ -11,12 +11,14 @@ pub type V3 = Vector3<f32>;
 
 /// Sublevels that are not live bomb-mode molly-blocking geometry: alt modes,
 /// vistas, disabled props, event reskins, dev greybox, kill-volume triggers,
-/// and the BV volumes (the molly ignores the Projectile channel and pawn
-/// blockers per its BodyInstance responses; it collides with world statics).
-const UMAP_BLACKLIST: [&str; 21] = [
+/// and the pawn-blocker volumes. BVProjectile volumes ARE loaded: they are
+/// BP_ProjectileBlockingVolume actors and the molly demonstrably bounces off
+/// them in game (2026-08-03 clips: both real throws clipped the volume at the
+/// Breeze courtyard tower that the bare art meshes do not cover).
+const UMAP_BLACKLIST: [&str; 20] = [
     "Vista", "Skybox", "Lighting", "Inactive", "_Alt", "_FFA", "QuickSpike", "SiteRush",
     "SpikeRush", "Profiling", "BTIL", "Destruction", "ObserverCameras", "Greybox",
-    "FortCollins", "KillVolumes", "BVProjectile", "BVPawn", "VFX", "Working", "DesignChanges",
+    "FortCollins", "KillVolumes", "BVPawn", "VFX", "Working", "DesignChanges",
 ];
 
 /// Soft decor that does not gate projectiles in game (same family the ValoBoard
@@ -206,15 +208,18 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         // Bombsite outline/glow markers are decals + a target-view column: they
         // render as thin overlays in game and block nothing.
         let comp = i["component"].as_str().unwrap_or("");
+        // BVProjectile cubes are /Engine/BasicShapes/, not /Environment/, but
+        // they block mollies in game: exempt them from the Environment gate
+        let bv_proj = umap.contains("BVProjectile");
         if mode != Mode::Everything
-            && (!mesh.contains("/Environment/")
+            && (!(mesh.contains("/Environment/") || bv_proj)
                 || comp == "GameObjectMesh"
                 || comp.starts_with("StaticMesh_Glow")
                 || comp.contains("TargetViewMode")
                 || mesh.contains("Bombsite_")
                 || mesh.contains("BombSite")
                 || mesh.contains("BVS_Bomb")
-                || mesh.contains("Box_For_Volumes")
+                || (mesh.contains("Box_For_Volumes") && !bv_proj)
                 || UMAP_BLACKLIST.iter().any(|b| umap.contains(b)))
         {
             skipped_umap += 1;
