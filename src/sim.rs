@@ -85,7 +85,11 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
             bounciness *= 0.5 + 0.5 * (deg / 90.0).clamp(0.0, 1.0);
             let vn = v.dot(&n);
             let vt = v - n * vn;
-            v = vt * (1.0 - cfg.friction) - n * vn * bounciness;
+            // tangential friction scales with impact steepness (grazing skips
+            // barely rub the surface; the native bBounceAngleAffectsFriction
+            // behavior the real molly visibly has: it hops and skips a lot)
+            let steep = (vn.abs() / v.norm().max(1.0)).clamp(0.0, 1.0);
+            v = vt * (1.0 - cfg.friction * steep) - n * vn * bounciness;
             bounces += 1;
             if trace {
                 eprintln!(
@@ -96,8 +100,20 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
             if let Some(r) = record.as_deref_mut() {
                 r.push(p);
             }
-            if v.norm() < cfg.stop_speed {
-                return Some(Outcome { rest: p, time: t, bounces });
+            // stop rule on the BOUNCE (normal) component: hopping ends when the
+            // rebound is weak AND the slide is spent; a dead hop with live
+            // lateral speed keeps skipping in minimum-height hops instead
+            // (the native MinBounceWhenCannotStop behavior)
+            let n_speed = v.dot(&n).abs();
+            let lat = (v - n * v.dot(&n)).norm();
+            if n_speed < cfg.stop_speed {
+                if lat < cfg.stop_speed * 2.0 || bounces > 40 {
+                    return Some(Outcome { rest: p, time: t, bounces });
+                }
+                // skitter: minimum hop + rolling loss on the slide (tuned so the
+                // in-game-validated wall throw still rests on its spot)
+                let vn2 = v.dot(&n);
+                v = (v - n * vn2) * 0.65 + n * (cfg.stop_speed * 0.7);
             }
         } else {
             p += step;
@@ -142,10 +158,10 @@ mod tests {
         let dir = V3::new(std::f32::consts::FRAC_1_SQRT_2, 0.0, std::f32::consts::FRAC_1_SQRT_2);
         let o = fly(&scene, V3::new(0.0, 0.0, 150.0), dir, &cfg).expect("must stop");
         let vacuum = cfg.speed * cfg.speed / cfg.gravity; // 45 deg range from ground
-        assert!(o.bounces >= 1, "must bounce at least once");
+        assert!(o.bounces >= 3, "skip phase must produce several bounces, got {}", o.bounces);
         assert!(
-            (o.rest.x - vacuum).abs() < vacuum * 0.15,
-            "rest x {} vs vacuum range {vacuum}",
+            o.rest.x >= vacuum * 0.95 && o.rest.x <= vacuum * 1.5,
+            "rest x {} should be at or beyond the vacuum impact {vacuum} (skips carry forward)",
             o.rest.x
         );
         assert!(o.rest.z.abs() < 50.0, "rest on the ground, got z={}", o.rest.z);
