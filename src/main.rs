@@ -51,6 +51,9 @@ fn main() {
     if let Some(v) = get("--gravity") {
         cfg.gravity = v.parse().unwrap();
     }
+    if let Some(v) = get("--hand") {
+        cfg.hand_left = v.parse().unwrap();
+    }
 
     let mut scene = scene::load(&dir);
     let target: V3 = {
@@ -126,8 +129,8 @@ fn main() {
         let (sy, cy) = c[3].to_radians().sin_cos();
         let (sp, cp) = c[4].to_radians().sin_cos();
         let dir = V3::new(cp * cy, cp * sy, sp);
-        let o = V3::new(c[0], c[1], c[2]);
-        eprintln!("throw from ({:.0},{:.0},{:.0}) yaw={} pitch={}", o.x, o.y, o.z, c[3], c[4]);
+        let o = sim::hand_origin(V3::new(c[0], c[1], c[2]), c[3], &cfg);
+        eprintln!("throw from ({:.0},{:.0},{:.0}) yaw={} pitch={} (hand offset {})", o.x, o.y, o.z, c[3], c[4], cfg.hand_left);
         match sim::fly_traced(&scene, o, dir, &cfg) {
             Some(r) => eprintln!("rest ({:.0},{:.0},{:.0}) t={:.2} bounces={}", r.rest.x, r.rest.y, r.rest.z, r.time, r.bounces),
             None => eprintln!("never stopped"),
@@ -145,7 +148,7 @@ fn main() {
             while pitch <= c[6] {
                 let (sy, cy) = yaw.to_radians().sin_cos();
                 let (sp, cp) = pitch.to_radians().sin_cos();
-                if let Some(r) = sim::fly(&scene, o, V3::new(cp * cy, cp * sy, sp), &cfg) {
+                if let Some(r) = sim::fly(&scene, sim::hand_origin(o, yaw, &cfg), V3::new(cp * cy, cp * sy, sp), &cfg) {
                     println!(
                         "yaw={yaw:>7.1} pitch={pitch:>6.1} -> ({:>6.0},{:>6.0},{:>5.0}) t={:.2}s b={}",
                         r.rest.x, r.rest.y, r.rest.z, r.time, r.bounces

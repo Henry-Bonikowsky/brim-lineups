@@ -1,4 +1,4 @@
-//! Load a map from a valo_dump output dir into a raycastable triangle scene
+﻿//! Load a map from a valo_dump output dir into a raycastable triangle scene
 //! plus navmesh stand points.
 
 use nalgebra::{Point3, Vector3};
@@ -461,3 +461,4 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
 
     Scene { mesh, stands, min_z, tri_owner, tri_color }
 }
+

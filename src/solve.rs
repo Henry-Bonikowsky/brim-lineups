@@ -114,7 +114,7 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                         if pitch <= -89.0 || pitch >= 89.0 {
                             continue;
                         }
-                        let Some(o) = fly(scene, origin, dir_from(yaw, pitch), cfg) else {
+                        let Some(o) = fly(scene, crate::sim::hand_origin(origin, yaw, cfg), dir_from(yaw, pitch), cfg) else {
                             n_none.fetch_add(1, Relaxed);
                             continue;
                         };
@@ -268,7 +268,7 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         [(0.75, 0.0), (-0.75, 0.0), (0.0, 0.75), (0.0, -0.75), (0.75, 0.75), (-0.75, 0.75), (0.75, -0.75), (-0.75, -0.75)]
     {
         let launch_pitch = b.pitch + cfg.arc_deg + jp;
-        if let Some(o) = fly(scene, origin, dir_from(b.yaw + jy, launch_pitch), cfg) {
+        if let Some(o) = fly(scene, crate::sim::hand_origin(origin, b.yaw + jy, cfg), dir_from(b.yaw + jy, launch_pitch), cfg) {
             let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
             let dz = (o.rest.z - target.z).abs();
             let dev = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
@@ -294,7 +294,7 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
     let launch = dir_from(b.yaw, b.pitch + cfg.arc_deg);
     let mut pok = 0;
     for (ox, oy) in [(75.0f32, 0.0), (-75.0, 0.0), (0.0, 75.0), (0.0, -75.0), (55.0, 55.0), (-55.0, 55.0), (55.0, -55.0), (-55.0, -55.0)] {
-        let o2 = origin + V3::new(ox, oy, 0.0);
+        let o2 = crate::sim::hand_origin(origin, b.yaw, cfg) + V3::new(ox, oy, 0.0);
         if fly(scene, o2, launch, cfg).as_ref().map(&covers).unwrap_or(false) {
             pok += 1;
         }

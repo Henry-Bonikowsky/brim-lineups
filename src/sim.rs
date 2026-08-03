@@ -17,7 +17,18 @@ pub struct Cfg {
     pub stop_speed: f32,  // 200
     pub eye_z: f32,       // camera height: CapsuleHalfHeight 98 + BaseEyeHeight 77 (BasePawn CDO)
     pub arc_deg: f32,     // knob: UpwardArc 8 (aim pitch offset, native combine)
+    pub hand_left: f32,   // launch origin offset LEFT of the camera (the molly
+                          // launcher is left-held; ThrowOffset is native).
+                          // Proven by Henry aiming left-of-lineup in the sim
+                          // and nailing the real lineup. Fit knob.
     pub max_time: f32,
+}
+
+/// The projectile spawns at the hand, offset left of the camera eye; the
+/// crosshair (aim reference) stays at the eye. Left of view yaw in UE coords.
+pub fn hand_origin(eye: V3, yaw_deg: f32, cfg: &Cfg) -> V3 {
+    let (sy, cy) = yaw_deg.to_radians().sin_cos();
+    eye + V3::new(sy, -cy, 0.0) * cfg.hand_left
 }
 
 impl Default for Cfg {
@@ -35,6 +46,7 @@ impl Default for Cfg {
             stop_speed: 200.0,
             eye_z: 175.0,
             arc_deg: 8.0,
+            hand_left: 60.0,
             max_time: 8.0,
         }
     }

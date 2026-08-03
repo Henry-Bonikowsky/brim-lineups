@@ -172,7 +172,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no such lineup\"}"));
                 continue;
             };
-            let origin = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
+            let origin = crate::sim::hand_origin(l.stand + V3::new(0.0, 0.0, cfg.eye_z), l.yaw, &cfg);
             let lp = l.pitch + cfg.arc_deg;
             let (sy2, cy2) = l.yaw.to_radians().sin_cos();
             let (sp2, cp2) = lp.to_radians().sin_cos();
@@ -276,7 +276,9 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             };
             let eye = V3::new(x, y, gz + cfg.eye_z);
             if path == "/pov" {
-                let bytes = render::render_pov_bytes(vscene, eye, yaw, pitch, 640, 360);
+                // width param: walking uses 640 (fast), idle refines at 1152
+                let w = get("w").and_then(|v| v.parse::<usize>().ok()).unwrap_or(640).clamp(320, 1152) / 8 * 8;
+                let bytes = render::render_pov_bytes(vscene, eye, yaw, pitch, w, w * 9 / 16);
                 let _ = req.respond(
                     tiny_http::Response::from_data(bytes)
                         .with_header("Content-Type: image/bmp".parse::<tiny_http::Header>().unwrap()),
@@ -288,7 +290,8 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             let lp = pitch + cfg.arc_deg;
             let (sy2, cy2) = yaw.to_radians().sin_cos();
             let (sp2, cp2) = lp.to_radians().sin_cos();
-            let Some((out, traj, first_bounce)) = crate::sim::fly_path(cscene, eye, V3::new(cp2 * cy2, cp2 * sy2, sp2), &cfg) else {
+            let hand = crate::sim::hand_origin(eye, yaw, &cfg);
+            let Some((out, traj, first_bounce)) = crate::sim::fly_path(cscene, hand, V3::new(cp2 * cy2, cp2 * sy2, sp2), &cfg) else {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"flight never settled\"}"));
                 continue;
             };
