@@ -10,6 +10,14 @@ img { width:768px; cursor:crosshair } #out { margin-top:10px; font-family:consol
 <p><b>Left-click</b> = landing spot (yellow). <b>Right-click</b> = standing spot (green, optional).
 With both set you get the exact lineup for that pair; with only a landing spot you get every
 covered lineup to it. Copy the command, or tell Claude the numbers.</p>
+<p><button id="walkbtn">WALK MODE</button> spawn a first-person player (at the green dot if set).
+Click the view to lock the mouse: <b>mouse</b> aims, <b>WASD</b> moves, <b>Shift</b> runs,
+<b>T / left-click</b> throws the molly from exactly where you stand and aim, <b>Esc</b> releases.</p>
+<div id="walk" style="display:none">
+  <img id="pov" width="960" height="540" style="width:960px;cursor:crosshair;background:#000">
+  <div id="povinfo" style="font-family:consolas,monospace;background:#0a0d10;padding:8px;border-radius:6px;max-width:944px"></div>
+  <div id="povshot"></div>
+</div>
 <select id="map"></select>
 <div class="wrap"><img id="img"><div id="dot"></div><div id="dot2"></div></div>
 <div id="out">click the map...</div>
@@ -98,6 +106,74 @@ async function flightVideo(n) {
       ? `<video autoplay loop muted playsinline controls src='${j.video}' style='width:640px;margin:4px 0'></video>`
       : (j.error || 'failed');
   } catch (e) { slot.innerHTML = 'video failed: ' + e; }
+}
+// ---- walk mode: control a player in the sim ----
+const walk = { on: false, x: 0, y: 0, yaw: 0, pitch: 0, keys: {}, busy: false, last: 0 };
+const pov = document.getElementById('pov');
+document.getElementById('walkbtn').onclick = () => {
+  const m = document.getElementById('map').value, c = cams[m];
+  walk.x = standPt ? standPt.X : (targetPt ? targetPt.X : c.cx);
+  walk.y = standPt ? standPt.Y : (targetPt ? targetPt.Y : c.cy);
+  if (targetPt && (standPt || targetPt)) walk.yaw = Math.atan2(targetPt.Y - walk.y, targetPt.X - walk.x) * 180 / Math.PI;
+  walk.pitch = 0;
+  walk.on = true;
+  document.getElementById('walk').style.display = 'block';
+  document.getElementById('walk').scrollIntoView();
+  povFrame(true);
+};
+pov.onclick = () => {
+  if (document.pointerLockElement === pov) throwHere();
+  else pov.requestPointerLock();
+};
+document.addEventListener('mousemove', e => {
+  if (document.pointerLockElement !== pov) return;
+  walk.yaw -= e.movementX * 0.11;
+  walk.pitch = Math.max(-89, Math.min(89, walk.pitch - e.movementY * 0.11));
+});
+document.addEventListener('keydown', e => {
+  if (!walk.on) return;
+  walk.keys[e.key.toLowerCase()] = true;
+  if (e.key.toLowerCase() === 't' && document.pointerLockElement === pov) throwHere();
+});
+document.addEventListener('keyup', e => { walk.keys[e.key.toLowerCase()] = false; });
+function stepWalk(dt) {
+  const k = walk.keys, sp = (k['shift'] ? 1400 : 700) * dt;
+  const th = walk.yaw * Math.PI / 180, fx = Math.cos(th), fy = Math.sin(th);
+  let mx = 0, my = 0;
+  if (k['w']) { mx += fx; my += fy; }
+  if (k['s']) { mx -= fx; my -= fy; }
+  if (k['a']) { mx += -fy; my += fx; }
+  if (k['d']) { mx += fy; my += -fx; }
+  const n = Math.hypot(mx, my);
+  if (n > 0) { walk.x += mx / n * sp; walk.y += my / n * sp; }
+}
+async function povFrame(force) {
+  if (!walk.on || walk.busy) return;
+  walk.busy = true;
+  const now = performance.now();
+  stepWalk(Math.min(0.2, (now - (walk.last || now)) / 1000));
+  walk.last = now;
+  const m = document.getElementById('map').value;
+  const q = `/pov?map=${m}&x=${walk.x.toFixed(0)}&y=${walk.y.toFixed(0)}&yaw=${walk.yaw.toFixed(2)}&pitch=${walk.pitch.toFixed(2)}&t=${Date.now()}`;
+  await new Promise(res => { pov.onload = res; pov.onerror = res; pov.src = q; });
+  document.getElementById('povinfo').textContent =
+    `stand (${walk.x.toFixed(0)}, ${walk.y.toFixed(0)})   yaw ${walk.yaw.toFixed(1)}   pitch ${walk.pitch.toFixed(1)}   [T or click = throw]`;
+  walk.busy = false;
+  if (walk.on) requestAnimationFrame(() => povFrame());
+}
+async function throwHere() {
+  const m = document.getElementById('map').value;
+  const slot = document.getElementById('povshot');
+  slot.innerHTML = 'simulating throw + rendering flight (~15s)...';
+  const q = `/shoot?map=${m}&x=${walk.x.toFixed(0)}&y=${walk.y.toFixed(0)}&yaw=${walk.yaw.toFixed(2)}&pitch=${walk.pitch.toFixed(2)}`;
+  try {
+    const j = await (await fetch(q)).json();
+    if (j.error) { slot.innerHTML = j.error; return; }
+    const mtr = v => (v / 100).toFixed(1) + 'm';
+    const d = targetPt ? ` - ${mtr(Math.hypot(j.rest[0] - targetPt.X, j.rest[1] - targetPt.Y))} from your yellow click` : '';
+    slot.innerHTML = `<p>rests at (${j.rest.join(', ')}) after ${j.time}s, ${j.bounces} bounces${d}</p>`
+      + (j.video ? `<video autoplay loop muted playsinline controls src='${j.video}' style='width:640px'></video>` : '');
+  } catch (e) { slot.innerHTML = 'throw failed: ' + e; }
 }
 const img = document.getElementById('img');
 img.onclick = e => {

@@ -238,6 +238,113 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             continue;
         }
 
+        // walk mode: first-person frame at an exact stand + aim
+        if path == "/pov" || path == "/shoot" {
+            let get = |k: &str| -> Option<String> {
+                query.split('&').find_map(|kv| {
+                    let (a, b) = kv.split_once('=')?;
+                    (a == k).then(|| b.to_string())
+                })
+            };
+            let (Some(map), Some(x), Some(y), Some(yaw), Some(pitch)) = (
+                get("map"),
+                get("x").and_then(|v| v.parse::<f32>().ok()),
+                get("y").and_then(|v| v.parse::<f32>().ok()),
+                get("yaw").and_then(|v| v.parse::<f32>().ok()),
+                get("pitch").and_then(|v| v.parse::<f32>().ok()),
+            ) else {
+                let _ = req.respond(tiny_http::Response::from_string("bad params").with_status_code(400));
+                continue;
+            };
+            if let Some(pos) = cache_lru.iter().position(|(m, _, _)| m == &map) {
+                let e = cache_lru.remove(pos);
+                cache_lru.push(e);
+            } else {
+                let dir = std::path::PathBuf::from(dumps_root).join(&map);
+                eprintln!("loading scenes for {map}...");
+                cache_lru.push((map.clone(), scene::load(&dir), scene::load_visual(&dir)));
+                if cache_lru.len() > 3 {
+                    cache_lru.remove(0);
+                }
+            }
+            let (_, cscene, vscene) = cache_lru.last().unwrap();
+            let cfg = Cfg::default();
+            let gz = cscene.ground_z(x, y);
+            let Some(gz) = gz else {
+                let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no ground here\"}").with_status_code(200));
+                continue;
+            };
+            let eye = V3::new(x, y, gz + cfg.eye_z);
+            if path == "/pov" {
+                let bytes = render::render_pov_bytes(vscene, eye, yaw, pitch, 640, 360);
+                let _ = req.respond(
+                    tiny_http::Response::from_data(bytes)
+                        .with_header("Content-Type: image/bmp".parse::<tiny_http::Header>().unwrap()),
+                );
+                continue;
+            }
+            // /shoot: simulate the molly from EXACTLY here with EXACTLY this
+            // crosshair aim (launch = crosshair + arc), like standing in game
+            let lp = pitch + cfg.arc_deg;
+            let (sy2, cy2) = yaw.to_radians().sin_cos();
+            let (sp2, cp2) = lp.to_radians().sin_cos();
+            let Some((out, traj, first_bounce)) = crate::sim::fly_path(cscene, eye, V3::new(cp2 * cy2, cp2 * sy2, sp2), &cfg) else {
+                let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"flight never settled\"}"));
+                continue;
+            };
+            let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+            let fdir = std::env::temp_dir().join(format!("bl_vid_{run}"));
+            std::fs::create_dir_all(&fdir).ok();
+            const FRAMES: usize = 90;
+            use parry3d::query::{Ray, RayCast};
+            use rayon::prelude::*;
+            (0..FRAMES).into_par_iter().for_each(|f| {
+                let upto = render::flight_frame_index2(f, FRAMES, 16, traj.len(), first_bounce);
+                let i = upto.min(traj.len() - 1);
+                let m = traj[i];
+                let vdir = (traj[(i + 3).min(traj.len() - 1)] - traj[i.saturating_sub(3)]).normalize();
+                let vh = V3::new(vdir.x, vdir.y, 0.0).norm().max(0.2);
+                let back = V3::new(-vdir.x / vh, -vdir.y / vh, 0.0);
+                let mut cam = m + back * 380.0 + V3::new(0.0, 0.0, 170.0);
+                let toc = cam - m;
+                let d = toc.norm();
+                let ray = Ray::new(nalgebra::Point3::from(m), toc / d);
+                if let Some(t) = vscene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, d, true) {
+                    cam = m + toc / d * (t * 0.85).max(60.0);
+                }
+                let look = m - cam;
+                let cam_yaw = look.y.atan2(look.x).to_degrees();
+                let cam_pitch = (look.z / look.norm()).asin().to_degrees();
+                render::render_flight_sized(
+                    vscene, cam, cam_yaw, cam_pitch,
+                    fdir.join(format!("f{f:04}.bmp")).to_str().unwrap(),
+                    out.rest, &traj, i, 640, 360,
+                );
+            });
+            let out_path = format!("{live}/{run}_flight.mp4");
+            let st = std::process::Command::new("ffmpeg")
+                .args([
+                    "-y", "-v", "error", "-framerate", "16",
+                    "-i", fdir.join("f%04d.bmp").to_str().unwrap(),
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", &out_path,
+                ])
+                .status();
+            std::fs::remove_dir_all(&fdir).ok();
+            let vid = match st {
+                Ok(s) if s.success() => format!("\"live/{run}_flight.mp4\""),
+                _ => "null".to_string(),
+            };
+            let body = format!(
+                "{{\"rest\":[{:.0},{:.0},{:.0}],\"time\":{:.2},\"bounces\":{},\"stand\":[{x:.0},{y:.0},{gz:.0}],\"video\":{vid}}}",
+                out.rest.x, out.rest.y, out.rest.z, out.time, out.bounces
+            );
+            let _ = req.respond(
+                tiny_http::Response::from_string(body)
+                    .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap()),
+            );
+            continue;
+        }
+
         // static files from cards/
         let rel = if path == "/" { "picker.html".to_string() } else { path.trim_start_matches('/').to_string() };
         if rel.contains("..") {

@@ -137,6 +137,96 @@ pub fn render_flight_sized(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Interactive first-person frame for walk mode: one BVH raycast per pixel,
+/// parallel over rows: fast enough to stream. Same hillshade / sky / HUD /
+/// crosshair language as the stills. Returns finished BMP bytes (no disk).
+pub fn render_pov_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, w: usize, h: usize) -> Vec<u8> {
+    use parry3d::query::{Ray, RayCast};
+    use rayon::prelude::*;
+    let (sy, cy) = yaw_deg.to_radians().sin_cos();
+    let (sp, cp) = pitch_deg.to_radians().sin_cos();
+    let fwd = V3::new(cp * cy, cp * sy, sp);
+    let right = V3::new(-sy, cy, 0.0);
+    let up = fwd.cross(&right).normalize();
+    let tan_h = (HFOV_DEG.to_radians() / 2.0).tan();
+    let tan_v = tan_h * h as f32 / w as f32;
+    let id = nalgebra::Isometry3::identity();
+    let ntris = scene.mesh.indices().len() as u32;
+    let mut px = vec![0u8; w * h * 3];
+    px.par_chunks_mut(w * 3).enumerate().for_each(|(buf_y, rowbuf)| {
+        let scr_y = h - 1 - buf_y; // BMP rows are bottom-up
+        let sv = 1.0 - (scr_y as f32 + 0.5) / h as f32 * 2.0;
+        for x in 0..w {
+            let su = (x as f32 + 0.5) / w as f32 * 2.0 - 1.0;
+            let dir = (fwd + right * (su * tan_h) + up * (sv * tan_v)).normalize();
+            let ray = Ray::new(nalgebra::Point3::from(eye), dir);
+            let o = x * 3;
+            let (b, g, r) = match scene.mesh.cast_ray_and_get_normal(&id, &ray, 5.0e4, true) {
+                Some(hit) => {
+                    let n = hit.normal;
+                    let lambert = 0.22 + 0.72 * n.dot(&V3::new(0.55, 0.45, 0.70)).abs();
+                    let tri = match hit.feature {
+                        parry3d::shape::FeatureId::Face(i) => i % ntris.max(1),
+                        _ => 0,
+                    };
+                    let mat = scene.color_of(tri);
+                    let fog = (hit.time_of_impact / 9000.0).min(0.75);
+                    let l = lambert * (1.0 - fog);
+                    (
+                        (((mat[2] * 1.35).min(1.0) * l + 0.65 * fog).clamp(0.0, 1.0) * 255.0) as u8,
+                        (((mat[1] * 1.35).min(1.0) * l + 0.60 * fog).clamp(0.0, 1.0) * 255.0) as u8,
+                        (((mat[0] * 1.35).min(1.0) * l + 0.55 * fog).clamp(0.0, 1.0) * 255.0) as u8,
+                    )
+                }
+                None => (235u8, 195u8, 140u8),
+            };
+            rowbuf[o] = b;
+            rowbuf[o + 1] = g;
+            rowbuf[o + 2] = r;
+        }
+    });
+    // real ability-bar HUD (the aim reference) + crosshair, as in the stills
+    if let Some((hw, hh, hud, mask)) = hud_overlay() {
+        for y in 0..h {
+            let sy_ = y * hh / h;
+            for x in 0..w {
+                let si = (sy_ * hw + x * hw / w) * 3;
+                if mask[si] > 0 {
+                    let o = ((h - 1 - y) * w + x) * 3;
+                    px[o] = hud[si];
+                    px[o + 1] = hud[si + 1];
+                    px[o + 2] = hud[si + 2];
+                }
+            }
+        }
+    }
+    for d in 0..14i32 {
+        for (cx, cy2) in [(w as i32 / 2 + d - 7, h as i32 / 2), (w as i32 / 2, h as i32 / 2 + d - 7)] {
+            if cx >= 0 && cx < w as i32 && cy2 >= 0 && cy2 < h as i32 {
+                let o = ((h - 1 - cy2 as usize) * w + cx as usize) * 3;
+                px[o] = 60;
+                px[o + 1] = 255;
+                px[o + 2] = 60;
+            }
+        }
+    }
+    let row = w * 3;
+    let size = 54 + row * h;
+    let mut bmp = Vec::with_capacity(size);
+    bmp.extend_from_slice(b"BM");
+    bmp.extend_from_slice(&(size as u32).to_le_bytes());
+    bmp.extend_from_slice(&[0; 4]);
+    bmp.extend_from_slice(&54u32.to_le_bytes());
+    bmp.extend_from_slice(&40u32.to_le_bytes());
+    bmp.extend_from_slice(&(w as i32).to_le_bytes());
+    bmp.extend_from_slice(&(h as i32).to_le_bytes());
+    bmp.extend_from_slice(&1u16.to_le_bytes());
+    bmp.extend_from_slice(&24u16.to_le_bytes());
+    bmp.extend_from_slice(&[0; 24]);
+    bmp.extend_from_slice(&px);
+    bmp
+}
+
 fn render_ex(
     scene: &Scene,
     eye: V3,
