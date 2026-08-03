@@ -1,4 +1,4 @@
-//! Inverse solver: every navmesh stand point x analytic ballistic aim, refined
+﻿//! Inverse solver: every navmesh stand point x analytic ballistic aim, refined
 //! by simulation, ranked by time-to-land with an aim-forgiveness measure.
 
 use crate::scene::{Scene, V3};
@@ -27,7 +27,7 @@ const UI_ANCHORS: [(&str, f32, f32); 11] = [
 /// Does any UI anchor sit on a strong depth edge at this aim? Returns the
 /// best (anchor name, edge distance, grade 1..2, screen fx, fy); grade 2 =
 /// dead on.
-fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32) -> Option<(&'static str, f32, u8, f32, f32)> {
+fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Option<(&'static str, f32, u8, f32, f32)> {
     use parry3d::query::{Ray, RayCast};
     let (sy, cy) = yaw.to_radians().sin_cos();
     let (sp, cp) = pitch.to_radians().sin_cos();
@@ -51,7 +51,16 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32) -> Option<(&'stati
         near < 9000.0 && (a.max(b) / near > 1.7 || (a.is_infinite() != b.is_infinite()))
     };
     let mut best: Option<(&'static str, f32, u8, f32, f32)> = None;
-    for (name, ax, ay) in UI_ANCHORS {
+    for (name, ax0, ay0) in UI_ANCHORS {
+        // apply the user's HUD calibration: scale about bottom-center + dy
+        let (ax, ay) = if name == "crosshair" {
+            (ax0, ay0) // crosshair is the aim point, never moved by UI scale
+        } else {
+            (
+                0.5 + (ax0 - 0.5) * cfg.hud_scale,
+                1.0 - (1.0 - ay0) * cfg.hud_scale + cfg.hud_dy / 100.0,
+            )
+        };
         const S: f32 = 0.005; // ~0.3 deg horizontally
         let mut d = [[0.0f32; 5]; 5];
         for (j, dj) in (-2i32..=2).enumerate() {
@@ -221,7 +230,7 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                         // covered candidates get scored for a UI reference: a
                         // lineup you can replicate off a landmark beats a
                         // slightly faster one aimed at featureless sky
-                        let ui_ref = if covered && paired { ui_reference(scene, origin, yaw, pitch - cfg.arc_deg) } else { None };
+                        let ui_ref = if covered && paired { ui_reference(scene, origin, yaw, pitch - cfg.arc_deg, cfg) } else { None };
                         let cand = Lineup {
                             dist: d,
                             stand: *stand,
@@ -361,7 +370,7 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         .cast_ray(&nalgebra::Isometry3::identity(), &ray, 5.0e4, true)
         .map(|t| (origin + aim_dir * t, t));
     if b.ui_ref.is_none() {
-        b.ui_ref = ui_reference(scene, origin, b.yaw, b.pitch);
+        b.ui_ref = ui_reference(scene, origin, b.yaw, b.pitch, cfg);
     }
     let mut ok = 0;
     let mut worst = 0.0f32;
@@ -411,3 +420,4 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         scene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, 70.0, true).is_some()
     });
 }
+

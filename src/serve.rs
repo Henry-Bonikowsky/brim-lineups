@@ -49,6 +49,8 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             };
             let stand = get("sx").and_then(|sx| Some((sx.parse::<f32>().ok()?, get("sy")?.parse::<f32>().ok()?)));
             let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(450.0);
+            let hud_scale: f32 = get("huds").and_then(|v| v.parse().ok()).unwrap_or(1.0);
+            let hud_dy: f32 = get("huddy").and_then(|v| v.parse().ok()).unwrap_or(0.0);
 
             if let Some(pos) = cache_lru.iter().position(|(m, _, _)| m == &map) {
                 let e = cache_lru.remove(pos);
@@ -62,7 +64,9 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 }
             }
             let (_, cscene, vscene) = cache_lru.last().unwrap();
-            let cfg = Cfg::default();
+            let mut cfg = Cfg::default();
+            cfg.hud_scale = hud_scale;
+            cfg.hud_dy = hud_dy;
             let Some(tz) = cscene.ground_z(tx, ty) else {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no ground at target\"}"));
                 continue;
