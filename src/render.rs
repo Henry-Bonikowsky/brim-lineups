@@ -226,7 +226,13 @@ fn render_ex(
                 if z < depth[idx] {
                     depth[idx] = z;
                     let fog = (z / 9000.0).min(0.75);
-                    shade[idx] = lambert * (1.0 - fog) + 0.55 * fog;
+                    let l = lambert * (1.0 - fog);
+                    // boost material color toward readable brightness
+                    shade[idx] = [
+                        (mat[0] * 1.35).min(1.0) * l + 0.55 * fog,
+                        (mat[1] * 1.35).min(1.0) * l + 0.60 * fog,
+                        (mat[2] * 1.35).min(1.0) * l + 0.65 * fog,
+                    ];
                     is_sky[idx] = false;
                 }
             }
@@ -246,10 +252,15 @@ fn render_ex(
                 let wp = eye + (fwd + right * (sx * tan_h) + up * (sy * tan_v)) * depth[i];
                 let f100 = |v: f32| (v.rem_euclid(100.0) - 50.0).abs() > 50.0 - 3.0;
                 let f500 = |v: f32| (v.rem_euclid(500.0) - 250.0).abs() > 250.0 - 4.0;
-                if f500(wp.x) || f500(wp.y) {
-                    shade[i] *= 0.55;
+                let m = if f500(wp.x) || f500(wp.y) {
+                    0.55
                 } else if f100(wp.x) || f100(wp.y) {
-                    shade[i] *= 0.8;
+                    0.8
+                } else {
+                    1.0
+                };
+                for c in &mut shade[i] {
+                    *c *= m;
                 }
             }
         }
@@ -264,8 +275,11 @@ fn render_ex(
             let (b, g, r) = if is_sky[i] {
                 (235u8, 195u8, 140u8) // sky blue-ish
             } else {
-                let v = (shade[i].clamp(0.0, 1.0) * 255.0) as u8;
-                (v, v, (v as f32 * 0.94) as u8)
+                (
+                    (shade[i][2].clamp(0.0, 1.0) * 255.0) as u8,
+                    (shade[i][1].clamp(0.0, 1.0) * 255.0) as u8,
+                    (shade[i][0].clamp(0.0, 1.0) * 255.0) as u8,
+                )
             };
             px[o] = b;
             px[o + 1] = g;
