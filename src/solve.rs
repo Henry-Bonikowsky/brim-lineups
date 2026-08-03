@@ -53,10 +53,13 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, cfg: &Cfg) -> V
             }
             let yaw0 = delta.y.atan2(delta.x).to_degrees();
             let mut best: Option<Lineup> = None;
-            for base in launch_angles(cfg.speed, cfg.gravity, d, delta.z) {
+            for (ai, base) in launch_angles(cfg.speed, cfg.gravity, d, delta.z).into_iter().enumerate() {
                 // refine around the vacuum solution: geometry + bounces move the
-                // landing spot, the sim is the truth
-                for dp in -4..=4 {
+                // landing spot, the sim is the truth. The LOW arc gets a wider
+                // downward sweep to catch fast skim-bounce throws that shed
+                // speed on the ground short of the target.
+                let lo = if ai == 0 { -10 } else { -4 };
+                for dp in lo..=4 {
                     for dy in -2..=2 {
                         let (yaw, pitch) = (yaw0 + dy as f32, base + dp as f32);
                         if pitch <= -89.0 || pitch >= 89.0 {

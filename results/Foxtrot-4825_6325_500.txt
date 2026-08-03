@@ -6,8 +6,9 @@ At line:1 char:1324
     + CategoryInfo          : NotSpecified: (scene[collision...94 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 366 never stopped, 126079 landed far, 1715 within tol
-solved in 493.8ms: 133 distinct lineups within 150u
+stands: 2794 -> 2790 after reachability gate
+flights: 366 never stopped, 125811 landed far, 1713 within tol
+solved in 456.1ms: 132 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
            (4356, 4041, 510)  2332u    76.4    -3.6  0.93s   3    65u     50%  (4431, 4351, 665 @ 320u)
            (4371, 3967, 510)  2402u    77.1    -3.2  0.97s   3    63u     62%  (4459, 4351, 663 @ 395u)
@@ -34,4 +35,4 @@ rendered .\cards\renders3\Foxtrot-4825_6325_500_r9.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-4825_6325_500_r10.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-4825_6325_500_r11.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-4825_6325_500_r12.bmp + stand + wide
-wrote lineups.json (133 entries)
+wrote lineups.json (132 entries)

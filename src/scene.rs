@@ -300,5 +300,31 @@ fn load_ex(dir: &Path, visual: bool) -> Scene {
         tris.iter().flat_map(|t| t.iter().map(|v| Point3::new(v[0], v[1], v[2]))).collect();
     let indices: Vec<[u32; 3]> =
         (0..tris.len() as u32).map(|i| [i * 3, i * 3 + 1, i * 3 + 2]).collect();
-    Scene { mesh: TriMesh::new(vertices, indices), stands, min_z, tri_owner }
+    let mesh = TriMesh::new(vertices, indices);
+
+    // reachability: Riot's navmesh includes crate-tops and AI/ability-only
+    // perches. A player can only mount ~130u; keep a stand only if some nearby
+    // floor sits within a jump of it (ground, ramps, and hoppable boxes pass;
+    // isolated elevated islands fail).
+    if !visual {
+        use parry3d::query::{Ray, RayCast};
+        let before = stands.len();
+        stands.retain(|s| {
+            (0..8).any(|k| {
+                let a = k as f32 / 8.0 * std::f32::consts::TAU;
+                let o = Point3::new(s.x + a.cos() * 150.0, s.y + a.sin() * 150.0, s.z + 200.0);
+                let ray = Ray::new(o, V3::new(0.0, 0.0, -1.0));
+                match mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, 800.0, true) {
+                    Some(t) => {
+                        let fz = o.z - t;
+                        (fz - s.z).abs() <= 130.0
+                    }
+                    None => false,
+                }
+            })
+        });
+        eprintln!("stands: {} -> {} after reachability gate", before, stands.len());
+    }
+
+    Scene { mesh, stands, min_z, tri_owner }
 }

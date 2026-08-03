@@ -6,8 +6,9 @@ At line:1 char:1324
     + FullyQualifiedErrorId : NativeCommandError
  
 scene[collision]: 3789363 tris from 2957 placements (4106 filtered, 1482 instances expanded), 1116 stand points
+stands: 1116 -> 1116 after reachability gate
 flights: 363 never stopped, 69092 landed far, 1375 within tol
-solved in 428.3ms: 263 distinct lineups within 150u
+solved in 424.3ms: 263 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
          (-5727, -2600, 797)  2867u    30.2    -3.4  1.73s   3   129u      0%  (-4378, -1814, 880 @ 1564u)
         (-3636, -3466, 1190)  2303u    78.7   -15.8  2.10s   4   147u      0%  (-3522, -2895, 1200 @ 605u)

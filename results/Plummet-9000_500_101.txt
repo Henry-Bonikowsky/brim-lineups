@@ -6,8 +6,9 @@ At line:1 char:1324
     + CategoryInfo          : NotSpecified: (scene[collision...41 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 1194 never stopped, 235806 landed far, 10500 within tol
-solved in 1.4s: 431 distinct lineups within 150u
+stands: 5241 -> 5226 after reachability gate
+flights: 1194 never stopped, 235266 landed far, 10500 within tol
+solved in 1.1s: 431 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (10276, 1901, 560)  1895u  -130.3   -20.4  1.39s   3   110u     88%  (9955, 1523, 550 @ 530u)
            (5838, 6733, 205)  6989u   -63.1    23.6  2.91s   3    39u     50%  (open sky)

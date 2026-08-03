@@ -6,8 +6,9 @@ At line:1 char:1324
     + CategoryInfo          : NotSpecified: (scene[collision...50 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-flights: 800 never stopped, 130889 landed far, 2591 within tol
-solved in 433.3ms: 207 distinct lineups within 150u
+stands: 1950 -> 1922 after reachability gate
+flights: 772 never stopped, 128877 landed far, 2561 within tol
+solved in 439.4ms: 201 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
            (3233, 1897, 310)  2690u   144.3    -6.8  1.14s   3    83u     50%  (1013, 3490, 158 @ 2752u)
            (4469, 4603, 110)  3680u  -158.7     6.7  1.82s   3   100u     12%  (991, 3248, 724 @ 3759u)
@@ -18,9 +19,9 @@ solved in 433.3ms: 207 distinct lineups within 150u
           (5958, -1456, 310)  6936u   136.7    48.1  4.68s   3   127u     12%  (open sky)
           (5553, -1861, 310)  6952u   132.0    48.0  4.71s   3   121u     25%  (open sky)
           (5379, -1934, 310)  6895u   130.5    48.4  4.76s   3   120u     25%  (open sky)
-          (5971, -1030, 310)  6655u   139.4    50.2  4.85s   3   135u     25%  (open sky)
-             (5970, 30, 310)  6003u   146.0    56.4  4.85s   3    17u     62%  (open sky)
           (3200, -1848, 410)  5682u   111.8    58.4  4.90s   2    99u      0%  (open sky)
+          (3338, -1621, 410)  5530u   114.1    59.2  4.94s   2    95u     12%  (open sky)
+          (3133, -1655, 410)  5478u   112.0    59.5  4.94s   2    95u      0%  (open sky)
 scene[visual]: 1780252 tris from 3436 placements (2338 filtered, 3115 instances expanded), 1950 stand points
 rendered .\cards\renders3\Juliett-995_3388_103_r1.bmp + stand + wide
 rendered .\cards\renders3\Juliett-995_3388_103_r2.bmp + stand + wide
@@ -34,4 +35,4 @@ rendered .\cards\renders3\Juliett-995_3388_103_r9.bmp + stand + wide
 rendered .\cards\renders3\Juliett-995_3388_103_r10.bmp + stand + wide
 rendered .\cards\renders3\Juliett-995_3388_103_r11.bmp + stand + wide
 rendered .\cards\renders3\Juliett-995_3388_103_r12.bmp + stand + wide
-wrote lineups.json (207 entries)
+wrote lineups.json (201 entries)
