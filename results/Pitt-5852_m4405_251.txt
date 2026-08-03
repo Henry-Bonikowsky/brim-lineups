@@ -1,14 +1,13 @@
 ﻿brim-lineups.exe : scene[collision]: 1930382 tris from 2001 placements (3218 filtered, 3039 instances expanded), 2315 
 stand points
-At line:1 char:1324
+At line:1 char:1431
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...15 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 stands: 2315 -> 2315 after reachability gate
-flights: 24 never stopped, 122774 landed far, 2032 within tol
-solved in 441.1ms: 148 distinct lineups within 150u
+flights: 37 never stopped, 164223 landed far, 2180 within tol
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (6995, -2317, 710)  2380u  -120.7   -15.0  0.92s   3   139u     25%  (6624, -2941, 690 @ 752u)
           (7039, -2291, 710)  2424u  -121.3   -12.6  1.11s   3   115u     12%  (6585, -3036, 690 @ 894u)
@@ -22,6 +21,7 @@ solved in 441.1ms: 148 distinct lineups within 150u
           (10041, 1991, 410)  7646u  -124.2    28.7  3.32s   3   139u     50%  (9498, 1192, 1115 @ 1102u)
           (10012, 2040, 410)  7671u  -123.8    29.3  3.33s   3   138u     62%  (9437, 1183, 1163 @ 1183u)
            (6847, 3027, 910)  7498u   -98.6    24.0  3.64s   3   143u      0%  (6735, 2285, 1420 @ 822u)
+solved in 579.4ms: 148 distinct lineups within 150u
 scene[visual]: 2595241 tris from 3172 placements (2047 filtered, 5303 instances expanded), 2315 stand points
 rendered .\cards\renders3\Pitt-5852_m4405_251_r1.bmp + stand + wide
 rendered .\cards\renders3\Pitt-5852_m4405_251_r2.bmp + stand + wide

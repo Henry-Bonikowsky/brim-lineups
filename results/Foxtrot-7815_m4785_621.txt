@@ -1,14 +1,13 @@
 ﻿brim-lineups.exe : scene[collision]: 1337694 tris from 1663 placements (2758 filtered, 2396 instances expanded), 2794 
 stand points
-At line:1 char:1324
+At line:1 char:1431
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...94 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 stands: 2794 -> 2790 after reachability gate
-flights: 9 never stopped, 112596 landed far, 75 within tol
-solved in 287.4ms: 22 distinct lineups within 150u
+flights: 12 never stopped, 150153 landed far, 75 within tol
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
             (4437, -81, 410)  5791u   -55.3    56.5  4.77s   2   128u      0%  (open sky)
            (11191, 942, 608)  6649u  -119.5    52.4  4.96s   3   139u      0%  (open sky)
@@ -22,6 +21,7 @@ solved in 287.4ms: 22 distinct lineups within 150u
            (10692, 869, 610)  6344u  -116.0    56.6  5.76s   2   121u      0%  (open sky)
            (10731, 694, 610)  6207u  -117.0    57.5  5.78s   2   134u      0%  (open sky)
           (3625, -5175, 235)  4208u     3.3    65.6  5.88s   2   143u      0%  (open sky)
+solved in 417.8ms: 22 distinct lineups within 150u
 scene[visual]: 2415366 tris from 2570 placements (1851 filtered, 4358 instances expanded), 2794 stand points
 rendered .\cards\renders3\Foxtrot-7815_m4785_621_r1.bmp + stand + wide
 rendered .\cards\renders3\Foxtrot-7815_m4785_621_r2.bmp + stand + wide

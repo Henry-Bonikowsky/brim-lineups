@@ -1,14 +1,12 @@
 ﻿brim-lineups.exe : scene[collision]: 1213313 tris from 1587 placements (3917 filtered, 2864 instances expanded), 2946 
 stand points
-At line:1 char:1324
+At line:1 char:1431
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...46 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 stands: 2946 -> 2943 after reachability gate
-flights: 2461 never stopped, 140298 landed far, 791 within tol
-solved in 681.9ms: 152 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
            (9725, 2220, 510)  7280u   -73.7    22.0  3.21s   3   134u      0%  (open sky)
            (9913, 2040, 110)  7058u   -74.8    26.7  3.24s   3    80u      0%  (open sky)
@@ -18,10 +16,12 @@ solved in 681.9ms: 152 distinct lineups within 150u
           (10001, 1958, 110)  6957u   -75.3    26.5  3.34s   3     8u      0%  (open sky)
            (9965, 1976, 110)  6983u   -75.0    26.8  3.36s   3     8u      0%  (open sky)
            (9757, 2773, 900)  7807u   -75.0    22.3  3.38s   3   141u     12%  (open sky)
-           (9286, 2233, 110)  7421u   -70.4    43.9  4.49s   3   131u     12%  (open sky)
+           (9286, 2233, 110)  7421u   -70.4    28.2  3.66s   3    99u      0%  (open sky)
           (15803, -490, 110)  5986u  -132.9    55.3  4.59s   2   106u     25%  (open sky)
           (15768, -471, 110)  5975u  -132.6    55.4  4.60s   2   106u     25%  (open sky)
           (15449, -440, 110)  5783u  -130.1    56.6  4.64s   2   102u     25%  (open sky)
+flights: 4885 never stopped, 185723 landed far, 792 within tol
+solved in 721.6ms: 152 distinct lineups within 150u
 scene[visual]: 1908755 tris from 2730 placements (2774 filtered, 5155 instances expanded), 2946 stand points
 rendered .\cards\renders3\Duality-11650_m4801_303_r1.bmp + stand + wide
 rendered .\cards\renders3\Duality-11650_m4801_303_r2.bmp + stand + wide
