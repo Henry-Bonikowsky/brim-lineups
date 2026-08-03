@@ -8,20 +8,20 @@ use rayon::prelude::*;
 /// UI landmarks usable as aiming references (screen fractions of the HUD):
 /// pixel-true elements only. Lineups whose aim puts one of these ON a world
 /// silhouette edge are replicable in game without guesswork.
-const UI_ANCHORS: [(&str, f32, f32); 10] = [
-    // preference order: ties keep the earlier entry. Crosshair first, then
-    // the always-crisp ability icon corners; the faint under-crosshair
-    // equip diamond only as a last resort.
+const UI_ANCHORS: [(&str, f32, f32); 11] = [
+    // measured PIXEL-EXACT from Henry's full native screenshot (1999x1249,
+    // 16:10). Preference order: ties keep the earlier entry.
     ("crosshair", 0.5, 0.5),
-    ("Q icon top-left corner", 0.3863, 0.8972),
-    ("Q icon top-right corner", 0.4158, 0.8972),
-    ("E icon top-left corner", 0.4514, 0.8972),
-    ("E icon top-right corner", 0.4809, 0.8972),
-    ("MB4 icon top-left corner", 0.5165, 0.8972),
-    ("MB4 icon top-right corner", 0.5460, 0.8972),
-    ("X icon top-left corner", 0.5816, 0.8972),
-    ("X icon top-right corner", 0.6111, 0.8972),
-    ("diamond right under the crosshair", 0.4661, 0.7736),
+    ("mouse icon in the equip prompt", 0.4722, 0.8887),
+    ("diamond tip above the equip prompt", 0.4722, 0.8055),
+    ("left end of the Q charge bar", 0.3802, 0.9680),
+    ("right end of the Q charge bar", 0.4217, 0.9680),
+    ("left end of the E charge bar", 0.4457, 0.9680),
+    ("right end of the E charge bar", 0.4872, 0.9680),
+    ("left end of the MB4 charge pips", 0.5113, 0.9680),
+    ("right end of the MB4 charge pips", 0.5528, 0.9680),
+    ("left end of the X charge bar", 0.5768, 0.9680),
+    ("right end of the X charge bar", 0.6183, 0.9680),
 ];
 
 /// Does any UI anchor sit on a strong depth edge at this aim? Returns the
