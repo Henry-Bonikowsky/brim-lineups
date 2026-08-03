@@ -13,6 +13,7 @@ pub struct Lineup {
     pub time: f32,
     pub bounces: u32,
     pub err: f32,        // rest-to-target distance
+    pub covered: bool,   // fire actually SPREADS to the target (box-aware)
     pub forgive: f32,    // fraction of +-0.75 deg jitters still within tol
     pub spread: f32,     // worst landing deviation across those jitters (fragility)
     pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
@@ -124,7 +125,11 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                         let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
                         let dz = (o.rest.z - target.z).abs();
                         let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
-                        if err < tol { &n_near } else { &n_far }.fetch_add(1, Relaxed);
+                        // distance alone is not success: the fire must SPREAD
+                        // to the click (a >110u box between rest and click
+                        // blocks it even at 2m)
+                        let covered = err < tol && crate::sim::fire_covers(scene, o.rest, target);
+                        if covered { &n_near } else { &n_far }.fetch_add(1, Relaxed);
                         let cand = Lineup {
                             dist: d,
                             stand: *stand,
@@ -133,13 +138,14 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                             time: o.time,
                             bounces: o.bounces,
                             err,
+                            covered,
                             forgive: 0.0,
                             spread: 0.0,
                             pos_forgive: 0.0,
                             backstop: false,
                             aim_ref: None,
                         };
-                        if err >= tol {
+                        if !covered {
                             if paired && best_miss.as_ref().is_none_or(|b| cand.err < b.err) {
                                 best_miss = Some(cand);
                             }
@@ -267,7 +273,7 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
             let dz = (o.rest.z - target.z).abs();
             let dev = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
             worst = worst.max(dev);
-            if dev < tol {
+            if dev < tol && crate::sim::fire_covers(scene, o.rest, target) {
                 ok += 1;
             }
         } else {
@@ -283,6 +289,7 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
         let dz = (o.rest.z - target.z).abs();
         (if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 }) < tol
+            && crate::sim::fire_covers(scene, o.rest, target)
     };
     let launch = dir_from(b.yaw, b.pitch + cfg.arc_deg);
     let mut pok = 0;

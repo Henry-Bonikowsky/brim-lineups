@@ -171,6 +171,80 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
     None
 }
 
+/// Does the fire patch actually cover `target` from a molly resting at `rest`?
+/// The patch is not a free disc: it spreads along the ground in 200u cells
+/// (CellSize), climbing at most 110u (StepUp) and dropping at most 210u
+/// (StepDown) per cell, clamped to a 450u radius (ClampedRadius). A crate
+/// taller than 110u therefore blocks fire from reaching its far side unless
+/// the flames can wrap around it inside the radius. BFS on the 5x5 cell grid.
+pub fn fire_covers(scene: &Scene, rest: V3, target: V3) -> bool {
+    use parry3d::query::RayCast;
+    const CELL: f32 = 200.0;
+    const RADIUS: f32 = 450.0;
+    const STEP_UP: f32 = 110.0;
+    const STEP_DOWN: f32 = 210.0;
+    let id = nalgebra::Isometry3::identity();
+    // ground under (x, y) near reference height z_ref, respecting step limits
+    let ground_near = |x: f32, y: f32, z_ref: f32| -> Option<f32> {
+        let top = z_ref + STEP_UP + 15.0;
+        let ray = Ray::new(Point3::new(x, y, top), V3::new(0.0, 0.0, -1.0));
+        scene
+            .mesh
+            .cast_ray(&id, &ray, STEP_UP + STEP_DOWN + 30.0, true)
+            .map(|t| top - t)
+            .filter(|g| g - z_ref <= STEP_UP && z_ref - g <= STEP_DOWN)
+    };
+    // flame-height line between cell centers; a wall between them blocks spread
+    let open_between = |a: V3, b: V3| -> bool {
+        let d = b - a;
+        let n = d.norm();
+        let ray = Ray::new(Point3::from(a), d / n);
+        scene.mesh.cast_ray(&id, &ray, n, true).is_none()
+    };
+    let mut lit = [[false; 5]; 5];
+    let mut z = [[f32::NAN; 5]; 5];
+    lit[2][2] = true;
+    z[2][2] = rest.z;
+    // fixed-point sweep; the grid is tiny, loop until no new cell lights
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..5i32 {
+            for j in 0..5i32 {
+                if lit[i as usize][j as usize] {
+                    continue;
+                }
+                let (dx, dy) = ((i - 2) as f32 * CELL, (j - 2) as f32 * CELL);
+                if (dx * dx + dy * dy).sqrt() > RADIUS {
+                    continue;
+                }
+                for (ni, nj) in [(i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)] {
+                    if !(0..5).contains(&ni) || !(0..5).contains(&nj) || !lit[ni as usize][nj as usize] {
+                        continue;
+                    }
+                    let zn = z[ni as usize][nj as usize];
+                    let (x, y) = (rest.x + dx, rest.y + dy);
+                    let Some(g) = ground_near(x, y, zn) else { continue };
+                    let a = V3::new(rest.x + (ni - 2) as f32 * CELL, rest.y + (nj - 2) as f32 * CELL, zn + 60.0);
+                    if !open_between(a, V3::new(x, y, g + 60.0)) {
+                        continue;
+                    }
+                    lit[i as usize][j as usize] = true;
+                    z[i as usize][j as usize] = g;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+    let ti = ((target.x - rest.x) / CELL).round() as i32 + 2;
+    let tj = ((target.y - rest.y) / CELL).round() as i32 + 2;
+    if !(0..5).contains(&ti) || !(0..5).contains(&tj) {
+        return false;
+    }
+    lit[ti as usize][tj as usize] && (target.z - z[ti as usize][tj as usize]).abs() <= 220.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,5 +282,37 @@ mod tests {
             o.rest.x
         );
         assert!(o.rest.z.abs() < 50.0, "rest on the ground, got z={}", o.rest.z);
+    }
+
+    /// Fire on one side of a tall box must NOT cover a spot on the other side
+    /// when the box is too wide to wrap around within the 450u radius.
+    #[test]
+    fn fire_blocked_by_box() {
+        let mut verts = vec![
+            Point3::new(-2.0e4, -2.0e4, 0.0),
+            Point3::new(2.0e4, -2.0e4, 0.0),
+            Point3::new(2.0e4, 2.0e4, 0.0),
+            Point3::new(-2.0e4, 2.0e4, 0.0),
+        ];
+        let mut tris = vec![[0u32, 1, 2], [0, 2, 3]];
+        // 160u-tall wall at x=200, spanning y=-1000..1000 (too long to wrap)
+        let base = verts.len() as u32;
+        for (x, y, z) in [(200.0f32, -1000.0f32, 0.0f32), (200.0, 1000.0, 0.0), (200.0, 1000.0, 160.0), (200.0, -1000.0, 160.0)] {
+            verts.push(Point3::new(x, y, z));
+        }
+        tris.push([base, base + 1, base + 2]);
+        tris.push([base, base + 2, base + 3]);
+        let scene = crate::scene::Scene {
+            mesh: TriMesh::new(verts, tris),
+            stands: vec![],
+            min_z: 0.0,
+            tri_owner: vec![(0, "ground".into())],
+            tri_color: vec![(0, [0.6, 0.6, 0.6])],
+        };
+        let rest = V3::new(0.0, 0.0, 1.0);
+        let behind = V3::new(400.0, 0.0, 1.0);
+        let open = V3::new(-400.0, 0.0, 1.0);
+        assert!(!fire_covers(&scene, rest, behind), "wall must block the spread");
+        assert!(fire_covers(&scene, rest, open), "open side must be covered");
     }
 }

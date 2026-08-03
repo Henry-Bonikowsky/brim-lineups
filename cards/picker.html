@@ -64,9 +64,11 @@ async function solveNow(m) {
     j.lineups.forEach((l, i) => {
       const aim = l.aim_ref ? `crosshair lands on geometry ${(l.aim_ref[3] / 100).toFixed(1)}m ahead` : 'crosshair: open sky (use the ability-bar alignment in the aim image)';
       const m = v => (v / 100).toFixed(1) + 'm';
-      const verdict = l.err <= 450
+      const verdict = l.covered
         ? `<span style='color:#7f7'>fire covers your spot</span> (rests ${m(l.err)} away)`
-        : `<span style='color:#fa6'>fire does NOT reach - closest possible rests ${m(l.err)} away</span>`;
+        : l.err <= 450
+          ? `<span style='color:#fa6'>lands close (${m(l.err)}) but the fire is BLOCKED - it spreads on the wrong side of geometry</span>`
+          : `<span style='color:#fa6'>fire does NOT reach - closest possible rests ${m(l.err)} away</span>`;
       const pos = l.pos === 2
         ? `<span style='color:#7f7'>easy position - rough standing is fine</span>`
         : l.pos === 1
