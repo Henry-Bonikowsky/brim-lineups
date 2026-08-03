@@ -33,6 +33,24 @@ pub struct Scene {
 }
 
 impl Scene {
+    /// Lowest ground surface under (x, y): walks down through stacked hits.
+    pub fn ground_z(&self, x: f32, y: f32) -> Option<f32> {
+        use parry3d::query::{Ray, RayCast};
+        let mut z_top = 6000.0f32;
+        let mut floor = None;
+        for _ in 0..8 {
+            let ray = Ray::new(Point3::new(x, y, z_top), V3::new(0.0, 0.0, -1.0));
+            match self.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, z_top - self.min_z + 100.0, true) {
+                Some(t) if t > 1.0 => {
+                    z_top -= t + 5.0;
+                    floor = Some(z_top + 5.0);
+                }
+                _ => break,
+            }
+        }
+        floor
+    }
+
     pub fn owner_of(&self, tri: u32) -> &str {
         match self.tri_owner.binary_search_by_key(&tri, |(s, _)| *s) {
             Ok(i) => &self.tri_owner[i].1,

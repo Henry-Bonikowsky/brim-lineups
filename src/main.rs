@@ -11,6 +11,7 @@
 
 mod render;
 mod scene;
+mod serve;
 mod sim;
 mod solve;
 
@@ -18,6 +19,12 @@ use scene::V3;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(|a| a == "serve").unwrap_or(false) {
+        let root = args.get(2).cloned().unwrap_or_else(|| r"C:\dev\active\ValoBoard\third_party\valorant_dump".into());
+        let port: u16 = args.get(3).and_then(|p| p.parse().ok()).unwrap_or(8777);
+        serve::serve(&root, "cards", port);
+        return;
+    }
     if args.len() < 2 {
         eprintln!("usage: brim-lineups <mapDumpDir> --target X,Y,Z [--tol u] [--top n] [--eye u] [--arc deg] [--speed u/s]");
         std::process::exit(1);

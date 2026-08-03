@@ -13,6 +13,7 @@ covered lineup to it. Copy the command, or tell Claude the numbers.</p>
 <select id="map"></select>
 <div class="wrap"><img id="img"><div id="dot"></div><div id="dot2"></div></div>
 <div id="out">click the map...</div>
+<div id="results"></div>
 <script>
 const cams = { "Plummet": { "cx": 6375, "yaw": 0, "ortho": 13312, "cy": 6025 }, "Juliett": { "cx": 200, "yaw": 0, "ortho": 12800, "cy": 0 }, "Rook": { "cx": 0.004757, "yaw": 1033.3136, "ortho": 14336, "cy": -375 }, "Ascent": { "cx": 1050, "yaw": 0, "ortho": 14336, "cy": -4500 }, "Jam": { "cx": 5775, "yaw": 0, "ortho": 13824, "cy": 624.9979 }, "Foxtrot": { "cx": 4775, "yaw": 0, "ortho": 14336, "cy": 500 }, "Duality": { "cx": 7900, "yaw": 0, "ortho": 16896, "cy": -1300 }, "Pitt": { "cx": 5325, "yaw": 0, "ortho": 12800, "cy": 250 }, "Infinity": { "cx": 0, "yaw": 0, "ortho": 12400, "cy": 0 }, "Triad": { "cx": 1900, "yaw": 0, "ortho": 13312, "cy": -7900 }, "Bonsai": { "cx": 2529, "yaw": 0, "ortho": 12800, "cy": -4380 }, "Canyon": { "cx": 8395.34, "yaw": 0, "ortho": 12800, "cy": -728.98 }, "Port": { "cx": -2700, "yaw": 0, "ortho": 13824, "cy": 550 } } ;
 { const j = cams;
@@ -32,17 +33,43 @@ function toWorld(e) {
   const du = (u - 0.5) * c.ortho, dv = (0.5 - v) * c.ortho;
   return { X: c.cx + rx * du + ux * dv, Y: c.cy + ry * du + uy * dv, u, v };
 }
-function refresh() {
+const isLive = location.protocol.startsWith('http');
+async function refresh() {
   const m = document.getElementById('map').value;
   let txt = '';
   if (targetPt) txt += `land at:  ${targetPt.X.toFixed(0)}, ${targetPt.Y.toFixed(0)}\n`;
   if (standPt) txt += `stand at: ${standPt.X.toFixed(0)}, ${standPt.Y.toFixed(0)}\n`;
-  if (targetPt) {
+  if (targetPt && !isLive) {
     txt += `\n.\\target\\release\\brim-lineups.exe "..\\ValoBoard\\third_party\\valorant_dump\\${m}" --target "${targetPt.X.toFixed(0)},${targetPt.Y.toFixed(0)},auto"`;
     if (standPt) txt += ` --stand "${standPt.X.toFixed(0)},${standPt.Y.toFixed(0)},auto" --tol 250`;
     txt += ` --render .\\out --top 5`;
+    txt += `\n(run the server for click-to-solve: brim-lineups serve)`;
   }
   document.getElementById('out').textContent = txt || 'click the map...';
+  if (targetPt && isLive) solveNow(m);
+}
+let solving = false;
+async function solveNow(m) {
+  if (solving) return;
+  solving = true;
+  const res = document.getElementById('results');
+  res.innerHTML = '<p>solving' + (standPt ? ' (paired)' : '') + '... first click on a map loads it (~20s), later clicks are fast</p>';
+  let q = `/solve?map=${m}&tx=${targetPt.X.toFixed(0)}&ty=${targetPt.Y.toFixed(0)}`;
+  if (standPt) q += `&sx=${standPt.X.toFixed(0)}&sy=${standPt.Y.toFixed(0)}&tol=250`;
+  try {
+    const j = await (await fetch(q)).json();
+    if (j.error) { res.innerHTML = `<p>${j.error}</p>`; solving = false; return; }
+    let h = `<p>${j.count} lineups to (${j.target.join(', ')}) - top ${j.lineups.length}:</p>`;
+    j.lineups.forEach((l, i) => {
+      const aim = l.aim_ref ? `crosshair on (${l.aim_ref[0]}, ${l.aim_ref[1]}, ${l.aim_ref[2]}) at ${l.aim_ref[3]}u` : 'crosshair: open sky';
+      h += `<h3>#${i + 1}: stand (${l.stand.join(', ')}), range ${l.range}u, yaw ${l.yaw}, pitch ${l.pitch}, ${l.time}s, ${l.bounces} bounces, err ${l.err}u, forgive ${(l.forgive * 100).toFixed(0)}%. ${aim}</h3>`;
+      h += l.imgs.map(im => `<img src='${im}' style='width:420px;margin:2px'>`).join('');
+    });
+    res.innerHTML = h;
+  } catch (e) {
+    res.innerHTML = `<p>solve failed: ${e}</p>`;
+  }
+  solving = false;
 }
 const img = document.getElementById('img');
 img.onclick = e => {

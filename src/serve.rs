@@ -1,0 +1,141 @@
+//! Local server so the picker solves on click: serves cards/ statically and
+//! exposes GET /solve?map=&tx=&ty=[&sx=&sy=][&tol=] returning lineups as JSON
+//! with fresh aim/stand/wide renders under cards/live/.
+//!
+//! Scenes are cached per map (collision + visual for the last map used), so the
+//! first click on a map pays the load and later clicks are instant.
+
+use crate::scene::{self, Scene, V3};
+use crate::sim::Cfg;
+use crate::{render, solve};
+use std::io::Read as _;
+
+pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
+    let server = tiny_http::Server::http(("127.0.0.1", port)).expect("bind");
+    eprintln!("serving http://localhost:{port}/picker.html (dumps at {dumps_root})");
+    let mut cache: Option<(String, Scene, Scene)> = None; // (map, collision, visual)
+    let live = format!("{cards_dir}/live");
+    std::fs::create_dir_all(&live).ok();
+
+    for req in server.incoming_requests() {
+        let url = req.url().to_string();
+        let (path, query) = match url.split_once('?') {
+            Some((p, q)) => (p.to_string(), q.to_string()),
+            None => (url.clone(), String::new()),
+        };
+        if path == "/solve" {
+            let get = |k: &str| -> Option<String> {
+                query.split('&').find_map(|kv| {
+                    let (a, b) = kv.split_once('=')?;
+                    (a == k).then(|| b.replace("%2C", ",").replace('+', " "))
+                })
+            };
+            let map = match get("map") {
+                Some(m) if m.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => m,
+                _ => {
+                    let _ = req.respond(tiny_http::Response::from_string("bad map").with_status_code(400));
+                    continue;
+                }
+            };
+            let (tx, ty) = match (get("tx").and_then(|v| v.parse::<f32>().ok()), get("ty").and_then(|v| v.parse::<f32>().ok())) {
+                (Some(a), Some(b)) => (a, b),
+                _ => {
+                    let _ = req.respond(tiny_http::Response::from_string("bad target").with_status_code(400));
+                    continue;
+                }
+            };
+            let stand = get("sx").and_then(|sx| Some((sx.parse::<f32>().ok()?, get("sy")?.parse::<f32>().ok()?)));
+            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(200.0);
+
+            if cache.as_ref().map(|(m, _, _)| m != &map).unwrap_or(true) {
+                let dir = std::path::PathBuf::from(dumps_root).join(&map);
+                eprintln!("loading scenes for {map}...");
+                cache = Some((map.clone(), scene::load(&dir), scene::load_visual(&dir)));
+            }
+            let (_, cscene, vscene) = cache.as_mut().unwrap();
+            let cfg = Cfg::default();
+            let Some(tz) = cscene.ground_z(tx, ty) else {
+                let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no ground at target\"}"));
+                continue;
+            };
+            let target = V3::new(tx, ty, tz);
+            let saved_stands = if let Some((sx, sy)) = stand {
+                let Some(sz) = cscene.ground_z(sx, sy) else {
+                    let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no ground at stand\"}"));
+                    continue;
+                };
+                let orig = std::mem::replace(&mut cscene.stands, vec![V3::new(sx, sy, sz)]);
+                Some(orig)
+            } else {
+                None
+            };
+            let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
+            let lineups = solve::solve(cscene, target, tol, min_dist, strict, &cfg);
+            if let Some(orig) = saved_stands {
+                cscene.stands = orig;
+            }
+
+            // fresh renders for the top few; unique run id to defeat caching
+            let run = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis();
+            let mut rows = Vec::new();
+            for (i, l) in lineups.iter().take(5).enumerate() {
+                let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
+                let base = format!("live/{run}_{}", i + 1);
+                render::render(vscene, eye, l.yaw, l.pitch, &format!("{cards_dir}/{base}_r.bmp"));
+                render::render_grid(vscene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &format!("{cards_dir}/{base}_s.bmp"));
+                let (syw, cyw) = l.yaw.to_radians().sin_cos();
+                let wide_eye = l.stand + V3::new(-cyw * 750.0, -syw * 750.0, 1000.0);
+                render::render_marked(vscene, wide_eye, l.yaw, -50.0, &format!("{cards_dir}/{base}_w.bmp"), l.stand + V3::new(0.0, 0.0, 40.0));
+                let aim = l
+                    .aim_ref
+                    .map(|(p, d)| format!("[{:.0},{:.0},{:.0},{:.0}]", p.x, p.y, p.z, d))
+                    .unwrap_or("null".into());
+                rows.push(format!(
+                    "{{\"stand\":[{:.0},{:.0},{:.0}],\"range\":{:.0},\"yaw\":{:.1},\"pitch\":{:.1},\"time\":{:.2},\"bounces\":{},\"err\":{:.0},\"forgive\":{:.2},\"aim_ref\":{},\"imgs\":[\"{base}_r.bmp\",\"{base}_s.bmp\",\"{base}_w.bmp\"]}}",
+                    l.stand.x, l.stand.y, l.stand.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.forgive, aim
+                ));
+            }
+            let body = format!(
+                "{{\"target\":[{tx:.0},{ty:.0},{tz:.0}],\"count\":{},\"lineups\":[{}]}}",
+                lineups.len(),
+                rows.join(",")
+            );
+            let _ = req.respond(
+                tiny_http::Response::from_string(body)
+                    .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap()),
+            );
+            continue;
+        }
+
+        // static files from cards/
+        let rel = if path == "/" { "picker.html".to_string() } else { path.trim_start_matches('/').to_string() };
+        if rel.contains("..") {
+            let _ = req.respond(tiny_http::Response::from_string("no").with_status_code(403));
+            continue;
+        }
+        match std::fs::File::open(format!("{cards_dir}/{rel}")) {
+            Ok(mut f) => {
+                let mut buf = Vec::new();
+                f.read_to_end(&mut buf).ok();
+                let ct = match rel.rsplit('.').next().unwrap_or("") {
+                    "html" => "text/html; charset=utf-8",
+                    "png" => "image/png",
+                    "bmp" => "image/bmp",
+                    "mp4" => "video/mp4",
+                    "json" => "application/json",
+                    _ => "application/octet-stream",
+                };
+                let _ = req.respond(
+                    tiny_http::Response::from_data(buf)
+                        .with_header(format!("Content-Type: {ct}").parse::<tiny_http::Header>().unwrap()),
+                );
+            }
+            Err(_) => {
+                let _ = req.respond(tiny_http::Response::from_string("not found").with_status_code(404));
+            }
+        }
+    }
+}

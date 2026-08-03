@@ -65,3 +65,7 @@ adjust --eye (shifts short/long uniformly at all ranges) and --arc (shifts repor
 ## Lineup cards
 
 `cards/index.html` renders every site's top lineups on the real minimap textures (dots = stands, ring = target, hover for aim numbers, tables with crosshair reference points). Regenerate with `.\make_cards.ps1` after new solver runs. Minimaps + camera transforms extracted from the paks (valo_dump `tex` mode + per-map AresMinimapCamera).
+
+## Click-to-solve picker
+
+Run `.\start_picker.ps1` (starts `brim-lineups serve` and opens http://localhost:8777/picker.html). Left-click = landing spot, right-click = standing spot (optional). Results with aim/stand/context renders appear inline; first click per map loads its scenes (~5-20s), later clicks are fast.
