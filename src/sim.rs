@@ -112,17 +112,17 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
                 }
                 continue;
             }
-            // per-bounce angle factor decoded from Projectile_BaseGrenade
-            // bytecode (InterpolateRange 0..90 -> 0.5..1.0 of the flight
-            // direction's angle from straight down): steep impacts are
-            // DEADENED (0.5x), grazing impacts keep full bounce. Confirmed by
-            // the 2026-08-02 observer-cam clip: a near-vertical drop rebounds
-            // one short hop and dies; the flipped direction sent the sim
-            // skipping 6m+ across a roof on a pair that works in reality.
-            // NOT compounding: DefaultBounciness resets each bounce.
-            let deg = (-v.z / v.norm()).clamp(-1.0, 1.0).acos().to_degrees();
-            let bounciness = cfg.bounciness * (0.5 + 0.5 * (deg / 90.0).clamp(0.0, 1.0));
+            // per-bounce angle factor (Projectile_BaseGrenade bytecode,
+            // InterpolateRange 0..90 -> 0.5..1.0): the angle is vs the IMPACT
+            // SURFACE, not world-down. Head-on impacts are deadened (0.5x),
+            // grazing impacts keep full bounce. For flat ground this equals
+            // the old from-straight-down reading (the observer-cam clip and
+            // both anchors validate that case unchanged); for walls it kills
+            // the careening head-on rebounds the sim showed but the game does
+            // not. NOT compounding: DefaultBounciness resets each bounce.
             let vn = v.dot(&n);
+            let deg = (vn.abs() / v.norm().max(1.0)).clamp(0.0, 1.0).acos().to_degrees();
+            let bounciness = cfg.bounciness * (0.5 + 0.5 * (deg / 90.0).clamp(0.0, 1.0));
             let vt = v - n * vn;
             // tangential friction scales with impact steepness (grazing skips
             // barely rub the surface; the native bBounceAngleAffectsFriction
@@ -174,9 +174,10 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
 /// Does the fire patch actually cover `target` from a molly resting at `rest`?
 /// The patch is not a free disc: it spreads along the ground in 200u cells
 /// (CellSize), climbing at most 110u (StepUp) and dropping at most 210u
-/// (StepDown) per cell, clamped to a 450u radius (ClampedRadius). A crate
-/// taller than 110u therefore blocks fire from reaching its far side unless
-/// the flames can wrap around it inside the radius. BFS on the 5x5 cell grid.
+/// (StepDown) per cell, clamped to 450u of spread TRAVEL (ClampedRadius on
+/// the wavefront path, not the crow-flies disc). A crate taller than 110u
+/// therefore blocks its far side outright: wrapping around costs more path
+/// than the 450u budget allows. BFS on the 5x5 cell grid.
 pub fn fire_covers(scene: &Scene, rest: V3, target: V3) -> bool {
     use parry3d::query::RayCast;
     const CELL: f32 = 200.0;
@@ -194,32 +195,34 @@ pub fn fire_covers(scene: &Scene, rest: V3, target: V3) -> bool {
             .map(|t| top - t)
             .filter(|g| g - z_ref <= STEP_UP && z_ref - g <= STEP_DOWN)
     };
-    // flame-height line between cell centers; a wall between them blocks spread
+    // flame-height line between cell centers; a wall between them blocks
+    // spread. Cast 2u PAST the endpoint: a surface exactly at the endpoint
+    // (wall on the cell center) must register, not boundary-miss
     let open_between = |a: V3, b: V3| -> bool {
         let d = b - a;
         let n = d.norm();
         let ray = Ray::new(Point3::from(a), d / n);
-        scene.mesh.cast_ray(&id, &ray, n, true).is_none()
+        scene.mesh.cast_ray(&id, &ray, n + 2.0, true).is_none()
     };
     let mut lit = [[false; 5]; 5];
     let mut z = [[f32::NAN; 5]; 5];
+    let mut path = [[f32::INFINITY; 5]; 5]; // spread travel to reach the cell
     lit[2][2] = true;
     z[2][2] = rest.z;
+    path[2][2] = 0.0;
     // fixed-point sweep; the grid is tiny, loop until no new cell lights
     let mut changed = true;
     while changed {
         changed = false;
         for i in 0..5i32 {
             for j in 0..5i32 {
-                if lit[i as usize][j as usize] {
-                    continue;
-                }
                 let (dx, dy) = ((i - 2) as f32 * CELL, (j - 2) as f32 * CELL);
-                if (dx * dx + dy * dy).sqrt() > RADIUS {
-                    continue;
-                }
                 for (ni, nj) in [(i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)] {
                     if !(0..5).contains(&ni) || !(0..5).contains(&nj) || !lit[ni as usize][nj as usize] {
+                        continue;
+                    }
+                    let pd = path[ni as usize][nj as usize] + CELL;
+                    if pd > RADIUS || pd >= path[i as usize][j as usize] {
                         continue;
                     }
                     let zn = z[ni as usize][nj as usize];
@@ -231,8 +234,8 @@ pub fn fire_covers(scene: &Scene, rest: V3, target: V3) -> bool {
                     }
                     lit[i as usize][j as usize] = true;
                     z[i as usize][j as usize] = g;
+                    path[i as usize][j as usize] = pd;
                     changed = true;
-                    break;
                 }
             }
         }
@@ -284,8 +287,9 @@ mod tests {
         assert!(o.rest.z.abs() < 50.0, "rest on the ground, got z={}", o.rest.z);
     }
 
-    /// Fire on one side of a tall box must NOT cover a spot on the other side
-    /// when the box is too wide to wrap around within the 450u radius.
+    /// Fire on one side of a tall box must NOT cover a spot on the other
+    /// side, even a SHORT box: wrapping around costs more spread travel than
+    /// the 450u budget, so behind-box is never covered.
     #[test]
     fn fire_blocked_by_box() {
         let mut verts = vec![
@@ -295,9 +299,10 @@ mod tests {
             Point3::new(-2.0e4, 2.0e4, 0.0),
         ];
         let mut tris = vec![[0u32, 1, 2], [0, 2, 3]];
-        // 160u-tall wall at x=200, spanning y=-1000..1000 (too long to wrap)
+        // 160u-tall wall at x=200, spanning only y=-300..300: wrapping around
+        // it is geometrically possible but exceeds the spread-travel budget
         let base = verts.len() as u32;
-        for (x, y, z) in [(200.0f32, -1000.0f32, 0.0f32), (200.0, 1000.0, 0.0), (200.0, 1000.0, 160.0), (200.0, -1000.0, 160.0)] {
+        for (x, y, z) in [(200.0f32, -300.0f32, 0.0f32), (200.0, 300.0, 0.0), (200.0, 300.0, 160.0), (200.0, -300.0, 160.0)] {
             verts.push(Point3::new(x, y, z));
         }
         tris.push([base, base + 1, base + 2]);
