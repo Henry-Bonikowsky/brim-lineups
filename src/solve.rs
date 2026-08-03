@@ -15,7 +15,23 @@ pub struct Lineup {
     pub err: f32,        // rest-to-target distance
     pub forgive: f32,    // fraction of +-0.75 deg jitters still within tol
     pub spread: f32,     // worst landing deviation across those jitters (fragility)
+    pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
+    pub backstop: bool,  // stand is flush against geometry (exactly reproducible)
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
+}
+
+impl Lineup {
+    /// 2 = easy position (stand roughly there, it works), 1 = anchored precise
+    /// position (back into the wall), 0 = neither (unreliable to stand for)
+    pub fn pos_grade(&self) -> u8 {
+        if self.pos_forgive >= 0.75 {
+            2
+        } else if self.backstop {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 fn dir_from(yaw_deg: f32, pitch_deg: f32) -> V3 {
@@ -119,6 +135,8 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
                             err,
                             forgive: 0.0,
                             spread: 0.0,
+                            pos_forgive: 0.0,
+                            backstop: false,
                             aim_ref: None,
                         };
                         if err >= tol {
@@ -196,11 +214,15 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
         if v.iter().any(|l| l.forgive >= 0.25) {
             v.retain(|l| l.forgive >= 0.25);
         }
+        // position rule: keep only easy-position or backstopped stands when any exist
+        if v.iter().any(|l| l.pos_grade() > 0) {
+            v.retain(|l| l.pos_grade() > 0);
+        }
     };
     if paired {
-        // angle families from the locked stand, fastest first
+        // angle families from the locked stand, fastest first; easy positions first
         sturdy(&mut all);
-        all.sort_by(|a, b| a.time.total_cmp(&b.time));
+        all.sort_by(|a, b| (b.pos_grade(), a.time).partial_cmp(&(a.pos_grade(), b.time)).unwrap());
         return all;
     }
     // dedup: one lineup per 200u XY cell, keep the fastest
@@ -216,8 +238,10 @@ pub fn solve(scene: &Scene, target: V3, tol: f32, min_dist: f32, strict: bool, c
     }
     let mut out: Vec<Lineup> = by_cell.into_values().collect();
     sturdy(&mut out);
-    // rank: mid-range stands preferred (sweet spot ~3000u), then speed
-    let key = |l: &Lineup| (l.dist - 3000.0).abs() / 1500.0 + l.time * 0.35;
+    // rank: easy positions first, then mid-range preference (~3000u) + speed
+    let key = |l: &Lineup| {
+        (l.dist - 3000.0).abs() / 1500.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0
+    };
     out.sort_by(|a, b| key(a).total_cmp(&key(b)));
     out
 }
@@ -252,4 +276,30 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
     }
     b.forgive = ok as f32 / 8.0;
     b.spread = worst;
+
+    // POSITION forgiveness: shift the stand ~75u with the SAME aim; if the fire
+    // still covers, exact positioning does not matter ("easy position")
+    let covers = |o: &crate::sim::Outcome| {
+        let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+        let dz = (o.rest.z - target.z).abs();
+        (if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 }) < tol
+    };
+    let launch = dir_from(b.yaw, b.pitch + cfg.arc_deg);
+    let mut pok = 0;
+    for (ox, oy) in [(75.0f32, 0.0), (-75.0, 0.0), (0.0, 75.0), (0.0, -75.0), (55.0, 55.0), (-55.0, 55.0), (55.0, -55.0), (-55.0, -55.0)] {
+        let o2 = origin + V3::new(ox, oy, 0.0);
+        if fly(scene, o2, launch, cfg).as_ref().map(&covers).unwrap_or(false) {
+            pok += 1;
+        }
+    }
+    b.pos_forgive = pok as f32 / 8.0;
+
+    // backstop: waist-height geometry within 70u in any horizontal direction
+    // means the spot is exactly reproducible by pressing against it
+    let waist = b.stand + V3::new(0.0, 0.0, 90.0);
+    b.backstop = (0..8).any(|k| {
+        let a = k as f32 / 8.0 * std::f32::consts::TAU;
+        let ray = Ray::new(nalgebra::Point3::from(waist), V3::new(a.cos(), a.sin(), 0.0));
+        scene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, 70.0, true).is_some()
+    });
 }

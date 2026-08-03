@@ -66,7 +66,12 @@ async function solveNow(m) {
       const verdict = l.err <= 450
         ? `<span style='color:#7f7'>fire covers your spot</span> (rests ${l.err}u away)`
         : `<span style='color:#fa6'>fire does NOT reach - closest possible rests ${l.err}u away</span>`;
-      h += `<h3>#${i + 1}: ${verdict}. stand (${l.stand.join(', ')}), range ${l.range}u, ${l.time}s flight, ${l.bounces} bounces. ${aim}</h3>`;
+      const pos = l.pos === 2
+        ? `<span style='color:#7f7'>easy position - rough standing is fine</span>`
+        : l.pos === 1
+          ? `<span style='color:#ad7'>anchored - back into the object shown in the top-down view</span>`
+          : `<span style='color:#fa6'>loose position - standing spot matters and nothing to anchor on</span>`;
+      h += `<h3>#${i + 1}: ${verdict}. ${pos}. stand (${l.stand.join(', ')}), range ${l.range}u, ${l.time}s flight, ${l.bounces} bounces. ${aim}</h3>`;
       h += l.imgs.map(im => `<img src='${im}' style='width:420px;margin:2px'>`).join('');
       h += `<div id='vid${i + 1}'><button onclick='flightVideo(${i + 1})'>flight video</button></div>`;
     });
