@@ -171,30 +171,9 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
     let mut tris: Vec<[[f32; 3]; 3]> = Vec::new();
     let mut tri_owner: Vec<(u32, String)> = Vec::new();
     let mut tri_color: Vec<(u32, [f32; 3])> = Vec::new();
-    // material colors extracted from the pak textures (valo_dump colors mode)
-    let colors: HashMap<String, [f32; 3]> = std::fs::read_to_string(dir.join("meshcolors.json"))
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .map(|v| {
-            v.as_object()
-                .map(|o| {
-                    o.iter()
-                        .filter_map(|(k, arr)| {
-                            let a = arr.as_array()?;
-                            Some((
-                                k.clone(),
-                                [
-                                    a[0].as_f64()? as f32,
-                                    a[1].as_f64()? as f32,
-                                    a[2].as_f64()? as f32,
-                                ],
-                            ))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default()
-        })
-        .unwrap_or_default();
+    // material colors disabled: flat averages muddied the renders more than
+    // they helped (Henry's call); hillshade gray reads better
+    let colors: HashMap<String, [f32; 3]> = HashMap::new();
     let (mut used, mut skipped_umap, mut skipped_inst) = (0usize, 0usize, 0usize);
     for i in &inst {
         let umap = i["umap"].as_str().unwrap_or("");

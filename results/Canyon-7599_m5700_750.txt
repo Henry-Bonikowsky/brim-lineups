@@ -1,14 +1,15 @@
 ﻿brim-lineups.exe : scene[collision]: 1139799 tris from 1419 placements (3356 filtered, 1483 instances expanded), 2129 
 stand points
-At line:1 char:1742
+At line:1 char:2014
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...29 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 stands: 2129 -> 2127 after reachability gate
-flights: 3419 never stopped, 127931 landed far, 1370 within tol
-solved in 641.3ms: 75 distinct lineups within 150u
+stands: 2127 -> 1977 after main-network filter
+flights: 3381 never stopped, 117357 landed far, 1302 within tol
+solved in 694.5ms: 72 distinct lineups within 150u
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
          (10498, -4702, 510)  3066u  -160.0    69.8  5.22s   2   115u     25%  (open sky)
           (5161, -4040, 330)  2950u   -33.3    70.2  5.27s   2    84u     25%  (open sky)
@@ -19,9 +20,9 @@ solved in 641.3ms: 75 distinct lineups within 150u
           (4973, -3968, 330)  3146u   -32.4    69.3  5.27s   2    82u     25%  (open sky)
           (5359, -3940, 410)  2848u   -37.2    70.7  5.26s   2    71u     25%  (open sky)
           (5295, -4049, 350)  2835u   -34.6    70.7  5.27s   2    81u     25%  (open sky)
-         (10212, -4586, 710)  2840u  -155.9    70.9  5.33s   2   119u     62%  (open sky)
           (5484, -3880, 410)  2790u   -39.7    70.9  5.24s   2    63u     38%  (open sky)
           (5027, -3728, 378)  3241u   -36.5    69.0  5.23s   2    61u     25%  (open sky)
+          (4791, -4147, 310)  3208u   -27.9    69.0  5.33s   2   109u     38%  (open sky)
 scene[visual]: 2223487 tris from 2312 placements (2463 filtered, 3657 instances expanded), 2129 stand points
 rendered .\cards\renders3\Canyon-7599_m5700_750_r1.bmp + stand + wide
 rendered .\cards\renders3\Canyon-7599_m5700_750_r2.bmp + stand + wide
@@ -35,4 +36,4 @@ rendered .\cards\renders3\Canyon-7599_m5700_750_r9.bmp + stand + wide
 rendered .\cards\renders3\Canyon-7599_m5700_750_r10.bmp + stand + wide
 rendered .\cards\renders3\Canyon-7599_m5700_750_r11.bmp + stand + wide
 rendered .\cards\renders3\Canyon-7599_m5700_750_r12.bmp + stand + wide
-wrote lineups.json (75 entries)
+wrote lineups.json (72 entries)

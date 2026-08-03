@@ -1,14 +1,14 @@
 ﻿brim-lineups.exe : scene[collision]: 1685206 tris from 1857 placements (3587 filtered, 2725 instances expanded), 2824 
 stand points
-At line:1 char:1742
+At line:1 char:2014
 + ... s\$m-$tag"; & ".\target\release\brim-lineups.exe" "C:\dev\active\Valo ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (scene[collision...24 stand points:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 stands: 2824 -> 2815 after reachability gate
-flights: 1191 never stopped, 177367 landed far, 2882 within tol
-solved in 1.3s: 229 distinct lineups within 150u
+stands: 2815 -> 2283 after main-network filter
+flights: 607 never stopped, 160430 landed far, 2763 within tol
              stand (x, y, z)  range     yaw   pitch   time bnc    err forgive  crosshair on (x, y, z @ dist)
           (-438, -9523, 110)  3228u   145.2    69.6  5.28s   2   128u     38%  (open sky)
           (-970, -9521, 110)  2794u   139.4    71.3  5.35s   2   126u     50%  (open sky)
@@ -22,6 +22,7 @@ solved in 1.3s: 229 distinct lineups within 150u
           (-486, -6910, 110)  2803u  -163.0    72.3  6.04s   2   100u     50%  (open sky)
           (-487, -7003, 110)  2775u  -164.8    72.4  6.06s   2    92u     62%  (open sky)
            (-42, -6754, 400)  3274u  -162.8    70.6  5.99s   2   150u     50%  (open sky)
+solved in 1.3s: 215 distinct lineups within 150u
 scene[visual]: 2383592 tris from 3170 placements (2274 filtered, 4960 instances expanded), 2824 stand points
 rendered .\cards\renders3\Ascent-m3152_m7776_m98_r1.bmp + stand + wide
 rendered .\cards\renders3\Ascent-m3152_m7776_m98_r2.bmp + stand + wide
@@ -35,4 +36,4 @@ rendered .\cards\renders3\Ascent-m3152_m7776_m98_r9.bmp + stand + wide
 rendered .\cards\renders3\Ascent-m3152_m7776_m98_r10.bmp + stand + wide
 rendered .\cards\renders3\Ascent-m3152_m7776_m98_r11.bmp + stand + wide
 rendered .\cards\renders3\Ascent-m3152_m7776_m98_r12.bmp + stand + wide
-wrote lineups.json (229 entries)
+wrote lineups.json (215 entries)
