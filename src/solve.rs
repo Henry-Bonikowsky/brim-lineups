@@ -12,7 +12,7 @@ const UI_ANCHORS: [(&str, f32, f32); 11] = [
     // measured PIXEL-EXACT from Henry's full native screenshot (1999x1249,
     // 16:10). Preference order: ties keep the earlier entry.
     ("crosshair", 0.5, 0.5),
-    ("mouse icon in the equip prompt", 0.4722, 0.8887),
+    ("mouse icon in the equip prompt", 0.4722, 0.8607),
     ("diamond tip above the equip prompt", 0.4722, 0.8055),
     ("left end of the Q charge bar", 0.3802, 0.9680),
     ("right end of the Q charge bar", 0.4217, 0.9680),
