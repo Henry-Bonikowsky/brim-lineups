@@ -79,6 +79,29 @@ fn main() {
         }
         return;
     }
+    if let Some(f) = get("--fan") {
+        // --fan X,Y,Z,yaw0,yaw1,pitch0,pitch1,step : sweep throws from one spot,
+        // print landings (for reconstructing a known lineup's aim)
+        let c: Vec<f32> = f.split(',').map(|x| x.trim().parse().unwrap()).collect();
+        let o = V3::new(c[0], c[1], c[2] + cfg.eye_z);
+        let mut yaw = c[3];
+        while yaw <= c[4] {
+            let mut pitch = c[5];
+            while pitch <= c[6] {
+                let (sy, cy) = yaw.to_radians().sin_cos();
+                let (sp, cp) = pitch.to_radians().sin_cos();
+                if let Some(r) = sim::fly(&scene, o, V3::new(cp * cy, cp * sy, sp), &cfg) {
+                    println!(
+                        "yaw={yaw:>7.1} pitch={pitch:>6.1} -> ({:>6.0},{:>6.0},{:>5.0}) t={:.2}s b={}",
+                        r.rest.x, r.rest.y, r.rest.z, r.time, r.bounces
+                    );
+                }
+                pitch += c[7];
+            }
+            yaw += c[7];
+        }
+        return;
+    }
     let t0 = std::time::Instant::now();
     let min_dist: f32 = get("--min-dist").map(|s| s.parse().unwrap()).unwrap_or(1000.0);
     let lineups = solve::solve(&scene, target, tol, min_dist, &cfg);
