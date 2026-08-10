@@ -99,7 +99,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             let row_idxs: Vec<usize> = match nsel {
                 Some(k) if k >= 1 && k <= lineups.len() => vec![k - 1],
                 Some(_) => vec![],
-                None if list_mode => (0..lineups.len().min(14)).collect(),
+                None if list_mode => (0..lineups.len().min(20)).collect(),
                 None => (0..lineups.len().min(5)).collect(),
             };
             let rendered = nsel.is_some() || !list_mode;

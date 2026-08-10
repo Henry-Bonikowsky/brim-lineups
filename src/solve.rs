@@ -68,19 +68,28 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Opti
                 d[j][i] = depth_at(ax + di as f32 * S, ay + dj as f32 * S);
             }
         }
-        // edge crossing adjacent to the center = grade 2; anywhere = grade 1
+        // edge crossing adjacent to the center = grade 2; anywhere = grade 1.
+        // dist must come from the SAME pair that tripped the edge test (the
+        // old code min'd the horizontal pair for vertical edges - inf leak)
         let mut grade = 0u8;
         let mut dist = f32::INFINITY;
+        let hit = |r: f32, a: f32, b: f32, grade: &mut u8, dist: &mut f32| {
+            if r <= 1.0 {
+                *grade = 2;
+            } else if *grade == 0 {
+                *grade = 1;
+            }
+            *dist = dist.min(a.min(b));
+        };
         for j in 0..5 {
-            for i in 0..4 {
-                if edgy(d[j][i], d[j][i + 1]) || (j < 4 && edgy(d[j][i], d[j + 1][i])) {
+            for i in 0..5 {
+                if i < 4 && edgy(d[j][i], d[j][i + 1]) {
                     let r = ((i as f32 + 0.5 - 2.0).abs()).max((j as f32 - 2.0).abs());
-                    if r <= 1.0 {
-                        grade = 2;
-                    } else if grade == 0 {
-                        grade = 1;
-                    }
-                    dist = dist.min(d[j][i].min(d[j][i + 1]));
+                    hit(r, d[j][i], d[j][i + 1], &mut grade, &mut dist);
+                }
+                if j < 4 && edgy(d[j][i], d[j + 1][i]) {
+                    let r = ((i as f32 - 2.0).abs()).max((j as f32 + 0.5 - 2.0).abs());
+                    hit(r, d[j][i], d[j + 1][i], &mut grade, &mut dist);
                 }
             }
         }
@@ -218,6 +227,17 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                             v.push((yaw0 + dy as f32, base + dp as f32));
                         }
                     }
+                }
+                // broad coarse families: bounce-assisted and off-family throws
+                // live far from the vacuum solutions and a narrow sweep never
+                // DISCOVERS their stands at all ("strict in the wrong way").
+                // The per-stand refine pass polishes whatever this finds
+                let mut pitch = -25.0f32;
+                while pitch <= 80.0 {
+                    for dy in [-3.0f32, 0.0, 3.0] {
+                        v.push((yaw0 + dy, pitch));
+                    }
+                    pitch += 5.0;
                 }
                 v
             };
@@ -360,8 +380,11 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
     }
     // a lineup the solver itself rates near-zero forgiveness is untrustworthy
     // (tiny aim error cascades, e.g. clipping a sloped roof); prefer sturdy ones
+    // the all-or-nothing forgiveness cliff hides otherwise-valid rows the
+    // moment one sturdy lineup exists; in browse the user picks from a list
+    // with forgiveness shown per row, so show everything there
     let sturdy = |v: &mut Vec<Lineup>| {
-        if v.iter().any(|l| l.forgive >= 0.25) {
+        if !browse && v.iter().any(|l| l.forgive >= 0.25) {
             v.retain(|l| l.forgive >= 0.25);
         }
     };
@@ -403,7 +426,7 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
     // seconds). Re-run the exhaustive paired sweep from each surviving stand
     // and keep its true fastest covered throw; browse rows optimize hitting
     // their OWN landing spot
-    out.truncate(16);
+    out.truncate(24);
     let mut out: Vec<Lineup> = out
         .par_iter()
         .map(|l| {
@@ -480,68 +503,82 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
     b.pos_forgive = pok as f32 / 8.0;
 }
 
-/// The position rule: a reproducible stand presses W into TWO differently-
-/// facing wall faces (wall corner, angled walls, object against wall). Finds
-/// such a wedge within reach of `stand` and returns the capsule-pinned
-/// position the player is stopped at every time; None = not a wedge
-/// coordinate, so not a valid lineup stand.
+/// The position rule: a reproducible stand presses W into a real CORNER -
+/// two substantial near-vertical faces meeting at a clear angle (normals
+/// 45..135 deg apart, a hard 90 is ideal: pathetically easy to nestle into).
+/// Faces are probed at knee AND waist height so a low box against a wall
+/// counts. Returns the capsule-pinned position the player is stopped at
+/// every time, preferring the corner closest to 90 deg; None = no corner in
+/// reach, so not a valid lineup stand.
 pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
     use parry3d::query::{Ray, RayCast};
     const R: f32 = 42.0; // pawn CapsuleRadius from the files
+    const REACH: f32 = 150.0;
     let id = nalgebra::Isometry3::identity();
-    let waist = stand + V3::new(0.0, 0.0, 90.0);
-    // wall faces around the stand: (hit point, horizontal unit normal facing the player)
-    let mut walls: Vec<(V3, V3)> = Vec::new();
-    for k in 0..16 {
-        let a = k as f32 / 16.0 * std::f32::consts::TAU;
-        let d = V3::new(a.cos(), a.sin(), 0.0);
-        let ray = Ray::new(nalgebra::Point3::from(waist), d);
-        if let Some(h) = scene.mesh.cast_ray_and_get_normal(&id, &ray, 110.0, true) {
-            let mut n = h.normal;
-            if n.dot(&d) > 0.0 {
-                n = -n;
-            }
-            let hz = V3::new(n.x, n.y, 0.0);
-            if hz.norm() > 0.7 {
-                // wall-like, not ramp/floor
-                walls.push((waist + d * h.time_of_impact, hz.normalize()));
+    // wall faces around the stand: (hit point, horizontal unit normal facing
+    // the player, probe height)
+    let mut walls: Vec<(V3, V3, f32)> = Vec::new();
+    for h in [45.0f32, 90.0] {
+        let o = stand + V3::new(0.0, 0.0, h);
+        for k in 0..16 {
+            let a = k as f32 / 16.0 * std::f32::consts::TAU;
+            let d = V3::new(a.cos(), a.sin(), 0.0);
+            let ray = Ray::new(nalgebra::Point3::from(o), d);
+            if let Some(hit) = scene.mesh.cast_ray_and_get_normal(&id, &ray, REACH, true) {
+                let mut n = hit.normal;
+                if n.dot(&d) > 0.0 {
+                    n = -n;
+                }
+                let hz = V3::new(n.x, n.y, 0.0);
+                if hz.norm() > 0.7 {
+                    // wall-like, not ramp/floor
+                    walls.push((o + d * hit.time_of_impact, hz.normalize(), h));
+                }
             }
         }
     }
+    // best corner = closest to 90 deg (|dot| ~ 0), then closest to the stand
     let mut best: Option<V3> = None;
-    let mut best_shift = f32::MAX;
-    for (i, (p1, n1)) in walls.iter().enumerate() {
-        for (p2, n2) in &walls[i + 1..] {
+    let mut best_key = f32::MAX;
+    for (i, (p1, n1, h1)) in walls.iter().enumerate() {
+        for (p2, n2, h2) in &walls[i + 1..] {
             let dot = n1.dot(n2);
-            // faces ~30..155 deg apart: near-parallel is one wall (you slide
-            // along it), near-opposite is a corridor (no pin along its axis)
-            if !(-0.9..0.87).contains(&dot) {
+            // a real corner: normals 45..135 deg apart. Shallower bends read
+            // as one flat wall (you slide), near-opposite is a corridor
+            if dot.abs() > 0.71 {
                 continue;
             }
             // capsule center touching both planes: n_i . (c - p_i) = R
-            let (r1, r2) = (R - n1.dot(&(waist - *p1)), R - n2.dot(&(waist - *p2)));
+            // (normals are horizontal, so height drops out of the 2x2)
+            let (r1, r2) = (R - n1.dot(&(stand - *p1)), R - n2.dot(&(stand - *p2)));
             let det = n1.x * n2.y - n1.y * n2.x;
             let m = V3::new((r1 * n2.y - r2 * n1.y) / det, (n1.x * r2 - n2.x * r1) / det, 0.0);
-            let shift = m.norm();
-            if shift >= best_shift || shift > 100.0 {
+            let shift = V3::new(m.x, m.y, 0.0).norm();
+            let key = dot.abs() * 400.0 + shift;
+            if key >= best_key || shift > 140.0 {
                 continue;
             }
-            let pw = waist + m;
-            // both faces must really extend to the touch points (rejects
-            // convex pillar corners, where the pinned spot hangs off an edge)
-            let touch_ok = [*n1, *n2].into_iter().all(|n| {
-                let ray = Ray::new(nalgebra::Point3::from(pw), -n);
-                scene.mesh.cast_ray(&id, &ray, R + 15.0, true).map_or(false, |t| t > 20.0)
+            // both faces must be substantial and really extend to the touch
+            // point: present at their probe height AND 25u lower (rejects
+            // poles, rails, trim) - and reachable from the pinned spot
+            // (rejects convex corners, where the spot hangs off an edge)
+            let pxy = stand + m;
+            let touch_ok = [(*n1, *h1), (*n2, *h2)].into_iter().all(|(n, h)| {
+                [0.0f32, -25.0].into_iter().all(|dz| {
+                    let o = V3::new(pxy.x, pxy.y, stand.z + h + dz);
+                    let ray = Ray::new(nalgebra::Point3::from(o), -n);
+                    scene.mesh.cast_ray(&id, &ray, R + 15.0, true).map_or(false, |t| t > 20.0)
+                })
             });
             if !touch_ok {
                 continue;
             }
-            let Some(gz) = scene.ground_z(pw.x, pw.y) else { continue };
+            let Some(gz) = scene.ground_z(pxy.x, pxy.y) else { continue };
             if (gz - stand.z).abs() > 60.0 {
                 continue;
             }
-            best_shift = shift;
-            best = Some(V3::new(pw.x, pw.y, gz));
+            best_key = key;
+            best = Some(V3::new(pxy.x, pxy.y, gz));
         }
     }
     best
@@ -553,8 +590,8 @@ mod tests {
     use nalgebra::Point3;
     use parry3d::shape::TriMesh;
 
-    /// Ground quad plus vertical wall quads [x0,y0,x1,y1] (z 0..300).
-    fn scene_with_walls(walls: &[[f32; 4]]) -> Scene {
+    /// Ground quad plus vertical wall quads ([x0,y0,x1,y1], top_z) (z from 0).
+    fn scene_with_walls(walls: &[([f32; 4], f32)]) -> Scene {
         let mut verts = vec![
             Point3::new(-2.0e4, -2.0e4, 0.0),
             Point3::new(2.0e4, -2.0e4, 0.0),
@@ -562,12 +599,12 @@ mod tests {
             Point3::new(-2.0e4, 2.0e4, 0.0),
         ];
         let mut tris = vec![[0u32, 1, 2], [0, 2, 3]];
-        for w in walls {
+        for (w, top) in walls {
             let b = verts.len() as u32;
             verts.push(Point3::new(w[0], w[1], 0.0));
             verts.push(Point3::new(w[2], w[3], 0.0));
-            verts.push(Point3::new(w[2], w[3], 300.0));
-            verts.push(Point3::new(w[0], w[1], 300.0));
+            verts.push(Point3::new(w[2], w[3], *top));
+            verts.push(Point3::new(w[0], w[1], *top));
             tris.push([b, b + 1, b + 2]);
             tris.push([b, b + 2, b + 3]);
         }
@@ -582,10 +619,11 @@ mod tests {
     }
 
     /// A corner of two perpendicular walls pins the capsule 42u off each
-    /// face; a single wall, a corridor, and open ground do not qualify.
+    /// face; a knee-high box against a wall also counts; a single wall, a
+    /// corridor, and open ground do not qualify.
     #[test]
     fn wedge_rule() {
-        let corner = scene_with_walls(&[[200.0, 0.0, 200.0, 1000.0], [0.0, 200.0, 1000.0, 200.0]]);
+        let corner = scene_with_walls(&[([200.0, 0.0, 200.0, 1000.0], 300.0), ([0.0, 200.0, 1000.0, 200.0], 300.0)]);
         let p = wedge_stand(&corner, V3::new(150.0, 150.0, 0.0)).expect("corner must pin");
         assert!(
             (p.x - 158.0).abs() < 2.0 && (p.y - 158.0).abs() < 2.0,
@@ -594,10 +632,15 @@ mod tests {
             p.y
         );
 
-        let wall = scene_with_walls(&[[200.0, -1000.0, 200.0, 1000.0]]);
+        // low box (60u) against a tall wall: only the knee probe sees the box
+        let lowbox = scene_with_walls(&[([200.0, 0.0, 200.0, 1000.0], 300.0), ([0.0, 200.0, 1000.0, 200.0], 60.0)]);
+        let p = wedge_stand(&lowbox, V3::new(150.0, 150.0, 0.0)).expect("wall + knee-high box must pin");
+        assert!((p.x - 158.0).abs() < 2.0 && (p.y - 158.0).abs() < 2.0, "got ({}, {})", p.x, p.y);
+
+        let wall = scene_with_walls(&[([200.0, -1000.0, 200.0, 1000.0], 300.0)]);
         assert!(wedge_stand(&wall, V3::new(150.0, 0.0, 0.0)).is_none(), "one wall = slide, not a pin");
 
-        let corridor = scene_with_walls(&[[100.0, -1000.0, 100.0, 1000.0], [-100.0, -1000.0, -100.0, 1000.0]]);
+        let corridor = scene_with_walls(&[([100.0, -1000.0, 100.0, 1000.0], 300.0), ([-100.0, -1000.0, -100.0, 1000.0], 300.0)]);
         assert!(wedge_stand(&corridor, V3::new(0.0, 0.0, 0.0)).is_none(), "corridor has no pin along its axis");
 
         let open = scene_with_walls(&[]);

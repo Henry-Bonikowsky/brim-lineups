@@ -35,11 +35,12 @@ landing error, forgiveness (fraction of +-0.75 deg aim jitters still inside tole
 
 ## Position rule
 
-Every reported stand is a wedge coordinate: against TWO differently-facing wall faces (a
-wall corner, angled walls, or an object against a wall). The solver snaps each candidate
+Every reported stand is a real CORNER: two substantial near-vertical faces meeting at
+45-135 degrees (a hard 90 is preferred - pathetically easy to nestle into), probed at
+knee and waist height so a low box against a wall counts. The solver snaps each candidate
 to the capsule-pinned position (CapsuleRadius 42 from the files) - press W into the
 corner and the game stops you on the exact computed spot every time. Candidates with no
-wedge within reach (~110u) are discarded; a right-clicked stand in paired mode snaps the
+corner within reach (~150u) are discarded; a right-clicked stand in paired mode snaps the
 same way or yields no lineups.
 
 ## Physics model (from the game files)
