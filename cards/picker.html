@@ -371,8 +371,17 @@ async function flightVideo(n) {
       const j = JSON.parse(await wcall('traj', targetPt.X, targetPt.Y, !standPt, n,
         standPt ? standPt.X : undefined, standPt ? standPt.Y : undefined));
       if (j.error) { slot.innerHTML = j.error; return; }
-      slot.innerHTML = `<span style='color:var(--dim)'>flight path is animating on the minimap (${j.time}s, ${j.bounces} bounces) - <a href='#' style='color:var(--teal)' onclick='event.preventDefault(); animTraj(animTraj.last)'>replay</a></span>`;
+      slot.innerHTML = `<span style='color:var(--dim)'>flight path is animating on the minimap (${j.time}s, ${j.bounces} bounces) - <a href='#' style='color:var(--teal)' onclick='event.preventDefault(); animTraj(animTraj.last)'>replay</a></span><div id='stills${n}' style='color:var(--dim)'>rendering flight keyframes...</div>`;
       animTraj(j);
+      // keyframe stills: 0.5s before the first bounce, then each bounce and
+      // the apex between bounces, ending at rest
+      const bufs = await wcall('stills', targetPt.X, targetPt.Y, !standPt, n,
+        standPt ? standPt.X : undefined, standPt ? standPt.Y : undefined);
+      const urls = bufs.map(b => URL.createObjectURL(new Blob([b], { type: 'image/bmp' })));
+      wasmUrls.push(...urls);
+      const sd = document.getElementById('stills' + n);
+      if (sd) sd.outerHTML = `<div>` + urls.map(u =>
+        `<img src='${u}' style='width:318px;margin:3px 4px 0 0;border:1px solid var(--edge);border-radius:6px'>`).join('') + `</div>`;
     } catch (e) { slot.innerHTML = 'flight failed: ' + e; }
     return;
   }

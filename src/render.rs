@@ -132,6 +132,75 @@ pub fn flight_frame_index2(f: usize, frames: usize, hold: usize, len: usize, fir
     }
 }
 
+/// Landing camera for flight views: ring candidates around the rest point,
+/// preferring the direction the molly ARRIVES from (so the bounce happens
+/// toward us), first one that sees both the rest point and the first-bounce
+/// point. Shared by the native flight video and the web keyframe stills.
+pub fn land_cam(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize) -> V3 {
+    use parry3d::query::{Ray, RayCast};
+    let id = nalgebra::Isometry3::identity();
+    let clear = |a: V3, b: V3| -> bool {
+        let d = b - a;
+        let n = d.norm().max(1.0);
+        vscene.mesh.cast_ray(&id, &Ray::new(nalgebra::Point3::from(a), d / n), n - 40.0, true).is_none()
+    };
+    let arrive = {
+        let a = traj[first_bounce.min(traj.len() - 1)] - traj[first_bounce.saturating_sub(8)];
+        (-a.y).atan2(-a.x)
+    };
+    let fb_pos = traj[first_bounce.min(traj.len() - 1)];
+    let mut cam = target + V3::new(0.0, 0.0, 900.0);
+    'search: for (radius, height) in [(650.0f32, 330.0f32), (900.0, 480.0), (450.0, 240.0), (1200.0, 700.0)] {
+        for k in 0..12 {
+            // fan out from the arrival direction: 0, +-30, +-60... degrees
+            let da = ((k + 1) / 2) as f32 * 30.0_f32.to_radians() * if k % 2 == 0 { 1.0 } else { -1.0 };
+            let a = arrive + da;
+            let c = target + V3::new(a.cos() * radius, a.sin() * radius, height);
+            if clear(c, target + V3::new(0.0, 0.0, 60.0)) && clear(c, fb_pos + V3::new(0.0, 0.0, 60.0)) {
+                cam = c;
+                break 'search;
+            }
+        }
+    }
+    cam
+}
+
+/// Keyframe stills of one flight (the web build's flight video): a frame 0.5s
+/// (60 steps) before the first bounce, then a frame ON each visible bounce and
+/// one at the arc apex between bounces, ending at rest. Same cameras and
+/// trail/dot/ring language as the video frames, 640x400.
+pub fn flight_stills(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, bounces: &[usize]) -> Vec<Vec<u8>> {
+    let last = traj.len().saturating_sub(1);
+    let fb = bounces.first().copied().unwrap_or(first_bounce).min(last);
+    let mut idxs: Vec<usize> = vec![fb.saturating_sub(60)];
+    for (k, &b) in bounces.iter().enumerate() {
+        idxs.push(b.min(last));
+        let next = bounces.get(k + 1).copied().unwrap_or(last).min(last);
+        // apex of the arc between this bounce and the next (or the rest)
+        if let Some(a) = (b.min(last) + 1..next).max_by(|&i, &j| traj[i].z.total_cmp(&traj[j].z)) {
+            idxs.push(a);
+        }
+    }
+    idxs.push(last);
+    idxs.dedup();
+    let lcam = land_cam(vscene, target, traj, fb);
+    idxs.iter()
+        .map(|&i| {
+            let m = traj[i];
+            // same camera switch as the video: over-the-shoulder until just
+            // before the first bounce, then the verified landing viewpoint
+            let cam = if i + 12 >= fb { lcam } else { traj[0] + V3::new(0.0, 0.0, 90.0) };
+            let mut look = m - cam;
+            if look.norm() < 150.0 {
+                look = traj[(i + 8).min(last)] - cam;
+            }
+            let cam_yaw = look.y.atan2(look.x).to_degrees();
+            let cam_pitch = (look.z / look.norm()).asin().to_degrees();
+            render_ex(vscene, cam, cam_yaw, cam_pitch, false, Some(target), Some((traj, i)), 640, 400)
+        })
+        .collect()
+}
+
 /// Flight frame at reduced size (chase-cam videos rendered on demand).
 #[allow(clippy::too_many_arguments)]
 pub fn render_flight_sized(

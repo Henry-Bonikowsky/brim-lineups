@@ -113,23 +113,29 @@ pub struct Outcome {
 /// with a segment raycast per step (point projectile; the 1u post-bounce sphere
 /// is negligible at map scale).
 pub fn fly(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<Outcome> {
-    fly_impl(scene, origin, dir, cfg, false, None)
+    fly_impl(scene, origin, dir, cfg, false, None, None)
 }
 
 /// Like fly, but also records the position at every integration step and the
 /// step index of the FIRST bounce (for video pacing).
 pub fn fly_path(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<(Outcome, Vec<V3>, usize)> {
+    fly_path_impl(scene, origin, dir, cfg, false).map(|(o, p, f, _)| (o, p, f))
+}
+
+/// fly_path plus the path index of every PLAYER-VISIBLE bounce (keyframe stills).
+pub fn fly_path_marks(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<(Outcome, Vec<V3>, usize, Vec<usize>)> {
     fly_path_impl(scene, origin, dir, cfg, false)
 }
 
 /// fly_path with per-impact eprintln tracing (--throw debug).
 pub fn fly_path_traced(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<(Outcome, Vec<V3>, usize)> {
-    fly_path_impl(scene, origin, dir, cfg, true)
+    fly_path_impl(scene, origin, dir, cfg, true).map(|(o, p, f, _)| (o, p, f))
 }
 
-fn fly_path_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool) -> Option<(Outcome, Vec<V3>, usize)> {
+fn fly_path_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool) -> Option<(Outcome, Vec<V3>, usize, Vec<usize>)> {
     let mut path = Vec::new();
-    let out = fly_impl(scene, origin, dir, cfg, trace, Some(&mut path))?;
+    let mut marks = Vec::new();
+    let out = fly_impl(scene, origin, dir, cfg, trace, Some(&mut path), Some(&mut marks))?;
     // first bounce ~ first step where height starts rising or motion kinks;
     // recover it by re-flying is overkill: approximate as the first local
     // minimum of z after the apex
@@ -142,10 +148,18 @@ fn fly_path_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool) -> 
     let first_bounce = (apex..path.len().saturating_sub(1))
         .find(|&i| path[i + 1].z > path[i].z + 0.01)
         .unwrap_or(path.len().saturating_sub(1));
-    Some((out, path, first_bounce))
+    Some((out, path, first_bounce, marks))
 }
 
-fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut record: Option<&mut Vec<V3>>) -> Option<Outcome> {
+fn fly_impl(
+    scene: &Scene,
+    origin: V3,
+    dir: V3,
+    cfg: &Cfg,
+    trace: bool,
+    mut record: Option<&mut Vec<V3>>,
+    mut marks: Option<&mut Vec<usize>>,
+) -> Option<Outcome> {
     const DT: f32 = 1.0 / 120.0;
     let mut p = origin;
     let mut v = dir * cfg.speed;
@@ -221,6 +235,10 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
             // the player sees in game / in the video to be checkable
             if vz_in < 0.0 && v.z >= 180.0 {
                 bounces += 1;
+                // the contact point is pushed to `record` just below, at this index
+                if let (Some(m), Some(r)) = (marks.as_deref_mut(), record.as_deref()) {
+                    m.push(r.len());
+                }
             }
             if trace {
                 let owner = match hit.feature {

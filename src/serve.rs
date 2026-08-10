@@ -327,35 +327,8 @@ fn stamp_ring(path: &str, fx: f32, fy: f32) {
 /// with verified line of sight to the rest point (the chase cam clips into
 /// geometry exactly when the landing gets interesting).
 fn flight_video(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, live: &str) -> String {
-    use parry3d::query::{Ray, RayCast};
     use rayon::prelude::*;
-    let id = nalgebra::Isometry3::identity();
-    let clear = |a: V3, b: V3| -> bool {
-        let d = b - a;
-        let n = d.norm().max(1.0);
-        vscene.mesh.cast_ray(&id, &Ray::new(nalgebra::Point3::from(a), d / n), n - 40.0, true).is_none()
-    };
-    // landing camera: ring candidates around the rest point, preferring the
-    // direction the molly ARRIVES from (so the bounce happens toward us),
-    // first one that sees both the rest point and the first-bounce point
-    let arrive = {
-        let a = traj[first_bounce.min(traj.len() - 1)] - traj[first_bounce.saturating_sub(8)];
-        (-a.y).atan2(-a.x)
-    };
-    let fb_pos = traj[first_bounce.min(traj.len() - 1)];
-    let mut land_cam = target + V3::new(0.0, 0.0, 900.0);
-    'search: for (radius, height) in [(650.0f32, 330.0f32), (900.0, 480.0), (450.0, 240.0), (1200.0, 700.0)] {
-        for k in 0..12 {
-            // fan out from the arrival direction: 0, +-30, +-60... degrees
-            let da = ((k + 1) / 2) as f32 * 30.0_f32.to_radians() * if k % 2 == 0 { 1.0 } else { -1.0 };
-            let a = arrive + da;
-            let c = target + V3::new(a.cos() * radius, a.sin() * radius, height);
-            if clear(c, target + V3::new(0.0, 0.0, 60.0)) && clear(c, fb_pos + V3::new(0.0, 0.0, 60.0)) {
-                land_cam = c;
-                break 'search;
-            }
-        }
-    }
+    let land_cam = render::land_cam(vscene, target, traj, first_bounce);
     let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
     let fdir = std::env::temp_dir().join(format!("bl_vid_{run}"));
     std::fs::create_dir_all(&fdir).ok();

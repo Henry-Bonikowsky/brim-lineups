@@ -91,6 +91,33 @@ pub fn render_lineup(tx: f32, ty: f32, list: bool, n: u32, sx: Option<f32>, sy: 
     })
 }
 
+/// Keyframe stills of row `n`'s flight (the web stand-in for the native
+/// flight video): 0.5s before the first bounce, then on each bounce and at
+/// the apex between bounces, ending at rest. Returns 640x400 BMPs.
+#[wasm_bindgen]
+pub fn flight_stills(tx: f32, ty: f32, list: bool, n: u32, sx: Option<f32>, sy: Option<f32>) -> Result<js_sys::Array, JsValue> {
+    STATE.with(|s| {
+        let mut st = s.borrow_mut();
+        let st = st.as_mut().ok_or("no map loaded")?;
+        let (target, _, _) = solved(st, tx, ty, list, sx, sy).map_err(JsValue::from)?;
+        let (_, _, lineups) = st.cache.as_ref().unwrap();
+        let l = lineups.get(n as usize - 1).ok_or("no such lineup")?;
+        let cfg = Cfg::default();
+        let origin = crate::sim::hand_origin(l.stand + V3::new(0.0, 0.0, cfg.eye_z), l.yaw, &cfg);
+        let lp = crate::sim::launch_pitch(l.pitch, &cfg);
+        let (sy2, cy2) = l.yaw.to_radians().sin_cos();
+        let (sp2, cp2) = lp.to_radians().sin_cos();
+        let (_, traj, first_bounce, bounces) =
+            crate::sim::fly_path_marks(&st.cscene, origin, V3::new(cp2 * cy2, cp2 * sy2, sp2), &cfg)
+                .ok_or("flight failed")?;
+        let arr = js_sys::Array::new();
+        for b in render::flight_stills(&st.vscene, target, &traj, first_bounce, &bounces) {
+            arr.push(&js_sys::Uint8Array::from(b.as_slice()));
+        }
+        Ok(arr)
+    })
+}
+
 /// Flight trajectory of row `n` for the canvas animation:
 /// {"traj":[[x,y,z],...],"first_bounce":K,"rest":[x,y,z],"time":T,"bounces":B}
 #[wasm_bindgen]
