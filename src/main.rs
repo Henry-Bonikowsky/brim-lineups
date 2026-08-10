@@ -131,8 +131,16 @@ fn main() {
         let dir = V3::new(cp * cy, cp * sy, sp);
         let o = sim::hand_origin(V3::new(c[0], c[1], c[2]), c[3], &cfg);
         eprintln!("throw from ({:.0},{:.0},{:.0}) yaw={} pitch={} (hand offset {})", o.x, o.y, o.z, c[3], c[4], cfg.hand_left);
-        match sim::fly_traced(&scene, o, dir, &cfg) {
-            Some(r) => eprintln!("rest ({:.0},{:.0},{:.0}) t={:.2} bounces={}", r.rest.x, r.rest.y, r.rest.z, r.time, r.bounces),
+        match sim::fly_path(&scene, o, dir, &cfg) {
+            Some((r, traj, first_bounce)) => {
+                eprintln!("rest ({:.0},{:.0},{:.0}) t={:.2} bounces={}", r.rest.x, r.rest.y, r.rest.z, r.time, r.bounces);
+                // path tail after the first bounce: step deltas expose
+                // zigzag/oscillation the bounce-event trace hides
+                for w in traj[first_bounce.saturating_sub(2)..].windows(2) {
+                    let d = w[1] - w[0];
+                    eprintln!("  ({:7.1},{:8.1},{:6.1}) d=({:6.1},{:6.1},{:6.1}) |d|={:5.1}", w[1].x, w[1].y, w[1].z, d.x, d.y, d.z, d.norm());
+                }
+            }
             None => eprintln!("never stopped"),
         }
         return;

@@ -109,10 +109,6 @@ pub fn fly(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<Outcome> {
     fly_impl(scene, origin, dir, cfg, false, None)
 }
 
-pub fn fly_traced(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<Outcome> {
-    fly_impl(scene, origin, dir, cfg, true, None)
-}
-
 /// Like fly, but also records the position at every integration step and the
 /// step index of the FIRST bounce (for video pacing).
 pub fn fly_path(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<(Outcome, Vec<V3>, usize)> {
@@ -170,6 +166,13 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
             if crevice >= 2 {
                 let vn0 = v.dot(&n);
                 v -= n * vn0; // kill only the into-surface component
+                // sliding friction on sustained contact: without it the molly
+                // skates UP steep faces (tarp slopes) barely decelerating and
+                // "glitches" uphill instead of settling at the base
+                let vt = v.norm();
+                if vt > 1.0 {
+                    v *= 1.0 - (cfg.friction * vn0.abs() / vt).min(0.35);
+                }
                 bounces += 1;
                 if trace {
                     eprintln!("  wedge-slide t={t:.2} p=({:.0},{:.0},{:.0}) |v|={:.0}", p.x, p.y, p.z, v.norm());
@@ -214,8 +217,15 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
             let n_speed = v.dot(&n).abs();
             let lat = (v - n * v.dot(&n)).norm();
             if n_speed < cfg.stop_speed {
-                if lat < cfg.stop_speed * 2.0 || bounces > 40 {
+                // resting requires a walkable-ish surface (native
+                // BounceStopSurfaceAngle): a molly never sticks mid-slope on
+                // a steep face - kill the rebound and let gravity take it down
+                if (lat < cfg.stop_speed * 2.0 && n.z > 0.7) || bounces > 40 {
                     return Some(Outcome { rest: p, time: t, bounces });
+                }
+                if lat < cfg.stop_speed * 2.0 {
+                    v -= n * v.dot(&n);
+                    continue;
                 }
                 // dying-hop phase: natural decaying rebound (no artificial fixed
                 // hop; keeps a small floor so the sim doesn't grind the surface)
