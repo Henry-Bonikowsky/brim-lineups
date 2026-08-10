@@ -241,7 +241,9 @@ function lineupHtml(l, n) {
       : `<span class='warn'>fire does NOT reach - closest possible rests ${m2(l.err)} away</span>`;
   const pos = l.pos === 2
     ? `<span class='good'>easy position - press W into the corner shown, rough is fine</span>`
-    : `<span class='mid'>corner-pinned - press W into the corner shown in the top-down view until you stop</span>`;
+    : l.pos === 1
+      ? `<span class='mid'>corner-pinned - press W into the corner shown in the top-down view until you stop</span>`
+      : `<span class='warn'>free position - no corner in reach, stand exactly on the dot</span>`;
   let h = `<h3>#${n}: ${verdict}. ${pos}. range ${m2(l.range)}, ${l.time}s flight, ${l.bounces} bounces. ${aim}. stand (${l.stand.join(', ')})</h3>`;
   h += imgsHtml(l.imgs);
   const walkbtn = mode === 'wasm' ? '' : ` <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button>`;
@@ -340,7 +342,7 @@ async function solveNow(m) {
     }
     document.querySelectorAll('.restdot').forEach(e => e.remove());
     let h = `<p>${j.count} working lineups to (${j.target.join(', ')}) - top ${j.lineups.length}:</p>`;
-    if (!j.count) h += `<p class='warn'>no lineups. Stands must be against two faces (a wall corner or object-against-wall you can press W into) - your right-clicked stand must be within ~1m of such a corner.</p>`;
+    if (!j.count) h += `<p class='warn'>no working throw from this stand to that landing spot.</p>`;
     j.lineups.forEach((l, i) => { h += lineupHtml(l, l.idx || i + 1); });
     res.innerHTML = h;
     if (mode === 'wasm') {

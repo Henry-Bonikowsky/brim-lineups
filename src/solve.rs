@@ -123,6 +123,7 @@ pub struct Lineup {
     pub forgive: f32,    // fraction of +-0.75 deg jitters still within tol
     pub spread: f32,     // worst landing deviation across those jitters (fragility)
     pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
+    pub wedged: bool,    // stand is corner-pinned (always true for solver-picked stands)
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
     /// UI landmark sitting on a world edge at this aim:
     /// (anchor, edge dist, grade, screen fx, screen fy)
@@ -130,11 +131,17 @@ pub struct Lineup {
 }
 
 impl Lineup {
-    /// Every stand is a wedge coordinate (see wedge_stand). 2 = also
-    /// position-forgiving (rough standing works), 1 = press W into the corner
-    /// first, then it is exact.
+    /// 2 = corner + position-forgiving (rough standing works), 1 = press W
+    /// into the corner first, then it is exact, 0 = free right-clicked stand
+    /// with no corner in reach (stand exactly on the dot).
     pub fn pos_grade(&self) -> u8 {
-        if self.pos_forgive >= 0.75 { 2 } else { 1 }
+        if !self.wedged {
+            0
+        } else if self.pos_forgive >= 0.75 {
+            2
+        } else {
+            1
+        }
     }
 }
 
@@ -167,11 +174,15 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
 /// nearby end locations and picks one. Sorted by landing distance.
 pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg) -> Vec<Lineup> {
     let paired = !strict && stands.len() == 1;
-    // POSITION RULE: a lineup stand must sit against TWO faces (wall corner,
-    // angled walls, object against wall) so pressing W into it stops the
-    // player on the same spot every time. Snap every candidate to its
-    // capsule-pinned corner position; anything with no wedge in reach is out.
-    let stands: Vec<V3> = {
+    // POSITION RULE (strict/solver-picked stands only): a lineup stand must
+    // sit against TWO faces (wall corner, angled walls, object against wall)
+    // so pressing W into it stops the player on the same spot every time.
+    // Snap every candidate to its capsule-pinned corner position; anything
+    // with no wedge in reach is out. A RIGHT-CLICKED stand is the user's
+    // choice: snap to a corner when one is in reach (repeatability for free),
+    // otherwise take the exact spot and label it pos 0.
+    let mut free_stand = false;
+    let stands: Vec<V3> = if strict {
         let n_in = stands.len();
         let pinned: Vec<V3> = stands.par_iter().filter_map(|s| wedge_stand(scene, *s)).collect();
         let mut seen = std::collections::HashSet::new();
@@ -183,7 +194,18 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
             eprintln!("stands: {n_in} candidates -> {} wedge-pinned", out.len());
         }
         out
+    } else {
+        stands
+            .iter()
+            .map(|s| {
+                wedge_stand(scene, *s).unwrap_or_else(|| {
+                    free_stand = true;
+                    *s
+                })
+            })
+            .collect()
     };
+    let wedged = !free_stand;
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
     let max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
@@ -283,6 +305,7 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                             forgive: 0.0,
                             spread: 0.0,
                             pos_forgive: 0.0,
+                            wedged,
                             aim_ref: None,
                             ui_ref,
                         };
