@@ -45,6 +45,14 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
 .pickrow { padding: 6px 10px; border: 1px solid var(--edge); border-radius: 6px;
   margin: 4px 0; cursor: pointer; font-size: 14px }
 .pickrow:hover { background: #182029; border-color: var(--teal) }
+#results .aimwrap { cursor: zoom-in }
+#bigmodal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+  z-index: 50; align-items: center; justify-content: center }
+#bigmodal .aimwrap { cursor: default; margin: 0 }
+#bigimg { width: min(94vw, 144vh); display: block }
+#bigx { position: fixed; top: 10px; right: 26px; font-size: 44px; line-height: 1;
+  color: #fff; cursor: pointer; z-index: 51; font-family: Consolas, monospace }
+#bigx:hover { color: var(--gold) }
 .legend { display: flex; gap: 18px; margin-top: 10px; color: var(--dim); font-size: 13px }
 .legend b { color: var(--ink) }
 .chip { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px }
@@ -102,7 +110,15 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
     <div id="povshot"></div>
   </div>
 </main>
+<div id="bigmodal" onclick="this.style.display='none'">
+  <span id="bigx">&times;</span>
+  <span class="aimwrap" onclick="event.stopPropagation()"><img id="bigimg"><img class="hudlayer" src="hud.png?v=3"></span>
+</div>
 <script>
+function bigAim(el) {
+  document.getElementById('bigimg').src = el.querySelector('img').src;
+  document.getElementById('bigmodal').style.display = 'flex';
+}
 const cams = { "Plummet": { "cx": 6375, "yaw": 0, "ortho": 13312, "cy": 6025 }, "Juliett": { "cx": 200, "yaw": 0, "ortho": 12800, "cy": 0 }, "Rook": { "cx": 0.004757, "yaw": 1033.3136, "ortho": 14336, "cy": -375 }, "Ascent": { "cx": 1050, "yaw": 0, "ortho": 14336, "cy": -4500 }, "Jam": { "cx": 5775, "yaw": 0, "ortho": 13824, "cy": 624.9979 }, "Foxtrot": { "cx": 4775, "yaw": 0, "ortho": 14336, "cy": 500 }, "Duality": { "cx": 7900, "yaw": 0, "ortho": 16896, "cy": -1300 }, "Pitt": { "cx": 5325, "yaw": 0, "ortho": 12800, "cy": 250 }, "Infinity": { "cx": 0, "yaw": 0, "ortho": 12400, "cy": 0 }, "Triad": { "cx": 1900, "yaw": 0, "ortho": 13312, "cy": -7900 }, "Bonsai": { "cx": 2529, "yaw": 0, "ortho": 12800, "cy": -4380 }, "Canyon": { "cx": 8395.34, "yaw": 0, "ortho": 12800, "cy": -728.98 }, "Port": { "cx": -2700, "yaw": 0, "ortho": 13824, "cy": 550 } } ;
 const NAMES = { Triad: 'Haven', Bonsai: 'Split', Canyon: 'Fracture', Duality: 'Bind', Foxtrot: 'Breeze', Infinity: 'Abyss', Jam: 'Lotus', Juliett: 'Sunset', Pitt: 'Pearl', Port: 'Icebox', Rook: 'Corrode', Plummet: 'Summit', Ascent: 'Ascent' };
 { const j = cams;
@@ -161,7 +177,7 @@ function lineupHtml(l, n) {
     : `<span class='mid'>corner-pinned - press W into the corner shown in the top-down view until you stop</span>`;
   let h = `<h3>#${n}: ${verdict}. ${pos}. range ${m2(l.range)}, ${l.time}s flight, ${l.bounces} bounces. ${aim}. stand (${l.stand.join(', ')})</h3>`;
   h += l.imgs.map((im, k) => k === 0
-    ? `<span class='aimwrap'><img src='${im}'><img class='hudlayer' src='hud.png?v=3'></span>`
+    ? `<span class='aimwrap' onclick='bigAim(this)' title='click to enlarge'><img src='${im}'><img class='hudlayer' src='hud.png?v=3'></span>`
     : `<img src='${im}'>`).join('');
   h += `<div id='vid${n}'><button onclick='flightVideo(${n})'>flight video</button> <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button></div>`;
   return h;
