@@ -28,6 +28,25 @@ pub struct Cfg {
     pub hud_dy: f32, // percent of screen height, positive = down
 }
 
+/// Crosshair (aim) pitch -> launch pitch. UpwardArc 8 is NOT a constant
+/// offset: it tapers linearly to zero at straight-up (native UpwardArc/
+/// UpwardShift combine, fitted 2026-08-10 - a constant +8 made every high
+/// lob launch too steep, and past 45 deg steeper = shorter, which matched
+/// Henry's "the higher up you look, the more inaccurate". The taper at aim
+/// 58.6 exactly reproduces the x1.15 range hack it replaced.)
+pub fn launch_pitch(aim: f32, cfg: &Cfg) -> f32 {
+    aim + cfg.arc_deg * (1.0 - aim.clamp(0.0, 90.0) / 90.0)
+}
+
+/// Inverse of launch_pitch (what to aim so the launch comes out at `launch`).
+pub fn aim_pitch(launch: f32, cfg: &Cfg) -> f32 {
+    if launch <= cfg.arc_deg {
+        launch - cfg.arc_deg // downward/flat branch: full arc applies
+    } else {
+        (launch - cfg.arc_deg) / (1.0 - cfg.arc_deg / 90.0)
+    }
+}
+
 /// The projectile spawns at the hand, offset left of the camera eye; the
 /// crosshair (aim reference) stays at the eye. Left of view yaw in UE coords.
 pub fn hand_origin(eye: V3, yaw_deg: f32, cfg: &Cfg) -> V3 {
@@ -45,18 +64,15 @@ impl Default for Cfg {
             // SpeedScale default that plausibly supplies the extra ~3.5%.
             // Henry's walk-mode calibration 2026-08-03: at g=1140 the arc ran
             // 0.25-0.5m long; 1145 pulls ~0.3m back with negligible timing shift.
-            // 2026-08-10 Henry in-game: the FIRST arc carries more force than
-            // sim (~2m bigger at ~50m, ~4%). s and g scaled together x1.04:
-            // range s^2/g rises 4%, flight times s/g unchanged (clip fit kept)
-            // 2026-08-10 in-game ladder vs Henry's real throws (first-arc
-            // range, s and g always scaled together so clip-fitted flight
-            // times hold): x1.04 short, x1.08 still 2-3m short, x1.145 a
-            // quarter meter short -> x1.15. ~19% over the file's 2900: native
-            // SpeedScale is bigger than assumed; if flat throws ever run LONG
-            // the boost is pitch-dependent (UpwardShift) and this needs a
-            // second knob instead of raw speed
-            speed: 3457.0,
-            gravity: 1320.0,
+            // 2026-08-10: the x1.15 speed hack from the in-game ladder is
+            // REVERTED - the shortfall was pitch-dependent (Henry: "the higher
+            // up you look, the more inaccurate"), which no speed scale fits.
+            // The real culprit was the constant +8 arc; see launch_pitch. At
+            // the ladder's aim (58.6) the tapered arc at these original
+            // clip-fitted constants gives the identical vacuum range the
+            // x1.15 hack produced (6602 vs 6600u) - one model, all pitches
+            speed: 3000.0,
+            gravity: 1145.0,
             // file DefaultBounciness is 0.35 but live walk-mode-vs-game
             // comparison (2026-08-03) shows real rebounds run hotter: the
             // measured restitution from the frame-timed clip was 0.38-0.40,
@@ -334,6 +350,20 @@ mod tests {
             o.rest.x
         );
         assert!(o.rest.z.abs() < 50.0, "rest on the ground, got z={}", o.rest.z);
+    }
+
+    /// Arc taper: full +8 flat, zero straight-up, and aim_pitch inverts
+    /// launch_pitch everywhere.
+    #[test]
+    fn arc_taper_roundtrip() {
+        let cfg = Cfg::default();
+        assert!((launch_pitch(0.0, &cfg) - 8.0).abs() < 1e-4);
+        assert!((launch_pitch(90.0, &cfg) - 90.0).abs() < 1e-4);
+        assert!((launch_pitch(58.6, &cfg) - 61.39).abs() < 0.01);
+        for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6, 75.0, 89.0] {
+            let back = aim_pitch(launch_pitch(aim, &cfg), &cfg);
+            assert!((back - aim).abs() < 1e-3, "roundtrip {aim} -> {back}");
+        }
     }
 
     /// Fire on one side of a tall box must NOT cover a spot on the other

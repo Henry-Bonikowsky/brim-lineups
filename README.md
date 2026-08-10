@@ -21,7 +21,9 @@ cargo run --release -- <mapDumpDir> --target X,Y,Z [options]
 --min-dist 1000  ignore trivial close tosses; lineups are throws from range
 --top 15         rows printed (full set goes to lineups.json)
 --eye 175        launch height: pawn camera from the files (98+77) [calibration knob]
---arc 8          UpwardArc: launch pitch minus crosshair pitch     [calibration knob]
+--arc 8          UpwardArc: added to crosshair pitch, TAPERING linearly to 0 at
+                 straight-up (fitted in-game 2026-08-10: a constant +8 made every
+                 high lob launch too steep and land short)          [calibration knob]
 --speed 2900     ProjectileSpeed from the files
 
 --probe X,Y,Z    debug: raycasts down/up/north at a point, names the hit mesh
