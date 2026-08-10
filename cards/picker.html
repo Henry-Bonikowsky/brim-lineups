@@ -45,6 +45,14 @@ body.compact #img { width: min(640px, calc(100vw - 110px)) }
   transform: translate(-50%,-50%); background: rgba(88,224,122,0.25);
   border: 1.5px solid #58e07a; cursor: pointer; z-index: 4 }
 .restdot.hot, .restdot:hover { background: #58e07a; box-shadow: 0 0 8px #58e07a }
+/* while an option is selected, the other landings hide; hovering its row peeks */
+.restdot.faded { display: none }
+.restdot.faded.hot { display: block; opacity: 0.75 }
+#standdot { position: absolute; width: 13px; height: 13px; display: none;
+  transform: translate(-50%,-50%) rotate(45deg); background: #4db8ff;
+  border: 2px solid rgba(255,255,255,0.35); box-shadow: 0 0 10px #4db8ff;
+  pointer-events: none; z-index: 4 }
+.chip.sq { border-radius: 2px; transform: rotate(45deg) }
 .pickrow { display: flex; gap: 14px; align-items: baseline; padding: 8px 12px;
   border: 1px solid var(--edge); border-radius: 6px; margin: 5px 0; cursor: pointer;
   font-size: 14px }
@@ -100,11 +108,17 @@ body.compact #img { width: min(640px, calc(100vw - 110px)) }
 <main>
   <div class="card" id="mapcard">
     <h2>Map</h2>
-    <div class="wrap"><img id="img"><div id="dot"></div><div id="dot2"></div></div>
-    <div class="legend">
+    <div class="wrap"><img id="img"><div id="dot"></div><div id="dot2"></div><div id="standdot"></div></div>
+    <div class="legend" id="legend-default">
       <span><span class="chip" style="background:var(--gold)"></span><b>Left-click</b> where the molly should land</span>
       <span><span class="chip" style="background:#58e07a"></span><b>Right-click</b> where you want to stand (optional)</span>
       <button id="clearstand" title="back to landing-spot-only search">&times; remove stand spot</button>
+    </div>
+    <div class="legend" id="legend-sel" style="display:none">
+      <span><span class="chip sq" style="background:#4db8ff"></span><b>stand here</b></span>
+      <span><span class="chip" style="background:#58e07a"></span>molly lands here</span>
+      <span><span class="chip" style="background:var(--gold)"></span>your click</span>
+      <span style="color:var(--dim)">showing <b id="selname" style="color:var(--ink)">#1</b> only - hover a row to peek at another, click it to switch</span>
     </div>
     <div id="out">click the map...</div>
   </div>
@@ -142,6 +156,7 @@ let targetPt = null, standPt = null;
     document.getElementById('dot').style.display = 'none';
     document.getElementById('dot2').style.display = 'none';
     document.getElementById('clearstand').style.display = 'none';
+    clearSelection();
     document.querySelectorAll('.restdot').forEach(e => e.remove());
     const cv = document.getElementById('trajcv'); if (cv) cv.remove();
     document.body.classList.remove('compact'); // map goes big again
@@ -293,6 +308,7 @@ function toPx(X, Y) {
   return { u: 0.5 + du / c.ortho, v: 0.5 - dv / c.ortho };
 }
 function drawRestDots(list) {
+  clearSelection();
   document.querySelectorAll('.restdot').forEach(e => e.remove());
   const wrap = document.getElementById('img').parentElement;
   list.forEach(l => {
@@ -305,6 +321,23 @@ function drawRestDots(list) {
   });
 }
 function hiDot(n) { document.querySelectorAll('.restdot').forEach(e => e.classList.toggle('hot', e.id === 'restdot' + n)); }
+// selected option: only ITS landing dot stays, its stand spot appears, and
+// the map key switches to explain the markers
+function showSelection(n, l) {
+  document.querySelectorAll('.restdot').forEach(e => e.classList.toggle('faded', e.id !== 'restdot' + n));
+  const sd = document.getElementById('standdot');
+  const p = toPx(l.stand[0], l.stand[1]);
+  sd.style.left = (p.u * 100) + '%'; sd.style.top = (p.v * 100) + '%'; sd.style.display = 'block';
+  document.getElementById('selname').textContent = '#' + n;
+  document.getElementById('legend-sel').style.display = '';
+  document.getElementById('legend-default').style.display = 'none';
+}
+function clearSelection() {
+  document.querySelectorAll('.restdot').forEach(e => e.classList.remove('faded'));
+  document.getElementById('standdot').style.display = 'none';
+  document.getElementById('legend-sel').style.display = 'none';
+  document.getElementById('legend-default').style.display = '';
+}
 async function pickLineup(n) {
   const m = document.getElementById('map').value;
   const det = document.getElementById('detail');
@@ -322,6 +355,7 @@ async function pickLineup(n) {
       j = await (await fetch(q)).json();
     }
     if (j.error || !j.lineups.length) { det.innerHTML = `<p>${j.error || 'render failed'}</p>`; return; }
+    showSelection(n, j.lineups[0]);
     det.innerHTML = lineupHtml(j.lineups[0], n);
     det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     flightVideo(n);
@@ -371,6 +405,7 @@ async function solveNow(m) {
       if (j.lineups.length) pickLineup(j.lineups[0].idx); // auto-open the nearest landing
       return;
     }
+    clearSelection();
     document.querySelectorAll('.restdot').forEach(e => e.remove());
     let h = `<p>${j.count} working throws from your stand spot - ${j.count > j.lineups.length ? `top ${j.lineups.length}` : 'fastest first'}:</p>`;
     if (!j.count) h += `<p class='warn'>no working throw from this stand to that landing spot.</p>`;
@@ -577,6 +612,7 @@ img.onclick = e => {
   const d = document.getElementById('dot');
   d.style.left = (targetPt.u * 100) + '%'; d.style.top = (targetPt.v * 100) + '%'; d.style.display = 'block';
   document.body.classList.add('compact'); // make room for the results
+  clearSelection(); // a new click starts a new browse
   refresh();
 };
 img.oncontextmenu = e => {
