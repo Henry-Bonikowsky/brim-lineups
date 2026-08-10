@@ -112,7 +112,6 @@ pub struct Lineup {
     pub forgive: f32,    // fraction of +-0.75 deg jitters still within tol
     pub spread: f32,     // worst landing deviation across those jitters (fragility)
     pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
-    pub backstop: bool,  // stand is flush against geometry (exactly reproducible)
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
     /// UI landmark sitting on a world edge at this aim:
     /// (anchor, edge dist, grade, screen fx, screen fy)
@@ -120,16 +119,11 @@ pub struct Lineup {
 }
 
 impl Lineup {
-    /// 2 = easy position (stand roughly there, it works), 1 = anchored precise
-    /// position (back into the wall), 0 = neither (unreliable to stand for)
+    /// Every stand is a wedge coordinate (see wedge_stand). 2 = also
+    /// position-forgiving (rough standing works), 1 = press W into the corner
+    /// first, then it is exact.
     pub fn pos_grade(&self) -> u8 {
-        if self.pos_forgive >= 0.75 {
-            2
-        } else if self.backstop {
-            1
-        } else {
-            0
-        }
+        if self.pos_forgive >= 0.75 { 2 } else { 1 }
     }
 }
 
@@ -159,6 +153,21 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
 /// that stand (pitch buckets), ranked by time.
 pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, cfg: &Cfg) -> Vec<Lineup> {
     let paired = !strict && stands.len() == 1;
+    // POSITION RULE: a lineup stand must sit against TWO faces (wall corner,
+    // angled walls, object against wall) so pressing W into it stops the
+    // player on the same spot every time. Snap every candidate to its
+    // capsule-pinned corner position; anything with no wedge in reach is out.
+    let stands: Vec<V3> = {
+        let n_in = stands.len();
+        let pinned: Vec<V3> = stands.par_iter().filter_map(|s| wedge_stand(scene, *s)).collect();
+        let mut seen = std::collections::HashSet::new();
+        let out: Vec<V3> = pinned
+            .into_iter()
+            .filter(|p| seen.insert(((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64)))
+            .collect();
+        eprintln!("stands: {n_in} candidates -> {} wedge-pinned", out.len());
+        out
+    };
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
     let max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
@@ -243,7 +252,6 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                             forgive: 0.0,
                             spread: 0.0,
                             pos_forgive: 0.0,
-                            backstop: false,
                             aim_ref: None,
                             ui_ref,
                         };
@@ -327,10 +335,6 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
         if v.iter().any(|l| l.forgive >= 0.25) {
             v.retain(|l| l.forgive >= 0.25);
         }
-        // position rule: keep only easy-position or backstopped stands when any exist
-        if v.iter().any(|l| l.pos_grade() > 0) {
-            v.retain(|l| l.pos_grade() > 0);
-        }
     };
     if paired {
         // angle families from the locked stand, fastest first; easy positions first
@@ -410,14 +414,130 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         }
     }
     b.pos_forgive = pok as f32 / 8.0;
+}
 
-    // backstop: waist-height geometry within 70u in any horizontal direction
-    // means the spot is exactly reproducible by pressing against it
-    let waist = b.stand + V3::new(0.0, 0.0, 90.0);
-    b.backstop = (0..8).any(|k| {
-        let a = k as f32 / 8.0 * std::f32::consts::TAU;
-        let ray = Ray::new(nalgebra::Point3::from(waist), V3::new(a.cos(), a.sin(), 0.0));
-        scene.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, 70.0, true).is_some()
-    });
+/// The position rule: a reproducible stand presses W into TWO differently-
+/// facing wall faces (wall corner, angled walls, object against wall). Finds
+/// such a wedge within reach of `stand` and returns the capsule-pinned
+/// position the player is stopped at every time; None = not a wedge
+/// coordinate, so not a valid lineup stand.
+pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
+    use parry3d::query::{Ray, RayCast};
+    const R: f32 = 42.0; // pawn CapsuleRadius from the files
+    let id = nalgebra::Isometry3::identity();
+    let waist = stand + V3::new(0.0, 0.0, 90.0);
+    // wall faces around the stand: (hit point, horizontal unit normal facing the player)
+    let mut walls: Vec<(V3, V3)> = Vec::new();
+    for k in 0..16 {
+        let a = k as f32 / 16.0 * std::f32::consts::TAU;
+        let d = V3::new(a.cos(), a.sin(), 0.0);
+        let ray = Ray::new(nalgebra::Point3::from(waist), d);
+        if let Some(h) = scene.mesh.cast_ray_and_get_normal(&id, &ray, 110.0, true) {
+            let mut n = h.normal;
+            if n.dot(&d) > 0.0 {
+                n = -n;
+            }
+            let hz = V3::new(n.x, n.y, 0.0);
+            if hz.norm() > 0.7 {
+                // wall-like, not ramp/floor
+                walls.push((waist + d * h.time_of_impact, hz.normalize()));
+            }
+        }
+    }
+    let mut best: Option<V3> = None;
+    let mut best_shift = f32::MAX;
+    for (i, (p1, n1)) in walls.iter().enumerate() {
+        for (p2, n2) in &walls[i + 1..] {
+            let dot = n1.dot(n2);
+            // faces ~30..155 deg apart: near-parallel is one wall (you slide
+            // along it), near-opposite is a corridor (no pin along its axis)
+            if !(-0.9..0.87).contains(&dot) {
+                continue;
+            }
+            // capsule center touching both planes: n_i . (c - p_i) = R
+            let (r1, r2) = (R - n1.dot(&(waist - *p1)), R - n2.dot(&(waist - *p2)));
+            let det = n1.x * n2.y - n1.y * n2.x;
+            let m = V3::new((r1 * n2.y - r2 * n1.y) / det, (n1.x * r2 - n2.x * r1) / det, 0.0);
+            let shift = m.norm();
+            if shift >= best_shift || shift > 100.0 {
+                continue;
+            }
+            let pw = waist + m;
+            // both faces must really extend to the touch points (rejects
+            // convex pillar corners, where the pinned spot hangs off an edge)
+            let touch_ok = [*n1, *n2].into_iter().all(|n| {
+                let ray = Ray::new(nalgebra::Point3::from(pw), -n);
+                scene.mesh.cast_ray(&id, &ray, R + 15.0, true).map_or(false, |t| t > 20.0)
+            });
+            if !touch_ok {
+                continue;
+            }
+            let Some(gz) = scene.ground_z(pw.x, pw.y) else { continue };
+            if (gz - stand.z).abs() > 60.0 {
+                continue;
+            }
+            best_shift = shift;
+            best = Some(V3::new(pw.x, pw.y, gz));
+        }
+    }
+    best
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nalgebra::Point3;
+    use parry3d::shape::TriMesh;
+
+    /// Ground quad plus vertical wall quads [x0,y0,x1,y1] (z 0..300).
+    fn scene_with_walls(walls: &[[f32; 4]]) -> Scene {
+        let mut verts = vec![
+            Point3::new(-2.0e4, -2.0e4, 0.0),
+            Point3::new(2.0e4, -2.0e4, 0.0),
+            Point3::new(2.0e4, 2.0e4, 0.0),
+            Point3::new(-2.0e4, 2.0e4, 0.0),
+        ];
+        let mut tris = vec![[0u32, 1, 2], [0, 2, 3]];
+        for w in walls {
+            let b = verts.len() as u32;
+            verts.push(Point3::new(w[0], w[1], 0.0));
+            verts.push(Point3::new(w[2], w[3], 0.0));
+            verts.push(Point3::new(w[2], w[3], 300.0));
+            verts.push(Point3::new(w[0], w[1], 300.0));
+            tris.push([b, b + 1, b + 2]);
+            tris.push([b, b + 2, b + 3]);
+        }
+        Scene {
+            mesh: TriMesh::new(verts, tris),
+            stands: vec![],
+            min_z: 0.0,
+            tri_owner: vec![(0, "ground".into())],
+            tri_color: vec![(0, [0.6, 0.6, 0.6])],
+            tri_tex: vec![],
+        }
+    }
+
+    /// A corner of two perpendicular walls pins the capsule 42u off each
+    /// face; a single wall, a corridor, and open ground do not qualify.
+    #[test]
+    fn wedge_rule() {
+        let corner = scene_with_walls(&[[200.0, 0.0, 200.0, 1000.0], [0.0, 200.0, 1000.0, 200.0]]);
+        let p = wedge_stand(&corner, V3::new(150.0, 150.0, 0.0)).expect("corner must pin");
+        assert!(
+            (p.x - 158.0).abs() < 2.0 && (p.y - 158.0).abs() < 2.0,
+            "pinned 42u off both faces, got ({}, {})",
+            p.x,
+            p.y
+        );
+
+        let wall = scene_with_walls(&[[200.0, -1000.0, 200.0, 1000.0]]);
+        assert!(wedge_stand(&wall, V3::new(150.0, 0.0, 0.0)).is_none(), "one wall = slide, not a pin");
+
+        let corridor = scene_with_walls(&[[100.0, -1000.0, 100.0, 1000.0], [-100.0, -1000.0, -100.0, 1000.0]]);
+        assert!(wedge_stand(&corridor, V3::new(0.0, 0.0, 0.0)).is_none(), "corridor has no pin along its axis");
+
+        let open = scene_with_walls(&[]);
+        assert!(wedge_stand(&open, V3::new(0.0, 0.0, 0.0)).is_none(), "open ground has no pin");
+    }
 }
 

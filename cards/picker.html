@@ -163,6 +163,7 @@ async function solveNow(m) {
     const j = await (await fetch(q)).json();
     if (j.error) { res.innerHTML = `<p>${j.error}</p>`; solving = false; return; }
     let h = `<p>${j.count} working lineups to (${j.target.join(', ')}) - top ${j.lineups.length}:</p>`;
+    if (!j.count) h += `<p class='warn'>no lineups. Stands must be against two faces (a wall corner or object-against-wall you can press W into) - if you right-clicked a stand, pick a spot within ~1m of such a corner.</p>`;
     j.lineups.forEach((l, i) => {
       let aim = l.aim_ref ? `crosshair lands on geometry ${(l.aim_ref[3] / 100).toFixed(1)}m ahead` : 'crosshair: open sky';
       if (l.ui_ref) {
@@ -178,10 +179,8 @@ async function solveNow(m) {
           ? `<span class='warn'>lands close (${m2(l.err)}) but the fire is BLOCKED - wrong side of geometry</span>`
           : `<span class='warn'>fire does NOT reach - closest possible rests ${m2(l.err)} away</span>`;
       const pos = l.pos === 2
-        ? `<span class='good'>easy position - rough standing is fine</span>`
-        : l.pos === 1
-          ? `<span class='mid'>anchored - back into the object shown in the top-down view</span>`
-          : `<span class='warn'>loose position - standing spot matters and nothing to anchor on</span>`;
+        ? `<span class='good'>easy position - press W into the corner shown, rough is fine</span>`
+        : `<span class='mid'>corner-pinned - press W into the corner shown in the top-down view until you stop</span>`;
       h += `<h3>#${i + 1}: ${verdict}. ${pos}. range ${m2(l.range)}, ${l.time}s flight, ${l.bounces} bounces. ${aim}. stand (${l.stand.join(', ')})</h3>`;
       h += l.imgs.map((im, k) => k === 0
         ? `<span class='aimwrap'><img src='${im}'><img class='hudlayer' src='hud.png?v=3'></span>`

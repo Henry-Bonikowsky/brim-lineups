@@ -31,6 +31,15 @@ cargo run --release -- <mapDumpDir> --target X,Y,Z [options]
 Output columns: stand position, range, crosshair yaw/pitch (deg), flight time, bounces,
 landing error, forgiveness (fraction of +-0.75 deg aim jitters still inside tolerance).
 
+## Position rule
+
+Every reported stand is a wedge coordinate: against TWO differently-facing wall faces (a
+wall corner, angled walls, or an object against a wall). The solver snaps each candidate
+to the capsule-pinned position (CapsuleRadius 42 from the files) - press W into the
+corner and the game stops you on the exact computed spot every time. Candidates with no
+wedge within reach (~110u) are discarded; a right-clicked stand in paired mode snaps the
+same way or yields no lineups.
+
 ## Physics model (from the game files)
 
 Launch 2900 u/s, gravity 1125 u/s^2 (world -2500 x scale 0.45), restitution 0.35,
