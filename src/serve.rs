@@ -413,19 +413,17 @@ fn flight_video(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, li
         let cam = if i + 12 >= first_bounce {
             land_cam // settle phase: fixed, guaranteed-visible viewpoint
         } else {
-            let vdir = (traj[(i + 3).min(traj.len() - 1)] - traj[i.saturating_sub(3)]).normalize();
-            let vh = V3::new(vdir.x, vdir.y, 0.0).norm().max(0.2);
-            let back = V3::new(-vdir.x / vh, -vdir.y / vh, 0.0);
-            let mut cam = m + back * 380.0 + V3::new(0.0, 0.0, 170.0);
-            let toc = cam - m;
-            let d = toc.norm();
-            let ray = Ray::new(nalgebra::Point3::from(m), toc / d);
-            if let Some(t) = vscene.mesh.cast_ray(&id, &ray, d, true) {
-                cam = m + toc / d * (t * 0.85).max(60.0);
-            }
-            cam
+            // over-the-shoulder: static at the thrower's head, panning with
+            // the molly. The old chase cam swung wildly on steep lobs (its
+            // horizontal "behind" direction degenerates near-vertical)
+            traj[0] + V3::new(0.0, 0.0, 90.0)
         };
-        let look = m - cam;
+        let mut look = m - cam;
+        if look.norm() < 150.0 {
+            // first frames: the molly is still at the camera; aim down the throw
+            look = traj[(i + 8).min(traj.len() - 1)] - cam;
+        }
+        let look = look;
         let cam_yaw = look.y.atan2(look.x).to_degrees();
         let cam_pitch = (look.z / look.norm()).asin().to_degrees();
         render::render_flight_sized(
