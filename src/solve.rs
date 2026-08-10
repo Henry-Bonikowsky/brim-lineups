@@ -100,6 +100,7 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Opti
     best
 }
 
+#[derive(Clone)]
 pub struct Lineup {
     pub dist: f32, // stand-to-target range (lineups are long throws, not tosses)
     pub stand: V3,
@@ -169,7 +170,9 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
             .into_iter()
             .filter(|p| seen.insert(((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64)))
             .collect();
-        eprintln!("stands: {n_in} candidates -> {} wedge-pinned", out.len());
+        if n_in > 1 {
+            eprintln!("stands: {n_in} candidates -> {} wedge-pinned", out.len());
+        }
         out
     };
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
@@ -339,12 +342,14 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
         })
         .collect();
 
-    eprintln!(
-        "flights: {} never stopped, {} landed far, {} within tol",
-        n_none.load(Relaxed),
-        n_far.load(Relaxed),
-        n_near.load(Relaxed)
-    );
+    if strict || !paired {
+        eprintln!(
+            "flights: {} never stopped, {} landed far, {} within tol",
+            n_none.load(Relaxed),
+            n_far.load(Relaxed),
+            n_near.load(Relaxed)
+        );
+    }
     // a lineup the solver itself rates near-zero forgiveness is untrustworthy
     // (tiny aim error cascades, e.g. clipping a sloped roof); prefer sturdy ones
     let sturdy = |v: &mut Vec<Lineup>| {
@@ -382,6 +387,32 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
             (l.dist - 3000.0).abs() / 1500.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0
         }
     };
+    out.sort_by(|a, b| {
+        key(a).total_cmp(&key(b)).then(a.stand.x.total_cmp(&b.stand.x)).then(a.stand.y.total_cmp(&b.stand.y))
+    });
+    // REFINE: the coarse per-stand sweep proves a stand WORKS, not that its
+    // angle is optimal (walk mode found better angles from the same spot in
+    // seconds). Re-run the exhaustive paired sweep from each surviving stand
+    // and keep its true fastest covered throw; browse rows optimize hitting
+    // their OWN landing spot
+    out.truncate(16);
+    let mut out: Vec<Lineup> = out
+        .par_iter()
+        .map(|l| {
+            let (rt, rtol) = if browse { (l.rest, 450.0) } else { (target, tol) };
+            let fams = solve(scene, &[l.stand], rt, rtol, 0.0, false, false, cfg);
+            match fams.into_iter().filter(|f| f.covered).min_by(|a, b| a.time.total_cmp(&b.time)) {
+                Some(mut f) => {
+                    // err stays relative to the original click for display/sort
+                    let dxy = ((f.rest.x - target.x).powi(2) + (f.rest.y - target.y).powi(2)).sqrt();
+                    let dz = (f.rest.z - target.z).abs();
+                    f.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+                    f
+                }
+                None => l.clone(),
+            }
+        })
+        .collect();
     out.sort_by(|a, b| {
         key(a).total_cmp(&key(b)).then(a.stand.x.total_cmp(&b.stand.x)).then(a.stand.y.total_cmp(&b.stand.y))
     });
