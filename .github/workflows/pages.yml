@@ -1,0 +1,48 @@
+name: pages
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      # version must match wasm-bindgen in Cargo.lock
+      - run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - run: cargo build --lib --release --target wasm32-unknown-unknown --no-default-features
+      - run: wasm-bindgen --target web --out-dir site/pkg target/wasm32-unknown-unknown/release/brim_lineups.wasm
+      - name: assemble site
+        run: |
+          cp cards/picker.html cards/worker.js cards/hud.png site/
+          cp cards/Ascent.png cards/Bonsai.png cards/Canyon.png cards/Duality.png cards/Foxtrot.png \
+             cards/Infinity.png cards/Jam.png cards/Juliett.png cards/Pitt.png cards/Plummet.png \
+             cards/Port.png cards/Rook.png cards/Triad.png site/
+          cp cards/picker.html site/index.html
+          cp -r packs site/packs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

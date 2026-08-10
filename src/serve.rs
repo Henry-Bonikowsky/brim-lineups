@@ -94,14 +94,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis();
-            // which rows to return / render: browse list = many rows, no
-            // renders; n=K = that one row, rendered; default = top 5 rendered
-            let row_idxs: Vec<usize> = match nsel {
-                Some(k) if k >= 1 && k <= lineups.len() => vec![k - 1],
-                Some(_) => vec![],
-                None if list_mode => (0..lineups.len().min(20)).collect(),
-                None => (0..lineups.len().min(5)).collect(),
-            };
+            let row_idxs: Vec<usize> = crate::api::row_indices(nsel, list_mode, lineups.len());
             let rendered = nsel.is_some() || !list_mode;
             if rendered {
                 use rayon::prelude::*;
@@ -122,31 +115,14 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             let mut rows = Vec::new();
             for (i, l) in row_idxs.iter().map(|&i| (i, &lineups[i])) {
                 let base = format!("live/{run}_{}", i + 1);
-                let aim = l
-                    .aim_ref
-                    .map(|(p, d)| format!("[{:.0},{:.0},{:.0},{:.0}]", p.x, p.y, p.z, d))
-                    .unwrap_or("null".into());
-                let uiref = l
-                    .ui_ref
-                    .map(|(name, dist, grade, _, _)| {
-                        format!("{{\"anchor\":\"{name}\",\"dist\":{dist:.0},\"grade\":{grade}}}")
-                    })
-                    .unwrap_or("null".into());
                 let imgs = if rendered {
                     format!("[\"{base}_r.bmp\",\"{base}_s.bmp\",\"{base}_w.bmp\"]")
                 } else {
                     "[]".into()
                 };
-                rows.push(format!(
-                    "{{\"idx\":{},\"stand\":[{:.0},{:.0},{:.0}],\"rest\":[{:.0},{:.0},{:.0}],\"range\":{:.0},\"yaw\":{:.1},\"pitch\":{:.1},\"time\":{:.2},\"bounces\":{},\"err\":{:.0},\"covered\":{},\"forgive\":{:.2},\"spread\":{:.0},\"pos\":{},\"aim_ref\":{},\"ui_ref\":{uiref},\"imgs\":{imgs}}}",
-                    i + 1, l.stand.x, l.stand.y, l.stand.z, l.rest.x, l.rest.y, l.rest.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.covered, l.forgive, l.spread, l.pos_grade(), aim
-                ));
+                rows.push(crate::api::row_json(i, l, &imgs));
             }
-            let body = format!(
-                "{{\"target\":[{tx:.0},{ty:.0},{tz:.0}],\"count\":{},\"lineups\":[{}]}}",
-                lineups.len(),
-                rows.join(",")
-            );
+            let body = crate::api::body_json(tx, ty, tz, lineups.len(), &rows);
             let _ = req.respond(
                 tiny_http::Response::from_string(body)
                     .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap()),
@@ -339,32 +315,10 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
     }
 }
 
-/// Stamp a magenta ring onto a 24bpp BMP at screen fractions (fx, fy): marks
-/// the UI reference anchor on the aim image so it is unambiguous.
+/// Stamp the UI-reference ring onto an aim BMP on disk (bytes logic in render).
 fn stamp_ring(path: &str, fx: f32, fy: f32) {
     let Ok(mut d) = std::fs::read(path) else { return };
-    if d.len() < 54 || &d[0..2] != b"BM" {
-        return;
-    }
-    let off = u32::from_le_bytes(d[10..14].try_into().unwrap()) as usize;
-    let w = i32::from_le_bytes(d[18..22].try_into().unwrap()) as usize;
-    let h = i32::from_le_bytes(d[22..26].try_into().unwrap()).unsigned_abs() as usize;
-    let row = (w * 3 + 3) & !3;
-    let (cx, cy) = ((fx * w as f32) as i32, (fy * h as f32) as i32);
-    for a in 0..96 {
-        let t = a as f32 / 96.0 * std::f32::consts::TAU;
-        for r in [16.0f32, 17.0, 18.0] {
-            let (x, y) = ((cx as f32 + t.cos() * r) as i32, (cy as f32 + t.sin() * r) as i32);
-            if x >= 0 && (x as usize) < w && y >= 0 && (y as usize) < h {
-                let o = off + (h - 1 - y as usize) * row + x as usize * 3;
-                if o + 2 < d.len() {
-                    d[o] = 255;
-                    d[o + 1] = 0;
-                    d[o + 2] = 255;
-                }
-            }
-        }
-    }
+    render::stamp_ring(&mut d, fx, fy);
     let _ = std::fs::write(path, d);
 }
 

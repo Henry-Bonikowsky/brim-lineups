@@ -124,7 +124,7 @@ const NAMES = { Triad: 'Haven', Bonsai: 'Split', Canyon: 'Fracture', Duality: 'B
 { const j = cams;
   const sel = document.getElementById('map');
   Object.keys(j).sort((a, b) => (NAMES[a] || a).localeCompare(NAMES[b] || b)).forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = NAMES[m] || m; sel.appendChild(o); });
-  sel.onchange = () => { document.getElementById('img').src = sel.value + '.png'; document.getElementById('dot').style.display = 'none'; document.getElementById('dot2').style.display = 'none'; document.querySelectorAll('.restdot').forEach(e => e.remove()); };
+  sel.onchange = () => { document.getElementById('img').src = sel.value + '.png'; document.getElementById('dot').style.display = 'none'; document.getElementById('dot2').style.display = 'none'; document.querySelectorAll('.restdot').forEach(e => e.remove()); const cv = document.getElementById('trajcv'); if (cv) cv.remove(); };
   sel.onchange();
 }
 // HUD overlay is fixed pixel-true (no user calibration): the game draws its
@@ -143,6 +143,73 @@ function toWorld(e) {
   return { X: c.cx + rx * du + ux * dv, Y: c.cy + ry * du + uy * dv, u, v };
 }
 const isLive = location.protocol.startsWith('http');
+// ---- mode: 'server' (local brim-lineups serve), 'wasm' (static hosting,
+// solver compiled to WebAssembly in a worker), 'file' (opened from disk) ----
+let mode = isLive ? null : 'file';
+const modeReady = (async () => {
+  if (!isLive) return;
+  try {
+    const r = await fetch('/solve'); // tiny_http: 400 "bad map"; static host: 404
+    mode = r.status === 400 ? 'server' : 'wasm';
+  } catch { mode = 'wasm'; }
+  if (mode === 'wasm') initWasm();
+})();
+let worker, wid = 0;
+const wpending = {};
+function initWasm() {
+  worker = new Worker('worker.js', { type: 'module' });
+  worker.onmessage = e => {
+    const p = wpending[e.data.id];
+    delete wpending[e.data.id];
+    if (p) e.data.error ? p.rej(e.data.error) : p.res(e.data.result);
+  };
+  document.getElementById('walkbtn').style.display = 'none'; // walk mode is native-only
+}
+function wcall(cmd, ...args) {
+  return new Promise((res, rej) => { const id = ++wid; wpending[id] = { res, rej }; worker.postMessage({ id, cmd, args }); });
+}
+let loadedMap = null, packLoading = null;
+async function ensurePack(m, say) {
+  while (packLoading) await packLoading; // one pack transfer at a time
+  if (loadedMap === m) return;
+  let done;
+  packLoading = new Promise(r => done = r);
+  try {
+    const url = `packs/${m}.blp.gz`;
+    let cache = null;
+    try { cache = await caches.open('bl-packs-v1'); } catch {}
+    let resp = cache && await cache.match(url);
+    const cached = !!resp;
+    if (!resp) {
+      const net = await fetch(url);
+      if (!net.ok) throw `map pack missing (${net.status})`;
+      if (cache) { await cache.put(url, net); resp = await cache.match(url); }
+      else resp = net;
+    }
+    const total = +resp.headers.get('content-length') || 0;
+    let got = 0;
+    const counter = new TransformStream({
+      transform(chunk, c) {
+        got += chunk.byteLength;
+        say(`${cached ? 'loading cached' : 'downloading'} map data... ${(got / 1e6).toFixed(1)}${total ? ' / ' + (total / 1e6).toFixed(1) : ''} MB`);
+        c.enqueue(chunk);
+      }
+    });
+    const buf = await new Response(resp.body.pipeThrough(counter).pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    say('building the map (one-time per visit)...');
+    await wcall('load', buf);
+    loadedMap = m;
+  } finally { done(); packLoading = null; }
+}
+let wasmUrls = [];
+async function wasmImgs(n) {
+  const bufs = await wcall('render', targetPt.X, targetPt.Y, !standPt, n,
+    standPt ? standPt.X : undefined, standPt ? standPt.Y : undefined);
+  const urls = bufs.map(b => URL.createObjectURL(new Blob([b], { type: 'image/bmp' })));
+  wasmUrls.push(...urls);
+  if (wasmUrls.length > 30) wasmUrls.splice(0, wasmUrls.length - 30).forEach(u => URL.revokeObjectURL(u));
+  return urls;
+}
 async function refresh() {
   const m = document.getElementById('map').value;
   let txt = '';
@@ -176,11 +243,15 @@ function lineupHtml(l, n) {
     ? `<span class='good'>easy position - press W into the corner shown, rough is fine</span>`
     : `<span class='mid'>corner-pinned - press W into the corner shown in the top-down view until you stop</span>`;
   let h = `<h3>#${n}: ${verdict}. ${pos}. range ${m2(l.range)}, ${l.time}s flight, ${l.bounces} bounces. ${aim}. stand (${l.stand.join(', ')})</h3>`;
-  h += l.imgs.map((im, k) => k === 0
+  h += imgsHtml(l.imgs);
+  const walkbtn = mode === 'wasm' ? '' : ` <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button>`;
+  h += `<div id='vid${n}'><button onclick='flightVideo(${n})'>flight ${mode === 'wasm' ? 'path' : 'video'}</button>${walkbtn}</div>`;
+  return h;
+}
+function imgsHtml(ims) {
+  return ims.map((im, k) => k === 0
     ? `<span class='aimwrap' onclick='bigAim(this)' title='click to enlarge'><img src='${im}'><img class='hudlayer' src='hud.png?v=3'></span>`
     : `<img src='${im}'>`).join('');
-  h += `<div id='vid${n}'><button onclick='flightVideo(${n})'>flight video</button> <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button></div>`;
-  return h;
 }
 // map world -> minimap fraction (inverse of toWorld)
 function toPx(X, Y) {
@@ -210,8 +281,14 @@ async function pickLineup(n) {
   hiDot(n);
   det.innerHTML = `<p>rendering #${n}...</p>`;
   try {
-    const q = `/solve?map=${m}&tx=${targetPt.X.toFixed(0)}&ty=${targetPt.Y.toFixed(0)}&list=1&n=${n}`;
-    const j = await (await fetch(q)).json();
+    let j;
+    if (mode === 'wasm') {
+      j = JSON.parse(await wcall('solve', targetPt.X, targetPt.Y, true, n));
+      if (!j.error && j.lineups.length) j.lineups[0].imgs = await wasmImgs(n);
+    } else {
+      const q = `/solve?map=${m}&tx=${targetPt.X.toFixed(0)}&ty=${targetPt.Y.toFixed(0)}&list=1&n=${n}`;
+      j = await (await fetch(q)).json();
+    }
     if (j.error || !j.lineups.length) { det.innerHTML = `<p>${j.error || 'render failed'}</p>`; return; }
     det.innerHTML = lineupHtml(j.lineups[0], n);
     det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -219,15 +296,27 @@ async function pickLineup(n) {
   } catch (e) { det.innerHTML = `<p>render failed: ${e}</p>`; }
 }
 async function solveNow(m) {
+  await modeReady;
   if (solving) return;
   solving = true;
   const res = document.getElementById('results');
-  res.innerHTML = '<p>solving' + (standPt ? ' (paired)' : '') + '... first click on a map loads it (~20s), later clicks are fast</p>';
+  res.innerHTML = '<p>solving' + (standPt ? ' (paired)' : '') + (mode === 'wasm'
+    ? '... the solver runs in YOUR browser - the first solve on a map downloads it and takes a few minutes</p>'
+    : '... first click on a map loads it (~20s), later clicks are fast</p>');
   let q = `/solve?map=${m}&tx=${targetPt.X.toFixed(0)}&ty=${targetPt.Y.toFixed(0)}`;
   if (standPt) q += `&sx=${standPt.X.toFixed(0)}&sy=${standPt.Y.toFixed(0)}`;
   else q += '&list=1';
   try {
-    const j = await (await fetch(q)).json();
+    let j;
+    if (mode === 'wasm') {
+      const note = res.querySelector('p');
+      await ensurePack(m, t => note.textContent = t);
+      note.textContent = 'solving in your browser... a full-map hunt can take a few minutes, hang tight';
+      j = JSON.parse(await wcall('solve', targetPt.X, targetPt.Y, !standPt, undefined,
+        standPt ? standPt.X : undefined, standPt ? standPt.Y : undefined));
+    } else {
+      j = await (await fetch(q)).json();
+    }
     if (j.error) { res.innerHTML = `<p>${j.error}</p>`; solving = false; return; }
     if (!standPt) {
       // browse mode: every lineup landing near the click, pick by end location
@@ -254,6 +343,15 @@ async function solveNow(m) {
     if (!j.count) h += `<p class='warn'>no lineups. Stands must be against two faces (a wall corner or object-against-wall you can press W into) - your right-clicked stand must be within ~1m of such a corner.</p>`;
     j.lineups.forEach((l, i) => { h += lineupHtml(l, l.idx || i + 1); });
     res.innerHTML = h;
+    if (mode === 'wasm') {
+      // renders come from the wasm side one row at a time (no server files)
+      for (const [i, l] of j.lineups.entries()) {
+        const n = l.idx || i + 1;
+        try {
+          document.getElementById('vid' + n).insertAdjacentHTML('beforebegin', imgsHtml(await wasmImgs(n)));
+        } catch (e) { break; }
+      }
+    }
     flightVideo(1); // auto for the best lineup
   } catch (e) {
     res.innerHTML = `<p>solve failed: ${e}</p>`;
@@ -264,6 +362,18 @@ async function flightVideo(n) {
   const m = document.getElementById('map').value;
   const slot = document.getElementById('vid' + n);
   if (!slot || !targetPt) return;
+  if (mode === 'wasm') {
+    // no ffmpeg on the web: animate the simulated trajectory on the minimap
+    slot.innerHTML = 'simulating flight...';
+    try {
+      const j = JSON.parse(await wcall('traj', targetPt.X, targetPt.Y, !standPt, n,
+        standPt ? standPt.X : undefined, standPt ? standPt.Y : undefined));
+      if (j.error) { slot.innerHTML = j.error; return; }
+      slot.innerHTML = `<span style='color:var(--dim)'>flight path is animating on the minimap (${j.time}s, ${j.bounces} bounces) - <a href='#' style='color:var(--teal)' onclick='event.preventDefault(); animTraj(animTraj.last)'>replay</a></span>`;
+      animTraj(j);
+    } catch (e) { slot.innerHTML = 'flight failed: ' + e; }
+    return;
+  }
   slot.innerHTML = 'rendering flight video (~20s)...';
   let q = `/video?map=${m}&tx=${targetPt.X.toFixed(0)}&ty=${targetPt.Y.toFixed(0)}&n=${n}`;
   if (standPt) q += `&sx=${standPt.X.toFixed(0)}&sy=${standPt.Y.toFixed(0)}`;
@@ -274,6 +384,51 @@ async function flightVideo(n) {
       ? `<video autoplay loop muted playsinline controls src='${j.video}' style='width:640px;margin:4px 0'></video>`
       : (j.error || 'failed');
   } catch (e) { slot.innerHTML = 'video failed: ' + e; }
+}
+// ---- minimap trajectory animation (wasm mode's flight video) ----
+function animTraj(j) {
+  if (!j) return;
+  animTraj.last = j;
+  const wrap = document.getElementById('img').parentElement;
+  let cv = document.getElementById('trajcv');
+  if (!cv) {
+    cv = document.createElement('canvas');
+    cv.id = 'trajcv';
+    cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5';
+    wrap.appendChild(cv);
+  }
+  const img = document.getElementById('img');
+  cv.width = img.clientWidth * 2; cv.height = img.clientHeight * 2; // 2x for crispness
+  const ctx = cv.getContext('2d');
+  const px = p => { const q = toPx(p[0], p[1]); return [q.u * cv.width, q.v * cv.height]; };
+  const fb = Math.min(j.first_bounce, j.traj.length - 1);
+  const t0 = performance.now(), dur = 2600 + (j.traj.length - fb) * 10;
+  cancelAnimationFrame(animTraj.raf);
+  const step = () => {
+    const f = Math.min(1, (performance.now() - t0) / dur);
+    // pace like the native video: 55% of the time to the first bounce,
+    // the bounce/settle phase in slow motion
+    const i = f < 0.55 ? Math.floor(f / 0.55 * fb)
+      : Math.floor(fb + (f - 0.55) / 0.45 * (j.traj.length - 1 - fb));
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const [tx2, ty2] = px(j.rest);
+    ctx.strokeStyle = '#58e07a'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(tx2, ty2, 14, 0, 7); ctx.stroke();
+    ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3; ctx.beginPath();
+    for (let k = 0; k <= i; k += 2) {
+      const [x, y] = px(j.traj[k]);
+      k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+    const p = j.traj[Math.min(i, j.traj.length - 1)];
+    const [x, y] = px(p);
+    // dot grows with altitude so the arc reads on a top-down map
+    const r = 6 + Math.max(0, p[2] - j.rest[2]) / 250;
+    ctx.fillStyle = '#ff6e1e'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    if (f < 1) animTraj.raf = requestAnimationFrame(step);
+    else setTimeout(() => { if (animTraj.last === j) ctx.clearRect(0, 0, cv.width, cv.height); }, 2500);
+  };
+  step();
 }
 // ---- walk mode: control a player in the sim ----
 const walk = { on: false, x: 0, y: 0, yaw: 0, pitch: 0, keys: {}, busy: false, last: 0 };

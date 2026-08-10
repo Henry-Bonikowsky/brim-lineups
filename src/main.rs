@@ -9,12 +9,7 @@
 //! from the game files (C:\dev\research\brim-molly-physics.md). --eye and --arc
 //! are the two native-unknown calibration knobs.
 
-mod render;
-mod scene;
-mod serve;
-mod sim;
-mod solve;
-
+use brim_lineups::{pack, render, scene, serve, sim, solve};
 use scene::V3;
 
 fn main() {
@@ -23,6 +18,36 @@ fn main() {
         let root = args.get(2).cloned().unwrap_or_else(|| r"C:\dev\active\ValoBoard\third_party\valorant_dump".into());
         let port: u16 = args.get(3).and_then(|p| p.parse().ok()).unwrap_or(8777);
         serve::serve(&root, "cards", port);
+        return;
+    }
+    if args.get(1).map(|a| a == "pack").unwrap_or(false) {
+        // pack <dumpDir> <out.blp.gz>: filtered binary map bundle for the web build
+        pack::pack(std::path::Path::new(&args[2]), std::path::Path::new(&args[3]));
+        return;
+    }
+    if args.get(1).map(|a| a == "packrender").unwrap_or(false) {
+        // packrender <pack.gz> <tx> <ty> <outPrefix>: browse-solve + render row 1
+        // from the PACKED scenes (native run of the exact wasm code path)
+        use std::io::Read as _;
+        let mut bytes = Vec::new();
+        flate2::read::GzDecoder::new(std::fs::File::open(&args[2]).expect("pack"))
+            .read_to_end(&mut bytes)
+            .expect("gunzip");
+        let (cs, vs) = scene::load_pack(&bytes);
+        let (tx, ty): (f32, f32) = (args[3].parse().unwrap(), args[4].parse().unwrap());
+        let cfg = sim::Cfg::default();
+        let tz = cs.ground_z(tx, ty).expect("ground");
+        let target = V3::new(tx, ty, tz);
+        let lineups = solve::solve(&cs, &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
+        eprintln!("{} lineups", lineups.len());
+        let l = &lineups[0];
+        eprintln!("row1: stand ({:.0},{:.0},{:.0}) yaw {:.1} pitch {:.1} rest ({:.0},{:.0},{:.0})",
+            l.stand.x, l.stand.y, l.stand.z, l.yaw, l.pitch, l.rest.x, l.rest.y, l.rest.z);
+        let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
+        render::render(&vs, eye, l.yaw, l.pitch, &format!("{}_r.bmp", args[5]));
+        render::render_grid(&vs, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &format!("{}_s.bmp", args[5]));
+        let (we, wy, wp) = render::wide_cam(&vs, l.stand, l.yaw);
+        render::render_marked(&vs, we, wy, wp, &format!("{}_w.bmp", args[5]), l.stand + V3::new(0.0, 0.0, 40.0));
         return;
     }
     if args.len() < 2 {
@@ -121,6 +146,22 @@ fn main() {
                     None => println!("[{label:>10}] {name}: no hit"),
                 }
             }
+        }
+        return;
+    }
+    if let Some(t) = get("--xray") {
+        // like --throw but against the UNFILTERED everything-scene: the first
+        // contact names geometry the collision filters dropped that the real
+        // map might block with
+        let c: Vec<f32> = t.split(',').map(|x| x.trim().parse().unwrap()).collect();
+        let (sy, cy) = c[3].to_radians().sin_cos();
+        let (sp, cp) = c[4].to_radians().sin_cos();
+        let dir_v = V3::new(cp * cy, cp * sy, sp);
+        let escene = scene::load_everything(&dir);
+        let o = sim::hand_origin(V3::new(c[0], c[1], c[2]), c[3], &cfg);
+        match sim::fly_path_traced(&escene, o, dir_v, &cfg) {
+            Some((r, _, _)) => eprintln!("xray rest ({:.0},{:.0},{:.0}) t={:.2}", r.rest.x, r.rest.y, r.rest.z, r.time),
+            None => eprintln!("xray never stopped"),
         }
         return;
     }

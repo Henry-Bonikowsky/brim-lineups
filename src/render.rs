@@ -40,16 +40,28 @@ fn surface_color(scene: &crate::scene::Scene, tri: u32, n: V3, wp: V3) -> [f32; 
 }
 
 pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, None, None, DEF_W, DEF_H)
+    std::fs::write(path, render_bytes(scene, eye, yaw_deg, pitch_deg)).expect("write bmp")
+}
+
+pub fn render_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32) -> Vec<u8> {
+    render_ex(scene, eye, yaw_deg, pitch_deg, false, None, None, DEF_W, DEF_H)
 }
 
 pub fn render_grid(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, None, None, DEF_W, DEF_H)
+    std::fs::write(path, render_grid_bytes(scene, eye, yaw_deg, pitch_deg)).expect("write bmp")
+}
+
+pub fn render_grid_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32) -> Vec<u8> {
+    render_ex(scene, eye, yaw_deg, pitch_deg, true, None, None, DEF_W, DEF_H)
 }
 
 /// Wide context shot with a ring marking a world point (the stand spot).
 pub fn render_marked(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, mark: V3) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, true, Some(mark), None, DEF_W, DEF_H)
+    std::fs::write(path, render_marked_bytes(scene, eye, yaw_deg, pitch_deg, mark)).expect("write bmp")
+}
+
+pub fn render_marked_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, mark: V3) -> Vec<u8> {
+    render_ex(scene, eye, yaw_deg, pitch_deg, true, Some(mark), None, DEF_W, DEF_H)
 }
 
 /// One flight-video frame: trail polyline up to `upto`, molly dot at `upto`,
@@ -64,7 +76,8 @@ pub fn render_flight(
     traj: &[V3],
     upto: usize,
 ) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, Some(target), Some((traj, upto)), DEF_W, DEF_H)
+    std::fs::write(path, render_ex(scene, eye, yaw_deg, pitch_deg, false, Some(target), Some((traj, upto)), DEF_W, DEF_H))
+        .expect("write bmp")
 }
 
 /// Pick a context-camera position that can actually SEE the stand: behind-above
@@ -133,7 +146,8 @@ pub fn render_flight_sized(
     w: usize,
     h: usize,
 ) {
-    render_ex(scene, eye, yaw_deg, pitch_deg, path, false, Some(target), Some((traj, upto)), w, h)
+    std::fs::write(path, render_ex(scene, eye, yaw_deg, pitch_deg, false, Some(target), Some((traj, upto)), w, h))
+        .expect("write bmp")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -141,8 +155,8 @@ pub fn render_flight_sized(
 /// parallel over rows: fast enough to stream. Same hillshade / sky / HUD /
 /// crosshair language as the stills. Returns finished BMP bytes (no disk).
 pub fn render_pov_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, w: usize, h: usize) -> Vec<u8> {
+    use crate::par::*;
     use parry3d::query::{Ray, RayCast};
-    use rayon::prelude::*;
     let (sy, cy) = yaw_deg.to_radians().sin_cos();
     let (sp, cp) = pitch_deg.to_radians().sin_cos();
     let fwd = V3::new(cp * cy, cp * sy, sp);
@@ -220,13 +234,12 @@ fn render_ex(
     eye: V3,
     yaw_deg: f32,
     pitch_deg: f32,
-    path: &str,
     grid: bool,
     mark: Option<V3>,
     traj: Option<(&[V3], usize)>,
     w: usize,
     h: usize,
-) {
+) -> Vec<u8> {
     #[allow(non_snake_case)]
     let (W, H) = (w, h);
     let (sy, cy) = yaw_deg.to_radians().sin_cos();
@@ -485,5 +498,32 @@ fn render_ex(
     bmp.extend_from_slice(&24u16.to_le_bytes());
     bmp.extend_from_slice(&[0; 24]);
     bmp.extend_from_slice(&px);
-    std::fs::write(path, bmp).expect("write bmp");
+    bmp
+}
+
+/// Stamp a magenta ring onto a 24bpp BMP at screen fractions (fx, fy): marks
+/// the UI reference anchor on the aim image so it is unambiguous.
+pub fn stamp_ring(d: &mut [u8], fx: f32, fy: f32) {
+    if d.len() < 54 || &d[0..2] != b"BM" {
+        return;
+    }
+    let off = u32::from_le_bytes(d[10..14].try_into().unwrap()) as usize;
+    let w = i32::from_le_bytes(d[18..22].try_into().unwrap()) as usize;
+    let h = i32::from_le_bytes(d[22..26].try_into().unwrap()).unsigned_abs() as usize;
+    let row = (w * 3 + 3) & !3;
+    let (cx, cy) = ((fx * w as f32) as i32, (fy * h as f32) as i32);
+    for a in 0..96 {
+        let t = a as f32 / 96.0 * std::f32::consts::TAU;
+        for r in [16.0f32, 17.0, 18.0] {
+            let (x, y) = ((cx as f32 + t.cos() * r) as i32, (cy as f32 + t.sin() * r) as i32);
+            if x >= 0 && (x as usize) < w && y >= 0 && (y as usize) < h {
+                let o = off + (h - 1 - y as usize) * row + x as usize * 3;
+                if o + 2 < d.len() {
+                    d[o] = 255;
+                    d[o + 1] = 0;
+                    d[o + 2] = 255;
+                }
+            }
+        }
+    }
 }

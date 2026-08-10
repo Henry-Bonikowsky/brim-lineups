@@ -15,11 +15,15 @@ pub type V3 = Vector3<f32>;
 /// BP_ProjectileBlockingVolume actors and the molly demonstrably bounces off
 /// them in game (2026-08-03 clips: both real throws clipped the volume at the
 /// Breeze courtyard tower that the bare art meshes do not cover).
-const UMAP_BLACKLIST: [&str; 19] = [
-    "Vista", "Skybox", "Lighting", "Inactive", "_Alt", "_FFA", "QuickSpike", "SiteRush",
+const UMAP_BLACKLIST: [&str; 18] = [
+    "Skybox", "Lighting", "Inactive", "_Alt", "_FFA", "QuickSpike", "SiteRush",
     "SpikeRush", "Profiling", "BTIL", "ObserverCameras", "Greybox",
     "FortCollins", "KillVolumes", "BVPawn", "VFX", "Working", "DesignChanges",
 ];
+// "Vista" is NOT in the blacklist: vista sublevels are always-loaded scenery
+// the game really shows (Lotus's mountains) and must RENDER for aim
+// references against the skyline; they stay out of COLLISION only (no molly
+// collision, handled per-mode below).
 // NOTE: "Destruction" must NOT be blacklisted: on Haven the live C site IS
 // Triad_Art_C_Destruction (the persistent level streams it always-loaded and
 // does not stream the old Triad_Art_C at all).
@@ -28,7 +32,7 @@ const UMAP_BLACKLIST: [&str; 19] = [
 /// Always-loaded sublevels plus the BombMode set are what the live bomb-mode
 /// map consists of; everything else (old art variants, alt modes, dev levels)
 /// is not in the game. Falls back to None (name blacklist only) if missing.
-fn allowed_umaps(dir: &Path) -> Option<std::collections::HashSet<String>> {
+pub(crate) fn allowed_umaps(dir: &Path) -> Option<std::collections::HashSet<String>> {
     let name = dir.file_name()?.to_str()?;
     let txt = std::fs::read_to_string(dir.join(format!("{name}.json"))).ok()?;
     let v: Value = serde_json::from_str(&txt).ok()?;
@@ -169,7 +173,7 @@ impl Scene {
 }
 
 /// 24bpp BMP reader for the dumped ground textures (bottom-up rows -> top-down).
-fn load_bmp(path: &Path) -> Option<TexImg> {
+pub(crate) fn load_bmp(path: &Path) -> Option<TexImg> {
     let d = std::fs::read(path).ok()?;
     if d.len() < 54 || &d[0..2] != b"BM" {
         return None;
@@ -202,18 +206,18 @@ fn rotm(pitch: f32, yaw: f32, roll: f32) -> [[f32; 3]; 3] {
     ]
 }
 
-fn xyz(v: &Value, d: f32) -> [f32; 3] {
+pub(crate) fn xyz(v: &Value, d: f32) -> [f32; 3] {
     let g = |k: &str| v.get(k).and_then(Value::as_f64).map(|x| x as f32).unwrap_or(d);
     [g("X"), g("Y"), g("Z")]
 }
 
-fn rot3(v: &Value) -> [f32; 3] {
+pub(crate) fn rot3(v: &Value) -> [f32; 3] {
     let g = |k: &str| v.get(k).and_then(Value::as_f64).map(|x| x as f32).unwrap_or(0.0);
     [g("Pitch"), g("Yaw"), g("Roll")]
 }
 
 /// Minimal OBJ reader for valo_dump meshes (v/f triangles only), local space.
-fn load_obj(path: &Path) -> Option<(Vec<[f32; 3]>, Vec<[u32; 3]>)> {
+pub(crate) fn load_obj(path: &Path) -> Option<(Vec<[f32; 3]>, Vec<[u32; 3]>)> {
     let text = std::fs::read_to_string(path).ok()?;
     let (mut vs, mut fs) = (Vec::new(), Vec::new());
     for line in text.lines() {
@@ -259,6 +263,136 @@ pub enum Mode {
     Everything,
 }
 
+/// The one filter decision for an instance, shared by load_ex and the pack
+/// writer so the packed bundle contains exactly the triangles the native
+/// loader would build.
+pub(crate) fn keep_instance(
+    i: &Value,
+    allowed: &Option<std::collections::HashSet<String>>,
+    mode: Mode,
+) -> bool {
+    let umap = i["umap"].as_str().unwrap_or("");
+    let mesh = i["mesh"].as_str().unwrap_or("");
+    // real world geometry is Environment art; Cube/BasicShape placements are
+    // trigger volumes, barriers, and markup, never molly-blocking surfaces.
+    // GameObjectMesh components are pickups (ult orbs), overlap-only in game.
+    // Bombsite outline/glow markers are decals + a target-view column: they
+    // render as thin overlays in game and block nothing.
+    let comp = i["component"].as_str().unwrap_or("");
+    // BVProjectile sublevels hold the molly-blocking stand-ins for props
+    // whose art mesh is NoCollision: accurate per-prop *Collision shells.
+    // The crude Box_For_Volumes cubes in the same sublevel do NOT block
+    // mollies. Shells load, cubes never do.
+    let bv_proj = umap.contains("BVProjectile");
+    if mode != Mode::Everything
+        && (allowed.as_ref().is_some_and(|a| !a.contains(umap))
+            || !(mesh.contains("/Environment/") || bv_proj)
+            || comp == "GameObjectMesh"
+            || comp.starts_with("StaticMesh_Glow")
+            || comp.contains("TargetViewMode")
+            || mesh.contains("Bombsite_")
+            || mesh.contains("BombSite")
+            || mesh.contains("BVS_Bomb")
+            || mesh.contains("Box_For_Volumes")
+            || (mode == Mode::Collision && umap.contains("Vista"))
+            || UMAP_BLACKLIST.iter().any(|b| umap.contains(b)))
+    {
+        return false;
+    }
+    if mode == Mode::Collision && MESH_BLACKLIST.iter().any(|b| mesh.contains(b)) {
+        return false;
+    }
+    if mode == Mode::Visual && mesh.contains("Sky") {
+        return false;
+    }
+    // component collision override: cosmetics (glow columns, outlines, FX
+    // shells) carry NoCollision and must not block the molly (but they ARE
+    // visible, so the visual scene keeps them)
+    let coll = &i["collision"];
+    if mode == Mode::Collision && !coll.is_null() {
+        let enabled = coll["enabled"].as_str().unwrap_or("");
+        let profile = coll["profile"].as_str().unwrap_or("");
+        if enabled == "ECollisionEnabled::NoCollision"
+            || profile == "NoCollision"
+            || profile.starts_with("Overlap")
+            || profile.starts_with("Trigger")
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// One placement's sub-instances as plain floats: (quat xyzw, translation,
+/// scale). Empty = a plain (non-instanced) placement.
+pub(crate) type SubInsts = Vec<([f32; 4], [f32; 3], [f32; 3])>;
+
+pub(crate) fn parse_subinsts(i: &Value) -> SubInsts {
+    i["perInstance"]
+        .as_array()
+        .map(|insts| {
+            insts
+                .iter()
+                .map(|inst| {
+                    let q = &inst["Rotation"];
+                    let g = |k: &str| q.get(k).and_then(Value::as_f64).map(|x| x as f32).unwrap_or(0.0);
+                    (
+                        [g("X"), g("Y"), g("Z"), q.get("W").and_then(Value::as_f64).map(|x| x as f32).unwrap_or(1.0)],
+                        xyz(&inst["Translation"], 0.0),
+                        xyz(&inst["Scale3D"], 1.0),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// World-space triangle expansion for one placement: EXACTLY the float ops of
+/// the original loader (both the native JSON path and the wasm pack path call
+/// this, so their triangle soups are bit-identical).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn place_tris(
+    vs: &[[f32; 3]],
+    fs: &[[u32; 3]],
+    loc: [f32; 3],
+    rot: [f32; 3],
+    scale: [f32; 3],
+    subinsts: &SubInsts,
+    tris: &mut Vec<[[f32; 3]; 3]>,
+) {
+    let m = rotm(rot[0], rot[1], rot[2]);
+    let comp = |v: [f32; 3]| -> [f32; 3] {
+        let l = [v[0] * scale[0], v[1] * scale[1], v[2] * scale[2]];
+        [
+            loc[0] + l[0] * m[0][0] + l[1] * m[1][0] + l[2] * m[2][0],
+            loc[1] + l[0] * m[0][1] + l[1] * m[1][1] + l[2] * m[2][1],
+            loc[2] + l[0] * m[0][2] + l[1] * m[1][2] + l[2] * m[2][2],
+        ]
+    };
+    if !subinsts.is_empty() {
+        // instanced meshes (benches, props, clutter): per-instance transform
+        // relative to the component, then the component world transform
+        for (q, it, is) in subinsts {
+            let im = quat_rotm(q[0], q[1], q[2], q[3]);
+            let xf = |v: [f32; 3]| -> [f32; 3] {
+                let l = [v[0] * is[0], v[1] * is[1], v[2] * is[2]];
+                comp([
+                    it[0] + l[0] * im[0][0] + l[1] * im[1][0] + l[2] * im[2][0],
+                    it[1] + l[0] * im[0][1] + l[1] * im[1][1] + l[2] * im[2][1],
+                    it[2] + l[0] * im[0][2] + l[1] * im[1][2] + l[2] * im[2][2],
+                ])
+            };
+            for f in fs.iter() {
+                tris.push([xf(vs[f[0] as usize]), xf(vs[f[1] as usize]), xf(vs[f[2] as usize])]);
+            }
+        }
+    } else {
+        for f in fs.iter() {
+            tris.push([comp(vs[f[0] as usize]), comp(vs[f[1] as usize]), comp(vs[f[2] as usize])]);
+        }
+    }
+}
+
 /// Collision scene for the flight sim (strict molly-blocking filter).
 pub fn load(dir: &Path) -> Scene {
     load_ex(dir, Mode::Collision)
@@ -298,78 +432,17 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
     let colors: HashMap<String, [f32; 3]> = HashMap::new();
     let (mut used, mut skipped_umap, mut skipped_inst) = (0usize, 0usize, 0usize);
     for i in &inst {
-        let umap = i["umap"].as_str().unwrap_or("");
+        if !keep_instance(i, &allowed, mode) {
+            skipped_umap += 1;
+            continue;
+        }
         let mesh = i["mesh"].as_str().unwrap_or("");
-        // real world geometry is Environment art; Cube/BasicShape placements are
-        // trigger volumes, barriers, and markup, never molly-blocking surfaces.
-        // GameObjectMesh components are pickups (ult orbs), overlap-only in game.
-        // Bombsite outline/glow markers are decals + a target-view column: they
-        // render as thin overlays in game and block nothing.
-        let comp = i["component"].as_str().unwrap_or("");
-        // BVProjectile sublevels hold the molly-blocking stand-ins for props
-        // whose art mesh is NoCollision: accurate per-prop *Collision shells
-        // (Breeze pyramid tower, Triad cargo tarp - the 2026-08-03 clips that
-        // "clipped the volume" clipped the pyramid SHELL). The crude
-        // Box_For_Volumes cubes in the same sublevel do NOT block mollies:
-        // 2026-08-10 Henry's Triad throw flew through one 56u below its top
-        // and landed beyond the box. Shells load, cubes never do.
-        let bv_proj = umap.contains("BVProjectile");
-        if mode != Mode::Everything
-            && (allowed.as_ref().is_some_and(|a| !a.contains(umap))
-                || !(mesh.contains("/Environment/") || bv_proj)
-                || comp == "GameObjectMesh"
-                || comp.starts_with("StaticMesh_Glow")
-                || comp.contains("TargetViewMode")
-                || mesh.contains("Bombsite_")
-                || mesh.contains("BombSite")
-                || mesh.contains("BVS_Bomb")
-                || mesh.contains("Box_For_Volumes")
-                || UMAP_BLACKLIST.iter().any(|b| umap.contains(b)))
-        {
-            skipped_umap += 1;
-            continue;
-        }
-        if mode == Mode::Collision && MESH_BLACKLIST.iter().any(|b| mesh.contains(b)) {
-            skipped_umap += 1;
-            continue;
-        }
-        if mode == Mode::Visual && (mesh.contains("Sky") || mesh.contains("Vista")) {
-            skipped_umap += 1;
-            continue;
-        }
-        // component collision override: cosmetics (glow columns, outlines, FX
-        // shells) carry NoCollision and must not block the molly (but they ARE
-        // visible, so the visual scene keeps them)
-        let coll = &i["collision"];
-        if mode == Mode::Collision && !coll.is_null() {
-            let enabled = coll["enabled"].as_str().unwrap_or("");
-            let profile = coll["profile"].as_str().unwrap_or("");
-            if enabled == "ECollisionEnabled::NoCollision"
-                || profile == "NoCollision"
-                || profile.starts_with("Overlap")
-                || profile.starts_with("Trigger")
-            {
-                skipped_umap += 1;
-                continue;
-            }
-        }
+        let umap = i["umap"].as_str().unwrap_or("");
         let obj_name = mesh.replace('/', "_").replace('.', "_") + ".obj";
         let entry = objs
             .entry(obj_name.clone())
             .or_insert_with(|| load_obj(&dir.join("meshes").join(&obj_name)));
         let Some((vs, fs)) = entry else { continue };
-        let loc = xyz(&i["location"], 0.0);
-        let rot = rot3(&i["rotation"]);
-        let scale = xyz(&i["scale"], 1.0);
-        let m = rotm(rot[0], rot[1], rot[2]);
-        let comp = |v: [f32; 3]| -> [f32; 3] {
-            let l = [v[0] * scale[0], v[1] * scale[1], v[2] * scale[2]];
-            [
-                loc[0] + l[0] * m[0][0] + l[1] * m[1][0] + l[2] * m[2][0],
-                loc[1] + l[0] * m[0][1] + l[1] * m[1][1] + l[2] * m[2][1],
-                loc[2] + l[0] * m[0][2] + l[1] * m[1][2] + l[2] * m[2][2],
-            ]
-        };
         tri_owner.push((tris.len() as u32, format!("{umap}:{}", i["component"].as_str().unwrap_or("?"))));
         tri_color.push((
             tris.len() as u32,
@@ -383,33 +456,9 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
             })
             .clone();
         tri_tex.push((tris.len() as u32, tex));
-        if let Some(insts) = i["perInstance"].as_array() {
-            // instanced meshes (benches, props, clutter): per-instance transform
-            // relative to the component, then the component world transform
-            for inst in insts {
-                let q = &inst["Rotation"];
-                let g = |k: &str| q.get(k).and_then(Value::as_f64).map(|x| x as f32).unwrap_or(0.0);
-                let im = quat_rotm(g("X"), g("Y"), g("Z"), q.get("W").and_then(Value::as_f64).map(|x| x as f32).unwrap_or(1.0));
-                let it = xyz(&inst["Translation"], 0.0);
-                let is = xyz(&inst["Scale3D"], 1.0);
-                let xf = |v: [f32; 3]| -> [f32; 3] {
-                    let l = [v[0] * is[0], v[1] * is[1], v[2] * is[2]];
-                    comp([
-                        it[0] + l[0] * im[0][0] + l[1] * im[1][0] + l[2] * im[2][0],
-                        it[1] + l[0] * im[0][1] + l[1] * im[1][1] + l[2] * im[2][1],
-                        it[2] + l[0] * im[0][2] + l[1] * im[1][2] + l[2] * im[2][2],
-                    ])
-                };
-                for f in fs.iter() {
-                    tris.push([xf(vs[f[0] as usize]), xf(vs[f[1] as usize]), xf(vs[f[2] as usize])]);
-                }
-            }
-            skipped_inst += insts.len(); // counted as expanded now
-        } else {
-            for f in fs.iter() {
-                tris.push([comp(vs[f[0] as usize]), comp(vs[f[1] as usize]), comp(vs[f[2] as usize])]);
-            }
-        }
+        let subinsts = parse_subinsts(i);
+        skipped_inst += subinsts.len(); // counted as expanded now
+        place_tris(vs, fs, xyz(&i["location"], 0.0), rot3(&i["rotation"]), xyz(&i["scale"], 1.0), &subinsts, &mut tris);
         used += 1;
     }
 
@@ -568,5 +617,92 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
     }
 
     Scene { mesh, stands, min_z, tri_owner, tri_color, tri_tex }
+}
+
+// ---- packed map bundles (web build) ----
+// Format "BLP1", little-endian, written by pack::pack (native) and read here
+// (both native for verification and wasm in the browser). The filters and the
+// stand pipeline (reachability + main-network) already ran at pack time; the
+// loader only re-expands placements through the SAME place_tris float ops, so
+// the triangle soup is bit-identical to the native JSON loader's.
+
+struct Rd<'a>(&'a [u8], usize);
+impl<'a> Rd<'a> {
+    fn u8(&mut self) -> u8 { let v = self.0[self.1]; self.1 += 1; v }
+    fn u16(&mut self) -> u16 { let v = u16::from_le_bytes(self.0[self.1..self.1 + 2].try_into().unwrap()); self.1 += 2; v }
+    fn u32(&mut self) -> u32 { let v = u32::from_le_bytes(self.0[self.1..self.1 + 4].try_into().unwrap()); self.1 += 4; v }
+    fn f32(&mut self) -> f32 { f32::from_bits(self.u32()) }
+    fn bytes(&mut self, n: usize) -> &'a [u8] { let v = &self.0[self.1..self.1 + n]; self.1 += n; v }
+    fn f3(&mut self) -> [f32; 3] { [self.f32(), self.f32(), self.f32()] }
+}
+
+/// Load a packed map (already gunzipped) into (collision, visual) scenes.
+pub fn load_pack(bytes: &[u8]) -> (Scene, Scene) {
+    let mut r = Rd(bytes, 0);
+    assert_eq!(r.bytes(4), b"BLP1", "bad pack magic");
+    let ntex = r.u32() as usize;
+    let mut texs: Vec<std::sync::Arc<TexImg>> = Vec::with_capacity(ntex);
+    for _ in 0..ntex {
+        let (w, h) = (r.u16() as usize, r.u16() as usize);
+        texs.push(std::sync::Arc::new(TexImg { w, h, px: r.bytes(w * h * 3).to_vec() }));
+    }
+    let nmesh = r.u32() as usize;
+    let mut meshes: Vec<(Vec<[f32; 3]>, Vec<[u32; 3]>, i32)> = Vec::with_capacity(nmesh);
+    for _ in 0..nmesh {
+        let tex = r.u32() as i32;
+        let (nv, nf) = (r.u32() as usize, r.u32() as usize);
+        let vs: Vec<[f32; 3]> = (0..nv).map(|_| r.f3()).collect();
+        let fs: Vec<[u32; 3]> = (0..nf).map(|_| [r.u32(), r.u32(), r.u32()]).collect();
+        meshes.push((vs, fs, tex));
+    }
+    let nplace = r.u32() as usize;
+    struct Place {
+        flags: u8,
+        mesh: u32,
+        loc: [f32; 3],
+        rot: [f32; 3],
+        scale: [f32; 3],
+        subinsts: SubInsts,
+    }
+    let mut places = Vec::with_capacity(nplace);
+    for _ in 0..nplace {
+        let flags = r.u8();
+        let mesh = r.u32();
+        let (loc, rot, scale) = (r.f3(), r.f3(), r.f3());
+        let ninst = r.u32() as usize;
+        let subinsts: SubInsts = (0..ninst)
+            .map(|_| ([r.f32(), r.f32(), r.f32(), r.f32()], r.f3(), r.f3()))
+            .collect();
+        places.push(Place { flags, mesh, loc, rot, scale, subinsts });
+    }
+    let nstand = r.u32() as usize;
+    let stands: Vec<V3> = (0..nstand).map(|_| { let p = r.f3(); V3::new(p[0], p[1], p[2]) }).collect();
+
+    let build = |bit: u8, stands: Vec<V3>| -> Scene {
+        let mut tris: Vec<[[f32; 3]; 3]> = Vec::new();
+        let mut tri_tex: Vec<(u32, Option<std::sync::Arc<TexImg>>)> = Vec::new();
+        for p in &places {
+            if p.flags & bit == 0 {
+                continue;
+            }
+            let (vs, fs, tex) = &meshes[p.mesh as usize];
+            tri_tex.push((tris.len() as u32, (*tex >= 0).then(|| texs[*tex as usize].clone())));
+            place_tris(vs, fs, p.loc, p.rot, p.scale, &p.subinsts, &mut tris);
+        }
+        let min_z = tris.iter().flat_map(|t| t.iter().map(|v| v[2])).fold(f32::MAX, f32::min);
+        let vertices: Vec<Point3<f32>> =
+            tris.iter().flat_map(|t| t.iter().map(|v| Point3::new(v[0], v[1], v[2]))).collect();
+        let indices: Vec<[u32; 3]> =
+            (0..tris.len() as u32).map(|i| [i * 3, i * 3 + 1, i * 3 + 2]).collect();
+        Scene {
+            mesh: TriMesh::new(vertices, indices),
+            stands,
+            min_z,
+            tri_owner: vec![],
+            tri_color: vec![],
+            tri_tex,
+        }
+    };
+    (build(1, stands), build(2, vec![]))
 }
 

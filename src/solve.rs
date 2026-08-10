@@ -2,8 +2,8 @@
 //! by simulation, ranked by time-to-land with an aim-forgiveness measure.
 
 use crate::scene::{Scene, V3};
+use crate::par::*;
 use crate::sim::{fly, Cfg};
-use rayon::prelude::*;
 
 /// UI landmarks usable as aiming references (screen fractions of the HUD):
 /// pixel-true elements only. Lineups whose aim puts one of these ON a world
