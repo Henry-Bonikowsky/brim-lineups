@@ -275,10 +275,18 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                         let grade = |l: &Lineup| l.ui_ref.map_or(0u8, |(_, _, g, _, _)| g);
                         if paired {
                             let key = (pitch / 8.0).round() as i32;
+                            // a UI reference is worth at most 0.4s: beyond
+                            // that, speed wins - an unconditional grade
+                            // preference was discarding fast bounce-assisted
+                            // throws in favor of slow aimable ones
                             let replace = match families.get(&key) {
                                 Some(cur) => {
-                                    grade(&cand) > grade(cur)
-                                        || (grade(&cand) == grade(cur) && cand.time < cur.time)
+                                    if (cand.time - cur.time).abs() > 0.4 {
+                                        cand.time < cur.time
+                                    } else {
+                                        grade(&cand) > grade(cur)
+                                            || (grade(&cand) == grade(cur) && cand.time < cur.time)
+                                    }
                                 }
                                 None => true,
                             };
