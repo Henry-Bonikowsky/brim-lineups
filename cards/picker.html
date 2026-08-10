@@ -50,11 +50,7 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
 .aimwrap { position: relative; display: inline-block; margin: 3px 4px 3px 0 }
 .aimwrap img { margin: 0; display: block }
 .aimwrap .hudlayer, #povwrap .hudlayer { position: absolute; inset: 0; width: 100%; height: 100%;
-  border: none; pointer-events: none; transform-origin: 50% 100%;
-  transform: translateY(calc(var(--huddy, 0) * 1%)) scale(var(--huds, 1)) }
-#hudcal { margin-top: 8px; color: var(--dim); font-size: 13px; display: flex; gap: 16px; align-items: center }
-#hudcal input[type=range] { width: 220px; accent-color: var(--teal) }
-#hudcal b { color: var(--teal); font-family: Consolas, monospace }
+  border: none; pointer-events: none }
 #results video, #povshot video { border-radius: 6px; border: 1px solid var(--edge) }
 #results p { color: var(--dim) }
 .good { color: #58e07a } .warn { color: #ffab5e } .mid { color: #b8d96a }
@@ -89,11 +85,6 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
   <div class="card" id="walkcard">
     <h2>Walk mode - you are the player</h2>
     <div id="povwrap"><img id="pov" width="960" height="600"><img class="hudlayer" src="hud.png?v=3"></div>
-    <div id="hudcal">
-      <span>UI size <input type="range" id="huds" min="0.8" max="2.4" step="0.01"> <b id="hudsv"></b></span>
-      <span>UI height <input type="range" id="huddy" min="-30" max="10" step="0.25"> <b id="huddyv"></b></span>
-      <span>drag until the overlay matches your game exactly</span>
-    </div>
     <div id="povinfo">spawning...</div>
     <div id="povhelp">Click the view to lock your mouse. <b>Mouse</b> aims - <b>WASD</b> moves - <b>Shift</b> runs -
       <b>T / click</b> throws from exactly here - <b>Esc</b> releases the mouse.</div>
@@ -109,22 +100,10 @@ const NAMES = { Triad: 'Haven', Bonsai: 'Split', Canyon: 'Fracture', Duality: 'B
   sel.onchange = () => { document.getElementById('img').src = sel.value + '.png'; document.getElementById('dot').style.display = 'none'; document.getElementById('dot2').style.display = 'none'; };
   sel.onchange();
 }
-// ---- HUD calibration: user-tuned scale + vertical offset, persisted ----
-const hud = {
-  s: parseFloat(localStorage.getItem('huds') || '1'),
-  dy: parseFloat(localStorage.getItem('huddy') || '0'),
-};
-function applyHud() {
-  document.documentElement.style.setProperty('--huds', hud.s);
-  document.documentElement.style.setProperty('--huddy', hud.dy);
-  document.getElementById('huds').value = hud.s;
-  document.getElementById('huddy').value = hud.dy;
-  document.getElementById('hudsv').textContent = hud.s.toFixed(2) + 'x';
-  document.getElementById('huddyv').textContent = hud.dy.toFixed(2) + '%';
-}
-document.getElementById('huds').oninput = e => { hud.s = parseFloat(e.target.value); localStorage.setItem('huds', hud.s); applyHud(); };
-document.getElementById('huddy').oninput = e => { hud.dy = parseFloat(e.target.value); localStorage.setItem('huddy', hud.dy); applyHud(); };
-applyHud();
+// HUD overlay is fixed pixel-true (no user calibration): the game draws its
+// UI deterministically, so the overlay must too. Old slider values are wiped.
+localStorage.removeItem('huds');
+localStorage.removeItem('huddy');
 let targetPt = null, standPt = null;
 function toWorld(e) {
   const m = document.getElementById('map').value, c = cams[m];
@@ -157,7 +136,7 @@ async function solveNow(m) {
   solving = true;
   const res = document.getElementById('results');
   res.innerHTML = '<p>solving' + (standPt ? ' (paired)' : '') + '... first click on a map loads it (~20s), later clicks are fast</p>';
-  let q = `/solve?map=${m}&tx=${targetPt.X.toFixed(0)}&ty=${targetPt.Y.toFixed(0)}&huds=${hud.s}&huddy=${hud.dy}`;
+  let q = `/solve?map=${m}&tx=${targetPt.X.toFixed(0)}&ty=${targetPt.Y.toFixed(0)}`;
   if (standPt) q += `&sx=${standPt.X.toFixed(0)}&sy=${standPt.Y.toFixed(0)}`;
   try {
     const j = await (await fetch(q)).json();
