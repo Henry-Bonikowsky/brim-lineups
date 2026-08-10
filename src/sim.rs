@@ -112,8 +112,17 @@ pub fn fly(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<Outcome> {
 /// Like fly, but also records the position at every integration step and the
 /// step index of the FIRST bounce (for video pacing).
 pub fn fly_path(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<(Outcome, Vec<V3>, usize)> {
+    fly_path_impl(scene, origin, dir, cfg, false)
+}
+
+/// fly_path with per-impact eprintln tracing (--throw debug).
+pub fn fly_path_traced(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg) -> Option<(Outcome, Vec<V3>, usize)> {
+    fly_path_impl(scene, origin, dir, cfg, true)
+}
+
+fn fly_path_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool) -> Option<(Outcome, Vec<V3>, usize)> {
     let mut path = Vec::new();
-    let out = fly_impl(scene, origin, dir, cfg, false, Some(&mut path))?;
+    let out = fly_impl(scene, origin, dir, cfg, trace, Some(&mut path))?;
     // first bounce ~ first step where height starts rising or motion kinks;
     // recover it by re-flying is overkill: approximate as the first local
     // minimum of z after the apex
@@ -136,7 +145,10 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
     let mut t = 0.0f32;
     let mut steps_since_bounce = 1000u32;
     let mut crevice = 0u32;
+    // bounces = PLAYER-VISIBLE hops (reported, must match what you count in
+    // game); contacts = every touch incl. slides and micro-hops (runaway guard)
     let mut bounces = 0u32;
+    let mut contacts = 0u32;
     if let Some(r) = record.as_deref_mut() {
         r.push(p);
     }
@@ -173,7 +185,7 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
                 if vt > 1.0 {
                     v *= 1.0 - (cfg.friction * vn0.abs() / vt).min(0.35);
                 }
-                bounces += 1;
+                contacts += 1;
                 if trace {
                     eprintln!("  wedge-slide t={t:.2} p=({:.0},{:.0},{:.0}) |v|={:.0}", p.x, p.y, p.z, v.norm());
                 }
@@ -188,13 +200,21 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
             // 0.5..1.0 curve is the FRICTION angle scale (UE
             // bBounceAngleAffectsFriction), which lives below.
             let bounciness = cfg.bounciness;
+            let vz_in = v.z;
             let vn = v.dot(&n);
             let vt = v - n * vn;
             // tangential friction scales with impact steepness (grazing skips
             // barely rub the surface): the bBounceAngleAffectsFriction curve
             let steep = (vn.abs() / v.norm().max(1.0)).clamp(0.0, 1.0);
             v = vt * (1.0 - cfg.friction * steep) - n * vn * bounciness;
-            bounces += 1;
+            contacts += 1;
+            // a reported bounce = a NEW ARC a viewer can count: falling in,
+            // rising out by >=15u (vz 180). Wall clips mid-ascent and settle
+            // touches are contacts, not bounces - the number must match what
+            // the player sees in game / in the video to be checkable
+            if vz_in < 0.0 && v.z >= 180.0 {
+                bounces += 1;
+            }
             if trace {
                 let owner = match hit.feature {
                     parry3d::shape::FeatureId::Face(i) => {
@@ -203,8 +223,8 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
                     _ => "?",
                 };
                 eprintln!(
-                    "  bounce {bounces} t={t:.2} p=({:.0},{:.0},{:.0}) n=({:.2},{:.2},{:.2}) |v|={:.0} b={bounciness:.3} on {owner}",
-                    p.x, p.y, p.z, n.x, n.y, n.z, v.norm()
+                    "  contact t={t:.2} p=({:.0},{:.0},{:.0}) n=({:.2},{:.2},{:.2}) vz_in={:.0} vz_out={:.0} |v|={:.0} bounce={} on {owner}",
+                    p.x, p.y, p.z, n.x, n.y, n.z, vz_in, v.z, v.norm(), vz_in < 0.0 && v.z >= 180.0
                 );
             }
             if let Some(r) = record.as_deref_mut() {
@@ -220,7 +240,7 @@ fn fly_impl(scene: &Scene, origin: V3, dir: V3, cfg: &Cfg, trace: bool, mut reco
                 // resting requires a walkable-ish surface (native
                 // BounceStopSurfaceAngle): a molly never sticks mid-slope on
                 // a steep face - kill the rebound and let gravity take it down
-                if (lat < cfg.stop_speed * 2.0 && n.z > 0.7) || bounces > 40 {
+                if (lat < cfg.stop_speed * 2.0 && n.z > 0.7) || contacts > 120 {
                     return Some(Outcome { rest: p, time: t, bounces });
                 }
                 if lat < cfg.stop_speed * 2.0 {
@@ -356,7 +376,9 @@ mod tests {
         let dir = V3::new(std::f32::consts::FRAC_1_SQRT_2, 0.0, std::f32::consts::FRAC_1_SQRT_2);
         let o = fly(&scene, V3::new(0.0, 0.0, 150.0), dir, &cfg).expect("must stop");
         let vacuum = cfg.speed * cfg.speed / cfg.gravity; // 45 deg range from ground
-        assert!(o.bounces >= 3, "skip phase must produce several bounces, got {}", o.bounces);
+        // visible-rebound counting: the 0.4-restitution chain off a hard 45deg
+        // impact yields 2 visible hops before the rebounds go sub-perceptual
+        assert!(o.bounces >= 2, "skip phase must produce visible bounces, got {}", o.bounces);
         assert!(
             o.rest.x >= vacuum * 0.95 && o.rest.x <= vacuum * 1.5,
             "rest x {} should be at or beyond the vacuum impact {vacuum} (skips carry forward)",

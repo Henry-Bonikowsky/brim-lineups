@@ -131,7 +131,7 @@ fn main() {
         let dir = V3::new(cp * cy, cp * sy, sp);
         let o = sim::hand_origin(V3::new(c[0], c[1], c[2]), c[3], &cfg);
         eprintln!("throw from ({:.0},{:.0},{:.0}) yaw={} pitch={} (hand offset {})", o.x, o.y, o.z, c[3], c[4], cfg.hand_left);
-        match sim::fly_path(&scene, o, dir, &cfg) {
+        match sim::fly_path_traced(&scene, o, dir, &cfg) {
             Some((r, traj, first_bounce)) => {
                 eprintln!("rest ({:.0},{:.0},{:.0}) t={:.2} bounces={}", r.rest.x, r.rest.y, r.rest.z, r.time, r.bounces);
                 // path tail after the first bounce: step deltas expose
