@@ -46,11 +46,15 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
 #rescard { flex: 1 1 460px; min-width: 460px }
 #results h3 { font-size: 15px; margin: 16px 0 6px; font-weight: 600 }
 #results h3:first-child { margin-top: 0 }
-#results img { width: 400px; margin: 3px 4px 3px 0; border-radius: 6px; border: 1px solid var(--edge) }
-.aimwrap { position: relative; display: inline-block; margin: 3px 4px 3px 0 }
-.aimwrap img { margin: 0; display: block }
-.aimwrap .hudlayer, #povwrap .hudlayer { position: absolute; inset: 0; width: 100%; height: 100%;
-  border: none; pointer-events: none }
+#results > img { width: 400px; margin: 3px 4px 3px 0; border-radius: 6px; border: 1px solid var(--edge) }
+.aimwrap { position: relative; display: inline-block; margin: 3px 4px 3px 0;
+  border: 1px solid var(--edge); border-radius: 6px; overflow: hidden }
+.aimwrap > img:first-child { width: 400px; margin: 0; display: block; border: none }
+/* the overlay must NEVER pick up widths/margins/borders from generic img
+   rules (an ID selector outranks these classes and displaced the layer) */
+.aimwrap .hudlayer, #povwrap .hudlayer { position: absolute; inset: 0;
+  width: 100% !important; height: 100% !important; margin: 0 !important;
+  border: none !important; pointer-events: none }
 #results video, #povshot video { border-radius: 6px; border: 1px solid var(--edge) }
 #results p { color: var(--dim) }
 .good { color: #58e07a } .warn { color: #ffab5e } .mid { color: #b8d96a }
