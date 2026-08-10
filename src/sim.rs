@@ -71,10 +71,11 @@ impl Default for Cfg {
             // the ladder's aim (58.6) the tapered arc at these original
             // clip-fitted constants gives the identical vacuum range the
             // x1.15 hack produced (6602 vs 6600u) - one model, all pitches
-            // taper alone ran a couple meters long in-game -> Henry: -4%
-            // (s,g scaled together, flight times hold)
-            speed: 2880.0,
-            gravity: 1099.0,
+            // in-game ladder on the tapered arc: taper alone a couple meters
+            // long -> -4%; still ~1m long -> -2% more (s,g scaled together,
+            // flight times hold)
+            speed: 2822.0,
+            gravity: 1077.0,
             // file DefaultBounciness is 0.35 but live walk-mode-vs-game
             // comparison (2026-08-03) shows real rebounds run hotter: the
             // measured restitution from the frame-timed clip was 0.38-0.40,
