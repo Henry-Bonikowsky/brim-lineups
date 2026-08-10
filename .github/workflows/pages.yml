@@ -1,7 +1,7 @@
 name: pages
 on:
   push:
-    branches: [master]
+    branches: [master, web-wasm] # web-wasm: temporary, for pre-merge verification
   workflow_dispatch:
 
 permissions:
