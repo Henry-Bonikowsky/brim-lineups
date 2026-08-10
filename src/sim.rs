@@ -48,8 +48,15 @@ impl Default for Cfg {
             // 2026-08-10 Henry in-game: the FIRST arc carries more force than
             // sim (~2m bigger at ~50m, ~4%). s and g scaled together x1.04:
             // range s^2/g rises 4%, flight times s/g unchanged (clip fit kept)
-            speed: 3120.0,
-            gravity: 1191.0,
+            // 2026-08-10 in-game ladder vs Henry's real throws (first-arc
+            // range, s and g always scaled together so clip-fitted flight
+            // times hold): x1.04 short, x1.08 still 2-3m short, x1.145 a
+            // quarter meter short -> x1.15. ~19% over the file's 2900: native
+            // SpeedScale is bigger than assumed; if flat throws ever run LONG
+            // the boost is pitch-dependent (UpwardShift) and this needs a
+            // second knob instead of raw speed
+            speed: 3457.0,
+            gravity: 1320.0,
             // file DefaultBounciness is 0.35 but live walk-mode-vs-game
             // comparison (2026-08-03) shows real rebounds run hotter: the
             // measured restitution from the frame-timed clip was 0.38-0.40,
