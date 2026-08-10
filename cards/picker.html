@@ -31,9 +31,12 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
   padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.35);
 }
 .card h2 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); margin-bottom: 10px }
-#mapcard { flex: 0 0 auto }
-.wrap { position: relative; display: inline-block }
-#img { width: 700px; cursor: crosshair; border-radius: 6px; display: block }
+#mapcard { flex: 0 0 auto; max-width: 100% }
+.wrap { position: relative; display: inline-block; max-width: 100% }
+/* the map is the star until a spot is picked, then it makes room for results */
+#img { width: min(1080px, calc(100vw - 110px)); transition: width 0.35s ease;
+  cursor: crosshair; border-radius: 6px; display: block }
+body.compact #img { width: min(640px, calc(100vw - 110px)) }
 #dot, #dot2 { position: absolute; width: 13px; height: 13px; border-radius: 50%;
   transform: translate(-50%,-50%); display: none; pointer-events: none }
 #dot { border: 2.5px solid var(--gold); box-shadow: 0 0 8px var(--gold) }
@@ -42,9 +45,16 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
   transform: translate(-50%,-50%); background: rgba(88,224,122,0.25);
   border: 1.5px solid #58e07a; cursor: pointer; z-index: 4 }
 .restdot.hot, .restdot:hover { background: #58e07a; box-shadow: 0 0 8px #58e07a }
-.pickrow { padding: 6px 10px; border: 1px solid var(--edge); border-radius: 6px;
-  margin: 4px 0; cursor: pointer; font-size: 14px }
+.pickrow { display: flex; gap: 14px; align-items: baseline; padding: 8px 12px;
+  border: 1px solid var(--edge); border-radius: 6px; margin: 5px 0; cursor: pointer;
+  font-size: 14px }
 .pickrow:hover { background: #182029; border-color: var(--teal) }
+.pickrow.sel { background: #14222b; border-color: var(--teal) }
+.pickrow .idx { color: var(--dim); font-weight: 700; min-width: 30px }
+.pickrow .verdict { min-width: 150px }
+.pickrow .dim { color: var(--dim) }
+.pickrow .grow { flex: 1 }
+#clearstand { display: none; font-size: 13px; padding: 4px 10px }
 #results .aimwrap { cursor: zoom-in }
 #bigmodal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
   z-index: 50; align-items: center; justify-content: center }
@@ -92,8 +102,9 @@ main { display: flex; gap: 20px; padding: 20px 26px; align-items: flex-start; fl
     <h2>Map</h2>
     <div class="wrap"><img id="img"><div id="dot"></div><div id="dot2"></div></div>
     <div class="legend">
-      <span><span class="chip" style="background:var(--gold)"></span><b>Left-click</b> landing spot</span>
-      <span><span class="chip" style="background:#58e07a"></span><b>Right-click</b> stand spot (optional)</span>
+      <span><span class="chip" style="background:var(--gold)"></span><b>Left-click</b> where the molly should land</span>
+      <span><span class="chip" style="background:#58e07a"></span><b>Right-click</b> where you want to stand (optional)</span>
+      <button id="clearstand" title="back to landing-spot-only search">&times; remove stand spot</button>
     </div>
     <div id="out">click the map...</div>
   </div>
@@ -121,17 +132,27 @@ function bigAim(el) {
 }
 const cams = { "Plummet": { "cx": 6375, "yaw": 0, "ortho": 13312, "cy": 6025 }, "Juliett": { "cx": 200, "yaw": 0, "ortho": 12800, "cy": 0 }, "Rook": { "cx": 0.004757, "yaw": 1033.3136, "ortho": 14336, "cy": -375 }, "Ascent": { "cx": 1050, "yaw": 0, "ortho": 14336, "cy": -4500 }, "Jam": { "cx": 5775, "yaw": 0, "ortho": 13824, "cy": 624.9979 }, "Foxtrot": { "cx": 4775, "yaw": 0, "ortho": 14336, "cy": 500 }, "Duality": { "cx": 7900, "yaw": 0, "ortho": 16896, "cy": -1300 }, "Pitt": { "cx": 5325, "yaw": 0, "ortho": 12800, "cy": 250 }, "Infinity": { "cx": 0, "yaw": 0, "ortho": 12400, "cy": 0 }, "Triad": { "cx": 1900, "yaw": 0, "ortho": 13312, "cy": -7900 }, "Bonsai": { "cx": 2529, "yaw": 0, "ortho": 12800, "cy": -4380 }, "Canyon": { "cx": 8395.34, "yaw": 0, "ortho": 12800, "cy": -728.98 }, "Port": { "cx": -2700, "yaw": 0, "ortho": 13824, "cy": 550 } } ;
 const NAMES = { Triad: 'Haven', Bonsai: 'Split', Canyon: 'Fracture', Duality: 'Bind', Foxtrot: 'Breeze', Infinity: 'Abyss', Jam: 'Lotus', Juliett: 'Sunset', Pitt: 'Pearl', Port: 'Icebox', Rook: 'Corrode', Plummet: 'Summit', Ascent: 'Ascent' };
+let targetPt = null, standPt = null;
 { const j = cams;
   const sel = document.getElementById('map');
   Object.keys(j).sort((a, b) => (NAMES[a] || a).localeCompare(NAMES[b] || b)).forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = NAMES[m] || m; sel.appendChild(o); });
-  sel.onchange = () => { document.getElementById('img').src = sel.value + '.png'; document.getElementById('dot').style.display = 'none'; document.getElementById('dot2').style.display = 'none'; document.querySelectorAll('.restdot').forEach(e => e.remove()); const cv = document.getElementById('trajcv'); if (cv) cv.remove(); };
+  sel.onchange = () => {
+    document.getElementById('img').src = sel.value + '.png';
+    targetPt = null; standPt = null; // a new map is a fresh start
+    document.getElementById('dot').style.display = 'none';
+    document.getElementById('dot2').style.display = 'none';
+    document.getElementById('clearstand').style.display = 'none';
+    document.querySelectorAll('.restdot').forEach(e => e.remove());
+    const cv = document.getElementById('trajcv'); if (cv) cv.remove();
+    document.body.classList.remove('compact'); // map goes big again
+    document.getElementById('results').innerHTML = "<p style='color:var(--dim)'>Click a landing spot to solve. Add a stand spot for an exact pair.</p>";
+  };
   sel.onchange();
 }
 // HUD overlay is fixed pixel-true (no user calibration): the game draws its
 // UI deterministically, so the overlay must too. Old slider values are wiped.
 localStorage.removeItem('huds');
 localStorage.removeItem('huddy');
-let targetPt = null, standPt = null;
 function toWorld(e) {
   const m = document.getElementById('map').value, c = cams[m];
   const r = e.target.getBoundingClientRect();
@@ -212,24 +233,32 @@ async function wasmImgs(n) {
 }
 async function refresh() {
   const m = document.getElementById('map').value;
-  let txt = '';
-  if (targetPt) txt += `land at:  ${targetPt.X.toFixed(0)}, ${targetPt.Y.toFixed(0)}\n`;
-  if (standPt) txt += `stand at: ${standPt.X.toFixed(0)}, ${standPt.Y.toFixed(0)}\n`;
-  if (targetPt && !isLive) {
-    txt += `\n.\\target\\release\\brim-lineups.exe "..\\ValoBoard\\third_party\\valorant_dump\\${m}" --target "${targetPt.X.toFixed(0)},${targetPt.Y.toFixed(0)},auto"`;
-    if (standPt) txt += ` --stand "${standPt.X.toFixed(0)},${standPt.Y.toFixed(0)},auto" --tol 250`;
-    txt += ` --render .\\out --top 5`;
-    txt += `\n(run the server for click-to-solve: brim-lineups serve)`;
+  const out = document.getElementById('out');
+  if (isLive) {
+    // players don't need coordinates; the dots on the map say it all
+    out.style.display = 'none';
+  } else {
+    let txt = '';
+    if (targetPt) txt += `land at:  ${targetPt.X.toFixed(0)}, ${targetPt.Y.toFixed(0)}\n`;
+    if (standPt) txt += `stand at: ${standPt.X.toFixed(0)}, ${standPt.Y.toFixed(0)}\n`;
+    if (targetPt) {
+      txt += `\n.\\target\\release\\brim-lineups.exe "..\\ValoBoard\\third_party\\valorant_dump\\${m}" --target "${targetPt.X.toFixed(0)},${targetPt.Y.toFixed(0)},auto"`;
+      if (standPt) txt += ` --stand "${standPt.X.toFixed(0)},${standPt.Y.toFixed(0)},auto" --tol 250`;
+      txt += ` --render .\\out --top 5`;
+      txt += `\n(run the server for click-to-solve: brim-lineups serve)`;
+    }
+    out.textContent = txt || 'click the map...';
   }
-  document.getElementById('out').textContent = txt || 'click the map...';
   if (targetPt && isLive) solveNow(m);
 }
 let solving = false;
+const bn = b => `${b} bounce${b === 1 ? '' : 's'}`;
+const posLabel = p => p === 2 ? 'easy position' : p === 1 ? 'corner-pinned' : 'free position';
 function lineupHtml(l, n) {
-  let aim = l.aim_ref ? `crosshair lands on geometry ${(l.aim_ref[3] / 100).toFixed(1)}m ahead` : 'crosshair: open sky';
+  let aim = l.aim_ref ? `crosshair rests on geometry ${(l.aim_ref[3] / 100).toFixed(0)}m ahead` : 'crosshair: open sky';
   if (l.ui_ref) {
     const sure = l.ui_ref.grade === 2 ? 'sits ON' : 'sits NEAR';
-    aim += ` - <b class='good'>reference: the ${l.ui_ref.anchor} ${sure} an object edge ${(l.ui_ref.dist / 100).toFixed(1)}m away - it is circled in pink on the aim image</b>`;
+    aim += ` - <b class='good'>reference: the ${l.ui_ref.anchor} ${sure} an object edge - it is circled in pink on the aim image</b>`;
   } else if (!l.aim_ref) {
     aim += ' (no clean UI reference found for this angle)';
   }
@@ -244,7 +273,7 @@ function lineupHtml(l, n) {
     : l.pos === 1
       ? `<span class='mid'>corner-pinned - press W into the corner shown in the top-down view until you stop</span>`
       : `<span class='warn'>free position - no corner in reach, stand exactly on the dot</span>`;
-  let h = `<h3>#${n}: ${verdict}. ${pos}. range ${m2(l.range)}, ${l.time}s flight, ${l.bounces} bounces. ${aim}. stand (${l.stand.join(', ')})</h3>`;
+  let h = `<h3>#${n}: ${verdict}. ${pos}. Thrown from ${(l.range / 100).toFixed(0)}m, ${l.time.toFixed(1)}s flight, ${bn(l.bounces)}. ${aim}.</h3>`;
   h += imgsHtml(l.imgs);
   const walkbtn = mode === 'wasm' ? '' : ` <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button>`;
   h += `<div id='vid${n}'><button onclick='flightVideo(${n})'>flight ${mode === 'wasm' ? 'path' : 'video'}</button>${walkbtn}</div>`;
@@ -281,6 +310,7 @@ async function pickLineup(n) {
   const det = document.getElementById('detail');
   if (!det || !targetPt) return;
   hiDot(n);
+  document.querySelectorAll('.pickrow').forEach(r => r.classList.toggle('sel', r.dataset.n == n));
   det.innerHTML = `<p>rendering #${n}...</p>`;
   try {
     let j;
@@ -297,9 +327,12 @@ async function pickLineup(n) {
     flightVideo(n);
   } catch (e) { det.innerHTML = `<p>render failed: ${e}</p>`; }
 }
+let queuedSolve = null;
 async function solveNow(m) {
   await modeReady;
-  if (solving) return;
+  // a click mid-solve queues one re-solve with the LATEST target/stand
+  // (dropping it silently ate the "remove stand spot" undo)
+  if (solving) { queuedSolve = m; return; }
   solving = true;
   const res = document.getElementById('results');
   res.innerHTML = '<p>solving' + (standPt ? ' (paired)' : '') + (mode === 'wasm'
@@ -319,29 +352,27 @@ async function solveNow(m) {
     } else {
       j = await (await fetch(q)).json();
     }
-    if (j.error) { res.innerHTML = `<p>${j.error}</p>`; solving = false; return; }
+    if (j.error) { res.innerHTML = `<p>${j.error}</p>`; return; }
     if (!standPt) {
       // browse mode: every lineup landing near the click, pick by end location
-      let h = `<p>${j.lineups.length} lineups land within 10m of your click (green dots on the map) - pick one by its end location:</p>`;
-      if (!j.lineups.length) h += `<p class='warn'>nothing lands near there. Stands must be against two faces (a wall corner or object you can press W into); try a click a few meters away.</p>`;
-      const m2 = v => (v / 100).toFixed(1) + 'm';
+      let h = `<p>${j.lineups.length} throws land near your click - each green dot on the map is where one ends. Hover a row to see its dot; pick one:</p>`;
+      if (!j.lineups.length) h += `<p class='warn'>nothing lands near there. Throws need a wall corner or an object to stand against; try a click a few meters away.</p>`;
       h += j.lineups.map(l => {
         const cov = l.covered
-          ? `<span class='good'>covers your click</span>`
-          : `<span class='mid'>lands ${m2(l.err)} off</span>`;
-        const pos = l.pos === 2 ? 'easy position' : 'corner-pinned';
-        return `<div class='pickrow' onclick='pickLineup(${l.idx})' onmouseenter='hiDot(${l.idx})' onmouseleave='hiDot(0)'>` +
-          `#${l.idx} - lands at (${l.rest[0]}, ${l.rest[1]}) - ${cov} - ${l.time}s, ${l.bounces} bounces - ${pos} - range ${m2(l.range)}</div>`;
+          ? `<span class='verdict good'>covers your click</span>`
+          : `<span class='verdict mid'>lands ${(l.err / 100).toFixed(1)}m off</span>`;
+        return `<div class='pickrow' data-n='${l.idx}' onclick='pickLineup(${l.idx})' onmouseenter='hiDot(${l.idx})' onmouseleave='hiDot(0)'>` +
+          `<span class='idx'>#${l.idx}</span>${cov}<span>${l.time.toFixed(1)}s, ${bn(l.bounces)}</span>` +
+          `<span class='grow'></span><span class='dim'>${posLabel(l.pos)} · thrown from ${(l.range / 100).toFixed(0)}m</span></div>`;
       }).join('');
       h += `<div id='detail'></div>`;
       res.innerHTML = h;
       drawRestDots(j.lineups);
       if (j.lineups.length) pickLineup(j.lineups[0].idx); // auto-open the nearest landing
-      solving = false;
       return;
     }
     document.querySelectorAll('.restdot').forEach(e => e.remove());
-    let h = `<p>${j.count} working lineups to (${j.target.join(', ')}) - top ${j.lineups.length}:</p>`;
+    let h = `<p>${j.count} working throws from your stand spot - ${j.count > j.lineups.length ? `top ${j.lineups.length}` : 'fastest first'}:</p>`;
     if (!j.count) h += `<p class='warn'>no working throw from this stand to that landing spot.</p>`;
     j.lineups.forEach((l, i) => { h += lineupHtml(l, l.idx || i + 1); });
     res.innerHTML = h;
@@ -356,9 +387,11 @@ async function solveNow(m) {
     }
     flightVideo(1); // auto for the best lineup
   } catch (e) {
-    res.innerHTML = `<p>solve failed: ${e}</p>`;
+    document.getElementById('results').innerHTML = `<p>solve failed: ${e}</p>`;
+  } finally {
+    solving = false;
+    if (queuedSolve) { const q = queuedSolve; queuedSolve = null; solveNow(q); }
   }
-  solving = false;
 }
 async function flightVideo(n) {
   const m = document.getElementById('map').value;
@@ -371,7 +404,7 @@ async function flightVideo(n) {
       const j = JSON.parse(await wcall('traj', targetPt.X, targetPt.Y, !standPt, n,
         standPt ? standPt.X : undefined, standPt ? standPt.Y : undefined));
       if (j.error) { slot.innerHTML = j.error; return; }
-      slot.innerHTML = `<span style='color:var(--dim)'>flight path is animating on the minimap (${j.time}s, ${j.bounces} bounces) - <a href='#' style='color:var(--teal)' onclick='event.preventDefault(); animTraj(animTraj.last)'>replay</a></span><div id='stills${n}' style='color:var(--dim)'>rendering flight keyframes...</div>`;
+      slot.innerHTML = `<span style='color:var(--dim)'>flight path is animating on the minimap (${j.time.toFixed(1)}s, ${bn(j.bounces)}) - <a href='#' style='color:var(--teal)' onclick='event.preventDefault(); animTraj(animTraj.last)'>replay</a></span><div id='stills${n}' style='color:var(--dim)'>rendering flight keyframes...</div>`;
       animTraj(j);
       // keyframe stills: 0.5s before the first bounce, then each bounce and
       // the apex between bounces, ending at rest
@@ -543,6 +576,7 @@ img.onclick = e => {
   targetPt = toWorld(e);
   const d = document.getElementById('dot');
   d.style.left = (targetPt.u * 100) + '%'; d.style.top = (targetPt.v * 100) + '%'; d.style.display = 'block';
+  document.body.classList.add('compact'); // make room for the results
   refresh();
 };
 img.oncontextmenu = e => {
@@ -550,7 +584,14 @@ img.oncontextmenu = e => {
   standPt = toWorld(e);
   const d = document.getElementById('dot2');
   d.style.left = (standPt.u * 100) + '%'; d.style.top = (standPt.v * 100) + '%'; d.style.display = 'block';
+  document.getElementById('clearstand').style.display = 'inline-block';
   refresh();
+};
+document.getElementById('clearstand').onclick = () => {
+  standPt = null;
+  document.getElementById('dot2').style.display = 'none';
+  document.getElementById('clearstand').style.display = 'none';
+  refresh(); // back to landing-spot-only browsing
 };
 </script>
 
