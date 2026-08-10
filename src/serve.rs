@@ -205,7 +205,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 continue;
             };
             let origin = crate::sim::hand_origin(l.stand + V3::new(0.0, 0.0, cfg.eye_z), l.yaw, &cfg);
-            let lp = crate::sim::launch_pitch(l.pitch, &cfg);
+            let lp = l.pitch + cfg.arc_deg;
             let (sy2, cy2) = l.yaw.to_radians().sin_cos();
             let (sp2, cp2) = lp.to_radians().sin_cos();
             let Some((_, traj, first_bounce)) = crate::sim::fly_path(cscene, origin, V3::new(cp2 * cy2, cp2 * sy2, sp2), &cfg) else {
@@ -281,7 +281,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             // crosshair aim (launch = crosshair + arc), like standing in game
             let live2 = live.clone();
             std::thread::spawn(move || {
-            let lp = crate::sim::launch_pitch(pitch, &cfg);
+            let lp = pitch + cfg.arc_deg;
             let (sy2, cy2) = yaw.to_radians().sin_cos();
             let (sp2, cp2) = lp.to_radians().sin_cos();
             let hand = crate::sim::hand_origin(eye, yaw, &cfg);
