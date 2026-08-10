@@ -29,13 +29,16 @@ pub struct Cfg {
 }
 
 /// Crosshair (aim) pitch -> launch pitch. UpwardArc 8 is NOT a constant
-/// offset: it tapers linearly to zero at straight-up (native UpwardArc/
-/// UpwardShift combine, fitted 2026-08-10 - a constant +8 made every high
-/// lob launch too steep, and past 45 deg steeper = shorter, which matched
-/// Henry's "the higher up you look, the more inaccurate". The taper at aim
-/// 58.6 exactly reproduces the x1.15 range hack it replaced.)
+/// offset: it tapers QUADRATICALLY to zero at straight-up - near-full at
+/// flat aims, falling away fast on high lobs. Fitted 2026-08-10 from two
+/// in-game anchors: Henry's roof-ledge throw at aim 24 flew ~1 deg higher
+/// than a linear taper predicted (sim side-hit trace matched his real
+/// throw at +1 deg), while his calibrated high lob at aim 58.6 needs the
+/// linear-taper-minus-6%-power carry, which this curve reproduces within
+/// ~1.5% at the file-validated speed/gravity.
 pub fn launch_pitch(aim: f32, cfg: &Cfg) -> f32 {
-    aim + cfg.arc_deg * (1.0 - aim.clamp(0.0, 90.0) / 90.0)
+    let a = aim.clamp(0.0, 90.0) / 90.0;
+    aim + cfg.arc_deg * (1.0 - a * a)
 }
 
 /// Inverse of launch_pitch (what to aim so the launch comes out at `launch`).
@@ -43,7 +46,9 @@ pub fn aim_pitch(launch: f32, cfg: &Cfg) -> f32 {
     if launch <= cfg.arc_deg {
         launch - cfg.arc_deg // downward/flat branch: full arc applies
     } else {
-        (launch - cfg.arc_deg) / (1.0 - cfg.arc_deg / 90.0)
+        // solve k*a^2 - a + (launch - arc) = 0, k = arc/8100 (monotonic branch)
+        let k = cfg.arc_deg / 8100.0;
+        (1.0 - (1.0 - 4.0 * k * (launch - cfg.arc_deg)).max(0.0).sqrt()) / (2.0 * k)
     }
 }
 
@@ -71,11 +76,13 @@ impl Default for Cfg {
             // the ladder's aim (58.6) the tapered arc at these original
             // clip-fitted constants gives the identical vacuum range the
             // x1.15 hack produced (6602 vs 6600u) - one model, all pitches
-            // in-game ladder on the tapered arc: taper alone a couple meters
-            // long -> -4%; still ~1m long -> -2% more (s,g scaled together,
-            // flight times hold)
-            speed: 2822.0,
-            gravity: 1077.0,
+            // back to the file+clip-validated constants: the -6% trim was
+            // compensating the LINEAR arc taper's error at high pitch. The
+            // quadratic taper (see launch_pitch, fitted to Henry's roof-ledge
+            // trace 2026-08-10) reproduces the tuned high-lob carry within
+            // ~1.5% at these original values
+            speed: 3000.0,
+            gravity: 1145.0,
             // file DefaultBounciness is 0.35 but live walk-mode-vs-game
             // comparison (2026-08-03) shows real rebounds run hotter: the
             // measured restitution from the frame-timed clip was 0.38-0.40,
@@ -394,7 +401,8 @@ mod tests {
         let cfg = Cfg::default();
         assert!((launch_pitch(0.0, &cfg) - 8.0).abs() < 1e-4);
         assert!((launch_pitch(90.0, &cfg) - 90.0).abs() < 1e-4);
-        assert!((launch_pitch(58.6, &cfg) - 61.39).abs() < 0.01);
+        assert!((launch_pitch(24.1, &cfg) - 31.53).abs() < 0.01, "near-full arc at low pitch");
+        assert!((launch_pitch(58.6, &cfg) - 63.21).abs() < 0.01, "tapered arc on high lobs");
         for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6, 75.0, 89.0] {
             let back = aim_pitch(launch_pitch(aim, &cfg), &cfg);
             assert!((back - aim).abs() < 1e-3, "roundtrip {aim} -> {back}");
