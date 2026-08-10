@@ -199,7 +199,7 @@ fn main() {
         std::fs::create_dir_all(&outdir).unwrap();
         let vscene = scene::load_visual(&dir);
         let origin = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
-        let launch_pitch = l.pitch + cfg.arc_deg;
+        let launch_pitch = sim::launch_pitch(l.pitch, &cfg);
         let (sy, cy2) = l.yaw.to_radians().sin_cos();
         let (sp, cp) = launch_pitch.to_radians().sin_cos();
         let (_, traj, first_bounce) = sim::fly_path(&scene, origin, V3::new(cp * cy2, cp * sy, sp), &cfg)

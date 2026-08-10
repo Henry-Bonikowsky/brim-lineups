@@ -246,13 +246,13 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                         // covered candidates get scored for a UI reference: a
                         // lineup you can replicate off a landmark beats a
                         // slightly faster one aimed at featureless sky
-                        let ui_ref = if covered && paired { ui_reference(scene, origin, yaw, pitch - cfg.arc_deg, cfg) } else { None };
+                        let ui_ref = if covered && paired { ui_reference(scene, origin, yaw, crate::sim::aim_pitch(pitch, cfg), cfg) } else { None };
                         let cand = Lineup {
                             dist: d,
                             stand: *stand,
                             rest: o.rest,
                             yaw,
-                            pitch: pitch - cfg.arc_deg,
+                            pitch: crate::sim::aim_pitch(pitch, cfg),
                             time: o.time,
                             bounces: o.bounces,
                             err,
@@ -406,7 +406,7 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
     for (jy, jp) in
         [(0.75, 0.0), (-0.75, 0.0), (0.0, 0.75), (0.0, -0.75), (0.75, 0.75), (-0.75, 0.75), (0.75, -0.75), (-0.75, -0.75)]
     {
-        let launch_pitch = b.pitch + cfg.arc_deg + jp;
+        let launch_pitch = crate::sim::launch_pitch(b.pitch + jp, cfg);
         if let Some(o) = fly(scene, crate::sim::hand_origin(origin, b.yaw + jy, cfg), dir_from(b.yaw + jy, launch_pitch), cfg) {
             let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
             let dz = (o.rest.z - target.z).abs();
@@ -430,7 +430,7 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         (if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 }) < tol
             && crate::sim::fire_covers(scene, o.rest, target)
     };
-    let launch = dir_from(b.yaw, b.pitch + cfg.arc_deg);
+    let launch = dir_from(b.yaw, crate::sim::launch_pitch(b.pitch, cfg));
     let mut pok = 0;
     for (ox, oy) in [(75.0f32, 0.0), (-75.0, 0.0), (0.0, 75.0), (0.0, -75.0), (55.0, 55.0), (-55.0, 55.0), (55.0, -55.0), (-55.0, -55.0)] {
         let o2 = crate::sim::hand_origin(origin, b.yaw, cfg) + V3::new(ox, oy, 0.0);
