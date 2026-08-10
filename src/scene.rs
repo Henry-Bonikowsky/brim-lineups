@@ -306,8 +306,13 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         // Bombsite outline/glow markers are decals + a target-view column: they
         // render as thin overlays in game and block nothing.
         let comp = i["component"].as_str().unwrap_or("");
-        // BVProjectile cubes are /Engine/BasicShapes/, not /Environment/, but
-        // they block mollies in game: exempt them from the Environment gate
+        // BVProjectile sublevels hold the molly-blocking stand-ins for props
+        // whose art mesh is NoCollision: accurate per-prop *Collision shells
+        // (Breeze pyramid tower, Triad cargo tarp - the 2026-08-03 clips that
+        // "clipped the volume" clipped the pyramid SHELL). The crude
+        // Box_For_Volumes cubes in the same sublevel do NOT block mollies:
+        // 2026-08-10 Henry's Triad throw flew through one 56u below its top
+        // and landed beyond the box. Shells load, cubes never do.
         let bv_proj = umap.contains("BVProjectile");
         if mode != Mode::Everything
             && (allowed.as_ref().is_some_and(|a| !a.contains(umap))
@@ -318,7 +323,7 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
                 || mesh.contains("Bombsite_")
                 || mesh.contains("BombSite")
                 || mesh.contains("BVS_Bomb")
-                || (mesh.contains("Box_For_Volumes") && !bv_proj)
+                || mesh.contains("Box_For_Volumes")
                 || UMAP_BLACKLIST.iter().any(|b| umap.contains(b)))
         {
             skipped_umap += 1;

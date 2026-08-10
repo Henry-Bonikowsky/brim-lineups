@@ -45,9 +45,11 @@ same way or yields no lineups.
 Launch 2900 u/s, gravity 1125 u/s^2 (world -2500 x scale 0.45), restitution 0.35,
 friction 0.65, stop under 200 u/s, per-bounce restitution deadening
 `b *= lerp(0.5..1.0, angle-from-vertical / 90)` (decoded from Projectile_BaseGrenade
-bytecode). Collision surface: /Game/Environment/ meshes with live collision (the molly
-ignores the Projectile channel, so BVProjectile/BVPawn volumes are excluded; NoCollision /
-trigger components filtered).
+bytecode). Collision surface: /Game/Environment/ meshes with live collision; NoCollision /
+trigger components filtered; BVPawn volumes and the crude Box_For_Volumes cubes in
+BVProjectile sublevels are excluded (2026-08-10: a real Triad throw flew straight through
+one), while the accurate per-prop *Collision shells in those sublevels (Breeze pyramid,
+Triad cargo tarp) do block and stay loaded.
 
 ## Native unknowns (why --eye and --arc exist)
 
