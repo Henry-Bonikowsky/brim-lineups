@@ -48,7 +48,12 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 }
             };
             let stand = get("sx").and_then(|sx| Some((sx.parse::<f32>().ok()?, get("sy")?.parse::<f32>().ok()?)));
-            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(450.0);
+            // list=1: browse mode - every lineup LANDING within tol of the
+            // click, no renders (fast); n=K then renders exactly row K of the
+            // identical solve (deterministic order) on demand
+            let list_mode = get("list").is_some() && stand.is_none();
+            let nsel: Option<usize> = get("n").and_then(|v| v.parse().ok());
+            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(if list_mode { 1000.0 } else { 450.0 });
             let hud_scale: f32 = get("huds").and_then(|v| v.parse().ok()).unwrap_or(1.0);
             let hud_dy: f32 = get("huddy").and_then(|v| v.parse().ok()).unwrap_or(0.0);
 
@@ -82,16 +87,26 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 cscene.stands.clone()
             };
             let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
-            let lineups = solve::solve(cscene, &stands_vec, target, tol, min_dist, strict, &cfg);
+            let lineups = solve::solve(cscene, &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
 
             // fresh renders for the top few; unique run id to defeat caching
             let run = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis();
-            {
+            // which rows to return / render: browse list = many rows, no
+            // renders; n=K = that one row, rendered; default = top 5 rendered
+            let row_idxs: Vec<usize> = match nsel {
+                Some(k) if k >= 1 && k <= lineups.len() => vec![k - 1],
+                Some(_) => vec![],
+                None if list_mode => (0..lineups.len().min(14)).collect(),
+                None => (0..lineups.len().min(5)).collect(),
+            };
+            let rendered = nsel.is_some() || !list_mode;
+            if rendered {
                 use rayon::prelude::*;
-                lineups.par_iter().take(5).enumerate().for_each(|(i, l)| {
+                row_idxs.par_iter().for_each(|&i| {
+                    let l = &lineups[i];
                     let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
                     let base = format!("live/{run}_{}", i + 1);
                     let aim_path = format!("{cards_dir}/{base}_r.bmp");
@@ -105,7 +120,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 });
             }
             let mut rows = Vec::new();
-            for (i, l) in lineups.iter().take(5).enumerate() {
+            for (i, l) in row_idxs.iter().map(|&i| (i, &lineups[i])) {
                 let base = format!("live/{run}_{}", i + 1);
                 let aim = l
                     .aim_ref
@@ -117,9 +132,14 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                         format!("{{\"anchor\":\"{name}\",\"dist\":{dist:.0},\"grade\":{grade}}}")
                     })
                     .unwrap_or("null".into());
+                let imgs = if rendered {
+                    format!("[\"{base}_r.bmp\",\"{base}_s.bmp\",\"{base}_w.bmp\"]")
+                } else {
+                    "[]".into()
+                };
                 rows.push(format!(
-                    "{{\"stand\":[{:.0},{:.0},{:.0}],\"range\":{:.0},\"yaw\":{:.1},\"pitch\":{:.1},\"time\":{:.2},\"bounces\":{},\"err\":{:.0},\"covered\":{},\"forgive\":{:.2},\"spread\":{:.0},\"pos\":{},\"aim_ref\":{},\"ui_ref\":{uiref},\"imgs\":[\"{base}_r.bmp\",\"{base}_s.bmp\",\"{base}_w.bmp\"]}}",
-                    l.stand.x, l.stand.y, l.stand.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.covered, l.forgive, l.spread, l.pos_grade(), aim
+                    "{{\"idx\":{},\"stand\":[{:.0},{:.0},{:.0}],\"rest\":[{:.0},{:.0},{:.0}],\"range\":{:.0},\"yaw\":{:.1},\"pitch\":{:.1},\"time\":{:.2},\"bounces\":{},\"err\":{:.0},\"covered\":{},\"forgive\":{:.2},\"spread\":{:.0},\"pos\":{},\"aim_ref\":{},\"ui_ref\":{uiref},\"imgs\":{imgs}}}",
+                    i + 1, l.stand.x, l.stand.y, l.stand.z, l.rest.x, l.rest.y, l.rest.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.covered, l.forgive, l.spread, l.pos_grade(), aim
                 ));
             }
             let body = format!(
@@ -150,7 +170,10 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 continue;
             };
             let stand = get("sx").and_then(|sx| Some((sx.parse::<f32>().ok()?, get("sy")?.parse::<f32>().ok()?)));
-            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(450.0);
+            // browse videos must re-solve with the SAME browse params so index
+            // n maps to the same lineup the list showed
+            let browse = get("list").is_some() && stand.is_none();
+            let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(if browse { 1000.0 } else { 450.0 });
             let n: usize = get("n").and_then(|v| v.parse().ok()).unwrap_or(1);
             if let Some(pos) = cache_lru.iter().position(|(m, _, _)| m == &map) {
                 let e = cache_lru.remove(pos);
@@ -176,7 +199,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 cscene.stands.clone()
             };
             let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
-            let lineups = solve::solve(cscene, &stands_vec, target, tol, min_dist, strict, &cfg);
+            let lineups = solve::solve(cscene, &stands_vec, target, tol, min_dist, strict, browse, &cfg);
             let Some(l) = lineups.get(n - 1) else {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no such lineup\"}"));
                 continue;

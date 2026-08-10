@@ -103,6 +103,7 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Opti
 pub struct Lineup {
     pub dist: f32, // stand-to-target range (lineups are long throws, not tosses)
     pub stand: V3,
+    pub rest: V3,        // where the fire actually comes to rest
     pub yaw: f32,        // player aim yaw (deg, UE convention: atan2(y, x))
     pub pitch: f32,      // player aim pitch (deg; launch pitch minus arc knob)
     pub time: f32,
@@ -151,7 +152,10 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
 /// stand, deduped, ranked by mid-range preference + time). strict=false
 /// (paired mode, one locked stand): every distinct working ANGLE FAMILY from
 /// that stand (pitch buckets), ranked by time.
-pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, cfg: &Cfg) -> Vec<Lineup> {
+/// browse=true (strict only): keep every lineup RESTING within tol of the
+/// click even when its fire cannot reach the click itself - the user browses
+/// nearby end locations and picks one. Sorted by landing distance.
+pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg) -> Vec<Lineup> {
     let paired = !strict && stands.len() == 1;
     // POSITION RULE: a lineup stand must sit against TWO faces (wall corner,
     // angled walls, object against wall) so pressing W into it stops the
@@ -234,7 +238,10 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                         // distance alone is not success: the fire must SPREAD
                         // to the click (a >110u box between rest and click
                         // blocks it even at 2m)
+                        // fire_covers BFS caps spread travel at 450u, so even
+                        // with a wide browse tol `covered` stays honest
                         let covered = err < tol && crate::sim::fire_covers(scene, o.rest, target);
+                        let sel = covered || (browse && err < tol);
                         if covered { &n_near } else { &n_far }.fetch_add(1, Relaxed);
                         // covered candidates get scored for a UI reference: a
                         // lineup you can replicate off a landmark beats a
@@ -243,6 +250,7 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                         let cand = Lineup {
                             dist: d,
                             stand: *stand,
+                            rest: o.rest,
                             yaw,
                             pitch: pitch - cfg.arc_deg,
                             time: o.time,
@@ -255,7 +263,7 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                             aim_ref: None,
                             ui_ref,
                         };
-                        if !covered {
+                        if !sel {
                             if paired && best_miss.as_ref().is_none_or(|b| cand.err < b.err) {
                                 best_miss = Some(cand);
                             }
@@ -317,7 +325,15 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                 if exposed {
                     return vec![].into_iter();
                 }
-                finish(scene, target, tol, cfg, origin, b);
+                // browse: forgiveness/anchoring are about reliably hitting the
+                // lineup's OWN landing spot (the user picked it by end
+                // location), not about covering the original click
+                if browse {
+                    let rest = b.rest;
+                    finish(scene, rest, 450.0, cfg, origin, b);
+                } else {
+                    finish(scene, target, tol, cfg, origin, b);
+                }
             }
             best.into_iter().collect::<Vec<_>>().into_iter()
         })
@@ -355,11 +371,20 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
     }
     let mut out: Vec<Lineup> = by_cell.into_values().collect();
     sturdy(&mut out);
-    // rank: easy positions first, then mid-range preference (~3000u) + speed
+    // rank: browse = nearest landing first (user picks by end location);
+    // else easy positions first, then mid-range preference (~3000u) + speed.
+    // Stand coords break ties so repeat solves order identically (the n-th
+    // row must be the same lineup when the picker re-requests it by index)
     let key = |l: &Lineup| {
-        (l.dist - 3000.0).abs() / 1500.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0
+        if browse {
+            l.err
+        } else {
+            (l.dist - 3000.0).abs() / 1500.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0
+        }
     };
-    out.sort_by(|a, b| key(a).total_cmp(&key(b)));
+    out.sort_by(|a, b| {
+        key(a).total_cmp(&key(b)).then(a.stand.x.total_cmp(&b.stand.x)).then(a.stand.y.total_cmp(&b.stand.y))
+    });
     out
 }
 
