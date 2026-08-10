@@ -44,9 +44,12 @@ impl Default for Cfg {
             // ProjectileSpeed 2900, but ProjectileThrowTuning has a native
             // SpeedScale default that plausibly supplies the extra ~3.5%.
             // Henry's walk-mode calibration 2026-08-03: at g=1140 the arc ran
-            // 0.25-0.5m long; 1145 pulls ~0.3m back with negligible timing shift
-            speed: 3000.0,
-            gravity: 1145.0,
+            // 0.25-0.5m long; 1145 pulls ~0.3m back with negligible timing shift.
+            // 2026-08-10 Henry in-game: the FIRST arc carries more force than
+            // sim (~2m bigger at ~50m, ~4%). s and g scaled together x1.04:
+            // range s^2/g rises 4%, flight times s/g unchanged (clip fit kept)
+            speed: 3120.0,
+            gravity: 1191.0,
             // file DefaultBounciness is 0.35 but live walk-mode-vs-game
             // comparison (2026-08-03) shows real rebounds run hotter: the
             // measured restitution from the frame-timed clip was 0.38-0.40,
