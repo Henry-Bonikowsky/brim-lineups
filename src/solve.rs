@@ -73,6 +73,38 @@ fn ui_reference_ex(
     let crease = |a: &(f32, V3), b: &(f32, V3)| -> bool {
         a.0.is_finite() && b.0.is_finite() && a.0.min(b.0) < 9000.0 && a.1.dot(&b.1).abs() < 0.6
     };
+    // an EDGE is a line - the anchor can slide along it, so it locks only one
+    // aim axis and is NOT a reference. A reference is a POINT: corner,
+    // junction, tip. Ring-probe 12 rays around the candidate: a straight edge
+    // splits the ring into two ~half arcs; a point feature shows >=3 surface
+    // groups or one small arc (a tip against sky / an L-junction).
+    let is_point = |cx: f32, cy: f32, s: f32| -> bool {
+        let ring: Vec<(f32, V3)> = (0..12)
+            .map(|k| {
+                let a = k as f32 / 12.0 * std::f32::consts::TAU;
+                depth_at(cx + a.cos() * s, cy + a.sin() * s)
+            })
+            .collect();
+        let same = |a: &(f32, V3), b: &(f32, V3)| -> bool {
+            if a.0.is_infinite() && b.0.is_infinite() {
+                return true;
+            }
+            a.0.is_finite()
+                && b.0.is_finite()
+                && a.0.max(b.0) / a.0.min(b.0) < 1.3
+                && a.1.dot(&b.1).abs() > 0.8
+        };
+        // circular group boundaries + smallest contiguous arc
+        let breaks: Vec<usize> = (0..12).filter(|&k| !same(&ring[k], &ring[(k + 1) % 12])).collect();
+        if breaks.len() >= 3 {
+            return true; // >=3 surface groups meet here: a junction
+        }
+        if breaks.len() == 2 {
+            let arc = (breaks[1] - breaks[0]).min(12 - (breaks[1] - breaks[0]));
+            return arc <= 4; // small arc = tip/corner; ~half/half = straight edge
+        }
+        false
+    };
     let mut best: Option<((&'static str, f32, u8, f32, f32), (f32, f32))> = None;
     for (name, ax0, ay0) in UI_ANCHORS {
         // apply the user's HUD calibration: scale about bottom-center + dy
@@ -93,35 +125,34 @@ fn ui_reference_ex(
         // edge crossing adjacent to the center = grade 2; anywhere = grade 1.
         // dist must come from the SAME pair that tripped the edge test (the
         // old code min'd the horizontal pair for vertical edges - inf leak)
-        let mut grade = 0u8;
-        let mut dist = f32::INFINITY;
-        // nearest tripped pair's crossing (midpoint): what alignment steers onto
-        let mut best_r = f32::MAX;
-        let mut cross = (ax, ay);
-        let mut hit = |r: f32, a: f32, b: f32, cx: f32, cy: f32, grade: &mut u8, dist: &mut f32| {
-            if r <= 1.0 {
-                *grade = 2;
-            } else if *grade == 0 {
-                *grade = 1;
-            }
-            *dist = dist.min(a.min(b));
-            if r < best_r {
-                best_r = r;
-                cross = (cx, cy);
-            }
-        };
+        // collect tripped feature-edge pairs, nearest the anchor first, then
+        // keep the first one whose crossing is a POINT feature (ring test) -
+        // a bare edge line never becomes a reference
+        let mut pairs: Vec<(f32, f32, f32, f32, f32)> = Vec::new(); // (r, a, b, cx, cy)
         for j in 0..5 {
             for i in 0..5 {
                 if i < 4 && (edgy(d[j][i].0, d[j][i + 1].0) || crease(&d[j][i], &d[j][i + 1])) {
                     let r = ((i as f32 + 0.5 - 2.0).abs()).max((j as f32 - 2.0).abs());
                     let (cx, cy) = (ax + (i as f32 + 0.5 - 2.0) * s, ay + (j as f32 - 2.0) * s);
-                    hit(r, d[j][i].0, d[j][i + 1].0, cx, cy, &mut grade, &mut dist);
+                    pairs.push((r, d[j][i].0, d[j][i + 1].0, cx, cy));
                 }
                 if j < 4 && (edgy(d[j][i].0, d[j + 1][i].0) || crease(&d[j][i], &d[j + 1][i])) {
                     let r = ((i as f32 - 2.0).abs()).max((j as f32 + 0.5 - 2.0).abs());
                     let (cx, cy) = (ax + (i as f32 - 2.0) * s, ay + (j as f32 + 0.5 - 2.0) * s);
-                    hit(r, d[j][i].0, d[j + 1][i].0, cx, cy, &mut grade, &mut dist);
+                    pairs.push((r, d[j][i].0, d[j + 1][i].0, cx, cy));
                 }
+            }
+        }
+        pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut grade = 0u8;
+        let mut dist = f32::INFINITY;
+        let mut cross = (ax, ay);
+        for &(r, a, b, cx, cy) in pairs.iter().take(6) {
+            if is_point(cx, cy, s) {
+                grade = if r <= 1.0 { 2 } else { 1 };
+                dist = a.min(b);
+                cross = (cx, cy);
+                break;
             }
         }
         if grade > 0 {
@@ -151,19 +182,19 @@ fn align_reference(scene: &Scene, origin: V3, l: &mut Lineup, target: V3, tol: f
     let (mut yaw, mut aim) = (l.yaw, l.pitch);
     let mut aligned = false;
     let mut s = 0.005;
-    for _ in 0..4 {
+    for _ in 0..6 {
         let Some(((_, _, _, ax, ay), (cx, cy))) = ui_reference_ex(scene, origin, yaw, aim, cfg, s) else {
             return false;
         };
         let (dfx, dfy) = (cx - ax, cy - ay);
-        if dfx.abs() < 0.0015 && dfy.abs() < 0.0015 {
-            aligned = true;
+        if dfx.abs() < 0.0008 && dfy.abs() < 0.0008 {
+            aligned = true; // <1px at render scale: the point sits ON the anchor
             break;
         }
         // small-angle screen->camera: turning right shifts the world left
         yaw += (dfx * 2.0 * tan_h).to_degrees();
         aim += (-dfy * 2.0 * tan_v).to_degrees();
-        s *= 0.5; // finer probe grid as we close in
+        s = (s * 0.5).max(0.0006); // finer probe grid as we close in
     }
     if !aligned || (yaw - l.yaw).abs() + (aim - l.pitch).abs() > 2.0 {
         return false; // never converged, or drifted implausibly far
