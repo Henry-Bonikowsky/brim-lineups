@@ -28,6 +28,17 @@ const UMAP_BLACKLIST: [&str; 18] = [
 // Triad_Art_C_Destruction (the persistent level streams it always-loaded and
 // does not stream the old Triad_Art_C at all).
 
+/// Foliage renders nothing like in game (coarse blobs vs animated leaves), so
+/// aim references must never sit on or against it. Shared by the native
+/// loader and the pack writer (pack flag bit 4).
+pub(crate) fn is_foliage_mesh(mesh: &str) -> bool {
+    // "street" contains "tree": strip it before the keyword scan
+    let ml = mesh.to_lowercase().replace("street", "");
+    ["tree", "foliage", "leaf", "leaves", "bush", "ivy", "grass", "fern", "hedge", "canopy", "shrub", "vine", "frond", "flower"]
+        .iter()
+        .any(|k| ml.contains(k))
+}
+
 /// The authoritative filter: the persistent level's own streaming list.
 /// Always-loaded sublevels plus the BombMode set are what the live bomb-mode
 /// map consists of; everything else (old art variants, alt modes, dev levels)
@@ -105,6 +116,10 @@ pub struct Scene {
     pub tri_color: Vec<(u32, [f32; 3])>,
     /// (first triangle index, ground texture) per placement
     pub tri_tex: Vec<(u32, Option<std::sync::Arc<TexImg>>)>,
+    /// (first triangle index, is-foliage) per placement: trees, bushes, ivy.
+    /// Foliage renders nothing like in game, so aim references must never sit
+    /// on or against it.
+    pub tri_foliage: Vec<(u32, bool)>,
 }
 
 impl Scene {
@@ -149,6 +164,14 @@ impl Scene {
                 .copied()
                 .min_by(|a, b| (a - nz).abs().total_cmp(&(b - nz).abs())),
             None => hits.last().copied(),
+        }
+    }
+
+    pub fn foliage_at(&self, tri: u32) -> bool {
+        match self.tri_foliage.binary_search_by_key(&tri, |(s, _)| *s) {
+            Ok(i) => self.tri_foliage[i].1,
+            Err(0) => false,
+            Err(i) => self.tri_foliage[i - 1].1,
         }
     }
 
@@ -432,6 +455,7 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
     let mut tri_tex: Vec<(u32, Option<std::sync::Arc<TexImg>>)> = Vec::new();
     let mut tris: Vec<[[f32; 3]; 3]> = Vec::new();
     let mut tri_owner: Vec<(u32, String)> = Vec::new();
+    let mut tri_foliage: Vec<(u32, bool)> = Vec::new();
     let mut tri_color: Vec<(u32, [f32; 3])> = Vec::new();
     // material colors disabled: flat averages muddied the renders more than
     // they helped (Henry's call); hillshade gray reads better
@@ -450,6 +474,7 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
             .or_insert_with(|| load_obj(&dir.join("meshes").join(&obj_name)));
         let Some((vs, fs)) = entry else { continue };
         tri_owner.push((tris.len() as u32, format!("{umap}:{}", i["component"].as_str().unwrap_or("?"))));
+        tri_foliage.push((tris.len() as u32, is_foliage_mesh(mesh)));
         tri_color.push((
             tris.len() as u32,
             colors.get(&obj_name.trim_end_matches(".obj").to_string()).copied().unwrap_or([0.62, 0.62, 0.62]),
@@ -627,7 +652,7 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         }
     }
 
-    Scene { mesh, stands, min_z, tri_owner, tri_color, tri_tex }
+    Scene { mesh, stands, min_z, tri_owner, tri_color, tri_tex, tri_foliage }
 }
 
 // ---- packed map bundles (web build) ----
@@ -692,12 +717,14 @@ pub fn load_pack(bytes: &[u8]) -> (Scene, Scene) {
     let build = |bit: u8, stands: Vec<V3>| -> Scene {
         let mut tris: Vec<[[f32; 3]; 3]> = Vec::new();
         let mut tri_tex: Vec<(u32, Option<std::sync::Arc<TexImg>>)> = Vec::new();
+        let mut tri_foliage: Vec<(u32, bool)> = Vec::new();
         for p in &places {
             if p.flags & bit == 0 {
                 continue;
             }
             let (vs, fs, tex) = &meshes[p.mesh as usize];
             tri_tex.push((tris.len() as u32, (*tex >= 0).then(|| texs[*tex as usize].clone())));
+            tri_foliage.push((tris.len() as u32, p.flags & 4 != 0));
             place_tris(vs, fs, p.loc, p.rot, p.scale, &p.subinsts, &mut tris);
         }
         let min_z = tris.iter().flat_map(|t| t.iter().map(|v| v[2])).fold(f32::MAX, f32::min);
@@ -712,6 +739,7 @@ pub fn load_pack(bytes: &[u8]) -> (Scene, Scene) {
             tri_owner: vec![],
             tri_color: vec![],
             tri_tex,
+            tri_foliage,
         }
     };
     (build(1, stands), build(2, vec![]))

@@ -396,6 +396,7 @@ mod tests {
             min_z: 0.0,
             tri_owner: vec![(0, "ground".into())],
             tri_color: vec![(0, [0.6, 0.6, 0.6])], tri_tex: vec![],
+            tri_foliage: vec![],
         };
         let cfg = Cfg::default();
         let dir = V3::new(std::f32::consts::FRAC_1_SQRT_2, 0.0, std::f32::consts::FRAC_1_SQRT_2);
@@ -453,6 +454,7 @@ mod tests {
             min_z: 0.0,
             tri_owner: vec![(0, "ground".into())],
             tri_color: vec![(0, [0.6, 0.6, 0.6])], tri_tex: vec![],
+            tri_foliage: vec![],
         };
         let rest = V3::new(0.0, 0.0, 1.0);
         let behind = V3::new(400.0, 0.0, 1.0);

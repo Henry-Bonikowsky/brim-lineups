@@ -9,42 +9,55 @@ use crate::sim::{fly, Cfg};
 /// pixel-true elements only. Lineups whose aim puts one of these ON a world
 /// silhouette edge are replicable in game without guesswork.
 const UI_ANCHORS: [(&str, f32, f32); 12] = [
-    // measured PIXEL-EXACT from Henry's full native screenshot (1999x1249,
-    // 16:10). Preference order: ties keep the earlier entry.
+    // measured PIXEL-EXACT from cards/hud.png (1999x1249) - the overlay the
+    // site composites, so anchor and drawn pixel agree by construction. The
+    // old hand-measured table was 5-11px off and every "aligned" reference
+    // rendered visibly wrong. Preference order: ties keep the earlier entry.
     ("crosshair", 0.5, 0.5),
-    // Henry's go-to: the sharp chevron point under the equip prompt box
-    // (y derived from his reference screenshot via the diamond/mouse spacing)
-    ("chevron point below the equip prompt", 0.4722, 0.8963),
-    ("mouse icon in the equip prompt", 0.4722, 0.8607),
-    ("diamond tip above the equip prompt", 0.4722, 0.8055),
-    ("left end of the Q charge bar", 0.3802, 0.9680),
-    ("right end of the Q charge bar", 0.4217, 0.9680),
-    ("left end of the E charge bar", 0.4457, 0.9680),
-    ("right end of the E charge bar", 0.4872, 0.9680),
-    ("left end of the MB4 charge pips", 0.5113, 0.9680),
-    ("right end of the MB4 charge pips", 0.5528, 0.9680),
-    ("left end of the X charge bar", 0.5768, 0.9680),
-    ("right end of the X charge bar", 0.6183, 0.9680),
+    // Henry's go-tos on the equip prompt column (all at x 0.4665)
+    ("chevron point below the equip prompt", 0.4660, 0.8855),
+    ("white crescent tip under the mouse icon", 0.4665, 0.8713),
+    ("white dot above the equip prompt", 0.4665, 0.8078),
+    ("left end of the Q charge bar", 0.3802, 0.9644),
+    ("right end of the Q charge bar", 0.4222, 0.9640),
+    ("left end of the E charge bar", 0.4457, 0.9644),
+    ("right end of the E charge bar", 0.4877, 0.9640),
+    ("left end of the MB4 charge pips", 0.5113, 0.9640),
+    ("right end of the MB4 charge pips", 0.5533, 0.9640),
+    ("left end of the X charge bar", 0.5763, 0.9640),
+    ("right end of the X charge bar", 0.6188, 0.9640),
 ];
 
 /// Does any UI anchor sit on a strong depth edge at this aim? Returns the
 /// best (anchor name, edge distance, grade 1..2, screen fx, fy); grade 2 =
 /// dead on.
 fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Option<(&'static str, f32, u8, f32, f32)> {
-    ui_reference_ex(scene, eye, yaw, pitch, cfg, 0.005).map(|(r, _)| r)
+    ui_reference_candidates(scene, eye, yaw, pitch, cfg, 0.005).into_iter().next().map(|(r, _)| r)
 }
 
-/// ui_reference plus the screen position of the feature-edge crossing nearest
-/// the winning anchor (what align_reference steers onto). `s` is the probe
-/// grid spacing in screen fractions (0.005 = the display default).
-fn ui_reference_ex(
+/// Depth discontinuity between two probe samples: a silhouette edge.
+fn edgy(a: f32, b: f32) -> bool {
+    let near = a.min(b);
+    near < 9000.0 && (a.max(b) / near > 1.7 || (a.is_infinite() != b.is_infinite()))
+}
+
+/// Corner SEAM between two probe samples: same depth, normal snaps (two walls
+/// meeting) - the feature edge humans line up on when there is no depth jump.
+fn crease(a: &(f32, V3), b: &(f32, V3)) -> bool {
+    a.0.is_finite() && b.0.is_finite() && a.0.min(b.0) < 9000.0 && a.1.dot(&b.1).abs() < 0.6
+}
+
+/// All point-feature references at this aim, best first, each with the screen
+/// position of its feature crossing (what align_reference steers onto). `s`
+/// is the probe grid spacing in screen fractions (0.005 = display default).
+fn ui_reference_candidates(
     scene: &Scene,
     eye: V3,
     yaw: f32,
     pitch: f32,
     cfg: &Cfg,
     s: f32,
-) -> Option<((&'static str, f32, u8, f32, f32), (f32, f32))> {
+) -> Vec<((&'static str, f32, u8, f32, f32), (f32, f32))> {
     use parry3d::query::{Ray, RayCast};
     let (sy, cy) = yaw.to_radians().sin_cos();
     let (sp, cp) = pitch.to_radians().sin_cos();
@@ -63,22 +76,15 @@ fn ui_reference_ex(
             None => (f32::INFINITY, V3::zeros()),
         }
     };
-    let edgy = |a: f32, b: f32| -> bool {
-        let near = a.min(b);
-        near < 9000.0 && (a.max(b) / near > 1.7 || (a.is_infinite() != b.is_infinite()))
-    };
-    // a corner SEAM (two walls meeting) is the reference humans actually use:
-    // no depth jump at all, but the surface normal snaps. Same-distance
-    // neighbors on sharply angled faces count as a feature edge.
-    let crease = |a: &(f32, V3), b: &(f32, V3)| -> bool {
-        a.0.is_finite() && b.0.is_finite() && a.0.min(b.0) < 9000.0 && a.1.dot(&b.1).abs() < 0.6
-    };
     // an EDGE is a line - the anchor can slide along it, so it locks only one
     // aim axis and is NOT a reference. A reference is a POINT: corner,
     // junction, tip. Ring-probe 12 rays around the candidate: a straight edge
     // splits the ring into two ~half arcs; a point feature shows >=3 surface
     // groups or one small arc (a tip against sky / an L-junction).
-    let is_point = |cx: f32, cy: f32, s: f32| -> bool {
+    // Returns the point's STRENGTH: how far its radiating edge lines persist
+    // (Henry: the intersection of two LONG lines is a far better reference
+    // than a nearby stubby tip - the lines guide the eye to the point).
+    let point_strength = |cx: f32, cy: f32, s: f32| -> Option<i32> {
         let ring: Vec<(f32, V3)> = (0..12)
             .map(|k| {
                 let a = k as f32 / 12.0 * std::f32::consts::TAU;
@@ -97,7 +103,7 @@ fn ui_reference_ex(
         // contiguous same-surface arcs around the ring: (start slot, length)
         let breaks: Vec<usize> = (0..12).filter(|&k| !same(&ring[k], &ring[(k + 1) % 12])).collect();
         if breaks.len() < 2 {
-            return false; // 0-1 groups: flat surface or lone glitch, no feature
+            return None; // 0-1 groups: flat surface or lone glitch, no feature
         }
         let arcs: Vec<(usize, usize)> = breaks
             .iter()
@@ -123,18 +129,50 @@ fn ui_reference_ex(
             let cb = b.0 as f32 + b.1 as f32 / 2.0;
             ((ca - cb).rem_euclid(12.0) - 6.0).abs() <= 2.0 // ~antipodal
         };
-        for i in 0..arcs.len() {
-            for j in i + 1..arcs.len() {
-                if same_side(arcs[i], arcs[j]) {
-                    return false; // the feature continues through: a line
+        // reject only when EVERYTHING continues through the ring: a bare line
+        // (2 same-surface arcs) or a thin bar over a uniform background (both
+        // opposite pairs same). If any opposite pair DIFFERS, a second line
+        // terminates here - a T-junction or X-crossing, the premium reference
+        // (Henry: the corner where one edge meets another IS the point).
+        match arcs.len() {
+            2 => {
+                if same_side(arcs[0], arcs[1]) {
+                    return None; // bare line
+                }
+                // two arcs, distinct surfaces: a tip only if one arc is small
+                if arcs.iter().map(|a| a.1).min().unwrap_or(12) > 4 {
+                    return None;
+                }
+            }
+            4 => {
+                if same_side(arcs[0], arcs[2]) && same_side(arcs[1], arcs[3]) {
+                    return None; // rope/wire/rail over uniform background
+                }
+            }
+            n if n < 2 => return None,
+            _ => {} // >=3 distinct groups (or 4 with a differing pair): junction
+        }
+        // strength: walk outward along each radiating edge direction and
+        // count how far the edge keeps going (consecutive steps only)
+        let mut strength = 0;
+        for &b in breaks.iter().take(4) {
+            let a = (b as f32 + 0.5) / 12.0 * std::f32::consts::TAU;
+            let (dx, dy) = (a.cos(), a.sin());
+            for step in [2.0f32, 3.5, 5.0, 6.5, 8.0] {
+                let (px, py) = (cx + dx * step * s, cy + dy * step * s);
+                let q1 = depth_at(px - dy * 0.7 * s, py + dx * 0.7 * s);
+                let q2 = depth_at(px + dy * 0.7 * s, py - dx * 0.7 * s);
+                if edgy(q1.0, q2.0) || crease(&q1, &q2) {
+                    strength += 1;
+                } else {
+                    break;
                 }
             }
         }
-        // what's left: a junction of distinct surfaces, or a tip (small arc)
-        arcs.len() >= 3 || arcs.iter().map(|a| a.1).min().unwrap_or(12) <= 4
+        Some(strength)
     };
-    let mut best: Option<((&'static str, f32, u8, f32, f32), (f32, f32))> = None;
-    let mut best_score = f32::INFINITY;
+    // every point-passing candidate across all anchors: (strength, score, ref)
+    let mut cands: Vec<(i32, f32, ((&'static str, f32, u8, f32, f32), (f32, f32)))> = Vec::new();
     for (name, ax0, ay0) in UI_ANCHORS {
         // apply the user's HUD calibration: scale about bottom-center + dy
         let (ax, ay) = if name == "crosshair" {
@@ -174,10 +212,9 @@ fn ui_reference_ex(
             }
         }
         pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
-        // score EVERY point-passing candidate: the best reference is the most
-        // VISIBLE point, and nearness is the visibility proxy (a corner at 8m
-        // is huge on screen, one at 60m is a speck). First-acceptable-in-list
-        // was picking specks while an obvious big corner sat in view.
+        // score EVERY point-passing candidate: STRENGTH first (long radiating
+        // lines guide the eye to the point - Henry's calibration), nearness
+        // as the tiebreak (a corner at 8m is huge on screen, at 60m a speck)
         for &(r, e0, e1) in pairs.iter().take(8) {
             // bisect the crossing ONTO the feature before ring-testing: with
             // an off-center probe a straight edge cuts the ring into a small
@@ -193,23 +230,22 @@ fn ui_reference_ex(
                 }
             }
             let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
-            if is_point(cx, cy, s) {
+            if let Some(strength) = point_strength(cx, cy, s) {
                 let dist = s0.0.min(s1.0);
                 let grade = if r <= 1.0 { 2u8 } else { 1 };
                 // crosshair is the most natural anchor: it wins unless another
                 // anchor's point is at least twice as near
                 let score = dist * if name == "crosshair" { 0.5 } else { 1.0 };
-                if score < best_score {
-                    best_score = score;
-                    best = Some(((name, dist, grade, ax, ay), (cx, cy)));
-                }
+                cands.push((strength, score, ((name, dist, grade, ax, ay), (cx, cy))));
             }
         }
     }
-    best
+    // strongest first (long guiding lines), nearest as tiebreak
+    cands.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.total_cmp(&b.1)));
+    cands.into_iter().map(|(_, _, c)| c).collect()
 }
 
-fn align_reference(scene: &Scene, origin: V3, l: &mut Lineup, target: V3, tol: f32, cfg: &Cfg) -> bool {
+fn align_reference(scene: &Scene, vis: Option<&Scene>, origin: V3, l: &mut Lineup, target: V3, tol: f32, cfg: &Cfg) -> bool {
     use parry3d::query::{Ray, RayCast};
     let tan_v = (103.0f32.to_radians() / 2.0).tan() * 9.0 / 16.0;
     let tan_h = tan_v * 1.6;
@@ -222,70 +258,130 @@ fn align_reference(scene: &Scene, origin: V3, l: &mut Lineup, target: V3, tol: f
         let up = fwd.cross(&right).normalize();
         (fwd, right, up)
     };
-    // choose the reference ONCE, then steer onto its fixed 3D point:
-    // re-detecting every iteration let a different candidate win each pass
-    // and the target oscillated instead of converging
-    let (mut yaw, mut aim) = (l.yaw, l.pitch);
-    let Some(((name, _, _, ax, ay), (cx, cy))) = ui_reference_ex(scene, origin, yaw, aim, cfg, 0.005) else {
-        return false;
-    };
-    // world point of the feature: probe the crossing plus tiny offsets and
-    // keep the NEAREST hit (a silhouette-edge ray can slip to the far wall)
-    let (fwd, right, up) = axes(yaw, aim);
-    let w = [(0.0f32, 0.0f32), (0.0015, 0.0), (-0.0015, 0.0), (0.0, 0.0015), (0.0, -0.0015)]
-        .iter()
-        .filter_map(|(ox, oy)| {
-            let d = (fwd + right * (((cx + ox) * 2.0 - 1.0) * tan_h) + up * ((1.0 - (cy + oy) * 2.0) * tan_v))
-                .normalize();
-            scene
-                .mesh
-                .cast_ray(&id, &Ray::new(nalgebra::Point3::from(origin), d), 5.0e4, true)
-                .map(|t| (t, origin + d * t))
-        })
-        .min_by(|a, b| a.0.total_cmp(&b.0));
-    let Some((dist, w)) = w else { return false };
-    let mut aligned = false;
-    for _ in 0..8 {
-        let (fwd, right, up) = axes(yaw, aim);
-        let v = w - origin;
-        let cz = v.dot(&fwd);
-        if cz < 1.0 {
-            return false;
+    // steer by re-finding the crossing LOCALLY near the anchor each pass. The
+    // best references are often 2D crossings of a near line over a far line -
+    // those have no fixed 3D point (parallax moves them under nudges), so
+    // world-point steering drifted; local continuity converges for corners
+    // and crossings alike. Candidates best-first: if the throw cannot afford
+    // the nudge to the strongest one, fall back to the next (what a player
+    // does - pick a reference the throw supports).
+    for ((name, dist, _, ax, ay), (cx0, cy0)) in
+        ui_reference_candidates(scene, origin, l.yaw, l.pitch, cfg, 0.005).into_iter().take(4)
+    {
+        let (mut yaw, mut aim) = (l.yaw, l.pitch);
+        let (mut cx, mut cy) = (cx0, cy0);
+        let mut aligned = false;
+        let mut s = 0.005;
+        for _ in 0..8 {
+            let (dfx, dfy) = (cx - ax, cy - ay);
+            if dfx.abs() < 0.0004 && dfy.abs() < 0.0004 {
+                aligned = true; // sub-pixel even at native screen scale
+                break;
+            }
+            // small-angle screen->camera: turning right shifts the world left
+            yaw += (dfx * 2.0 * tan_h).to_degrees();
+            aim += (-dfy * 2.0 * tan_v).to_degrees();
+            // re-find the crossing near the anchor at the nudged aim: 3x3
+            // probe, bisect the pair whose crossing lands closest to it
+            let (fwd, right, up) = axes(yaw, aim);
+            let probe = |fx: f32, fy: f32| -> (f32, V3) {
+                let d = (fwd + right * ((fx * 2.0 - 1.0) * tan_h) + up * ((1.0 - fy * 2.0) * tan_v)).normalize();
+                match scene.mesh.cast_ray_and_get_normal(&id, &Ray::new(nalgebra::Point3::from(origin), d), 5.0e4, true) {
+                    Some(h) => (h.time_of_impact, h.normal),
+                    None => (f32::INFINITY, V3::zeros()),
+                }
+            };
+            let mut found: Option<(f32, f32, f32)> = None; // (dist to anchor, cx, cy)
+            for j in -1i32..=1 {
+                for i in -1i32..=1 {
+                    let (px, py) = (ax + i as f32 * s, ay + j as f32 * s);
+                    let p0 = probe(px, py);
+                    for (qx, qy) in [(px + s, py), (px, py + s)] {
+                        let p1 = probe(qx, qy);
+                        if !(edgy(p0.0, p1.0) || crease(&p0, &p1)) {
+                            continue;
+                        }
+                        // bisect onto the feature
+                        let ((mut x0, mut y0, mut s0), (mut x1, mut y1)) = ((px, py, p0), (qx, qy));
+                        for _ in 0..5 {
+                            let (mx, my) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
+                            let sm = probe(mx, my);
+                            if edgy(s0.0, sm.0) || crease(&s0, &sm) {
+                                (x1, y1) = (mx, my);
+                            } else {
+                                (x0, y0, s0) = (mx, my, sm);
+                            }
+                        }
+                        let (bx, by) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
+                        let d = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt();
+                        if found.is_none_or(|f| d < f.0) {
+                            found = Some((d, bx, by));
+                        }
+                    }
+                }
+            }
+            let Some((_, bx, by)) = found else {
+                aligned = false;
+                break; // lost the crossing: try the next candidate
+            };
+            (cx, cy) = (bx, by);
+            s = (s * 0.5).max(0.001);
         }
-        let px = v.dot(&right) / (cz * tan_h) * 0.5 + 0.5;
-        let py = 0.5 - v.dot(&up) / (cz * tan_v) * 0.5;
-        let (dfx, dfy) = (px - ax, py - ay);
-        if dfx.abs() < 0.0008 && dfy.abs() < 0.0008 {
-            aligned = true; // <1px at render scale: the point sits ON the anchor
-            break;
+        // the covers re-check is the real safety net; the drift guard only
+        // rejects runaway steering (detection window is ~1.7 deg wide)
+        if !aligned || (yaw - l.yaw).abs() + (aim - l.pitch).abs() > 3.0 {
+            continue;
         }
-        // small-angle screen->camera: turning right shifts the world left
-        yaw += (dfx * 2.0 * tan_h).to_degrees();
-        aim += (-dfy * 2.0 * tan_v).to_degrees();
+        // foliage gate: leaves render nothing like in game, so a reference on
+        // or against foliage is unusable. Probe the anchor neighborhood in
+        // the VISUAL scene (foliage has no molly collision, so the solver's
+        // own rays fly straight through it and cannot see it).
+        if let Some(v) = vis {
+            let (fwd, right, up) = axes(yaw, aim);
+            let nv = v.mesh.indices().len() as u32;
+            let leafy = (0..13).any(|k| {
+                let (ox, oy) = if k == 12 {
+                    (0.0, 0.0)
+                } else {
+                    let a = k as f32 / 12.0 * std::f32::consts::TAU;
+                    (a.cos() * 0.008, a.sin() * 0.008)
+                };
+                let d = (fwd + right * (((ax + ox) * 2.0 - 1.0) * tan_h) + up * ((1.0 - (ay + oy) * 2.0) * tan_v))
+                    .normalize();
+                v.mesh
+                    .cast_ray_and_get_normal(&id, &Ray::new(nalgebra::Point3::from(origin), d), 5.0e4, true)
+                    .is_some_and(|h| match h.feature {
+                        parry3d::shape::FeatureId::Face(i) => v.foliage_at(i % nv.max(1)),
+                        _ => false,
+                    })
+            });
+            if leafy {
+                continue; // try the next candidate
+            }
+        }
+        let launch = crate::sim::launch_pitch(aim, cfg);
+        let Some(o) = crate::sim::fly(scene, crate::sim::hand_origin(origin, yaw, cfg), dir_from(yaw, launch), cfg)
+        else {
+            continue;
+        };
+        let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+        let dz = (o.rest.z - target.z).abs();
+        let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+        if !(err < tol && crate::sim::fire_covers(scene, o.rest, target)) {
+            continue; // this reference costs too much aim: try the next
+        }
+        l.yaw = yaw;
+        l.pitch = aim;
+        l.rest = o.rest;
+        l.time = o.time;
+        l.bounces = o.bounces;
+        l.err = err;
+        // display the reference we actually aligned to (a re-detection could
+        // name a different, unaligned feature)
+        l.ui_ref = Some((name, dist, 2, ax, ay));
+        return true;
     }
-    if !aligned || (yaw - l.yaw).abs() + (aim - l.pitch).abs() > 2.0 {
-        return false; // never converged, or drifted implausibly far
-    }
-    let launch = crate::sim::launch_pitch(aim, cfg);
-    let Some(o) = crate::sim::fly(scene, crate::sim::hand_origin(origin, yaw, cfg), dir_from(yaw, launch), cfg) else {
-        return false;
-    };
-    let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
-    let dz = (o.rest.z - target.z).abs();
-    let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
-    if !(err < tol && crate::sim::fire_covers(scene, o.rest, target)) {
-        return false; // the aligned aim no longer lands the throw
-    }
-    l.yaw = yaw;
-    l.pitch = aim;
-    l.rest = o.rest;
-    l.time = o.time;
-    l.bounces = o.bounces;
-    l.err = err;
-    // display the reference we actually aligned to (a re-detection could name
-    // a different, unaligned feature)
-    l.ui_ref = Some((name, dist, 2, ax, ay));
-    true
+    false
 }
 
 #[derive(Clone)]
@@ -351,7 +447,7 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
 /// browse=true (strict only): keep every lineup RESTING within tol of the
 /// click even when its fire cannot reach the click itself - the user browses
 /// nearby end locations and picks one. Sorted by landing distance.
-pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg) -> Vec<Lineup> {
+pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg) -> Vec<Lineup> {
     let paired = !strict && stands.len() == 1;
     // POSITION RULE (strict/solver-picked stands only): a lineup stand must
     // sit against TWO faces (wall corner, angled walls, object against wall)
@@ -404,6 +500,9 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
             let mut best: Option<Lineup> = None;
             let mut best_miss: Option<Lineup> = None;
             let mut families: std::collections::HashMap<i32, Lineup> = Default::default();
+            // covered (time, yaw, aim pitch) alternates per family for the
+            // reference-hunting fallback
+            let mut alts: std::collections::HashMap<i32, Vec<(f32, f32, f32)>> = Default::default();
             let sweeps: Vec<(f32, f32)> = if paired {
                 let mut v = Vec::new();
                 let mut pitch = -35.0f32;
@@ -497,6 +596,18 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                         let grade = |l: &Lineup| l.ui_ref.map_or(0u8, |(_, _, g, _, _)| g);
                         if paired {
                             let key = (pitch / 8.0).round() as i32;
+                            // remember covered alternates: when the fastest
+                            // angle can't reach any reference, align walks
+                            // these (a player scans working angles until a
+                            // feature meets an anchor)
+                            if cand.covered {
+                                let a = alts.entry(key).or_default();
+                                a.push((cand.time, cand.yaw, cand.pitch));
+                                if a.len() > 16 {
+                                    a.sort_by(|x, y| x.0.total_cmp(&y.0));
+                                    a.truncate(12);
+                                }
+                            }
                             // a UI reference is worth at most 0.4s: beyond
                             // that, speed wins - an unconditional grade
                             // preference was discarding fast bounce-assisted
@@ -530,9 +641,33 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                 }
                 for b in &mut out {
                     // snap the aim so the reference point sits exactly on its
-                    // feature (only kept when the nudged throw still covers)
-                    if b.covered {
-                        align_reference(scene, origin, b, target, tol, cfg);
+                    // feature. A reference is only real when the ANGLE is
+                    // perfectly aligned - if the snap fails (or the row is a
+                    // miss), showing the near-miss detection would be a lie
+                    let mut refd = b.covered && align_reference(scene, vis, origin, b, target, tol, cfg);
+                    if !refd && b.covered {
+                        // no reference at the fastest angle: walk the covered
+                        // alternates of this family (nearest time first, max
+                        // +0.5s) until one of them aligns onto a feature
+                        let key = (crate::sim::launch_pitch(b.pitch, cfg) / 8.0).round() as i32;
+                        if let Some(a) = alts.get_mut(&key) {
+                            a.sort_by(|x, y| x.0.total_cmp(&y.0));
+                            for &(t, y, p) in a.iter().filter(|(t, ..)| *t <= b.time + 0.5).take(12) {
+                                if (y - b.yaw).abs() + (p - b.pitch).abs() < 0.05 {
+                                    continue; // the angle we already tried
+                                }
+                                let mut c = b.clone();
+                                (c.yaw, c.pitch, c.time) = (y, p, t);
+                                if align_reference(scene, vis, origin, &mut c, target, tol, cfg) {
+                                    *b = c;
+                                    refd = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if !refd {
+                        b.ui_ref = None;
                     }
                     finish(scene, target, tol, cfg, origin, b);
                 }
@@ -638,7 +773,7 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
         .par_iter()
         .map(|l| {
             let (rt, rtol) = if browse { (l.rest, 450.0) } else { (target, tol) };
-            let fams = solve(scene, &[l.stand], rt, rtol, 0.0, false, false, cfg);
+            let fams = solve(scene, vis, &[l.stand], rt, rtol, 0.0, false, false, cfg);
             match fams.into_iter().filter(|f| f.covered).min_by(|a, b| a.time.total_cmp(&b.time)) {
                 Some(mut f) => {
                     // err stays relative to the original click for display/sort
@@ -667,9 +802,8 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         .mesh
         .cast_ray(&nalgebra::Isometry3::identity(), &ray, 5.0e4, true)
         .map(|t| (origin + aim_dir * t, t));
-    if b.ui_ref.is_none() {
-        b.ui_ref = ui_reference(scene, origin, b.yaw, b.pitch, cfg);
-    }
+    // no ui_ref backfill here: a reference is only real when align_reference
+    // snapped the angle exactly onto it - near-miss detection is not a ref
     let mut ok = 0;
     let mut worst = 0.0f32;
     for (jy, jp) in
@@ -822,6 +956,7 @@ mod tests {
             tri_owner: vec![(0, "ground".into())],
             tri_color: vec![(0, [0.6, 0.6, 0.6])],
             tri_tex: vec![],
+            tri_foliage: vec![],
         }
     }
 

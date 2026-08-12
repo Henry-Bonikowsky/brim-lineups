@@ -87,7 +87,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 cscene.stands.clone()
             };
             let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
-            let lineups = solve::solve(cscene, &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
+            let lineups = solve::solve(cscene, Some(vscene), &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
 
             // fresh renders for the top few; unique run id to defeat caching
             let run = std::time::SystemTime::now()
@@ -175,7 +175,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 cscene.stands.clone()
             };
             let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
-            let lineups = solve::solve(cscene, &stands_vec, target, tol, min_dist, strict, browse, &cfg);
+            let lineups = solve::solve(cscene, Some(vscene), &stands_vec, target, tol, min_dist, strict, browse, &cfg);
             let Some(l) = lineups.get(n - 1) else {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no such lineup\"}"));
                 continue;

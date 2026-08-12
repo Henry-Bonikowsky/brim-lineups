@@ -64,7 +64,7 @@ pub fn pack(dir: &Path, out: &Path) {
             })
             .clone();
         let Some(id) = id else { continue }; // obj missing: native loader skips too
-        let flags = (kc as u8) | ((kv as u8) << 1);
+        let flags = (kc as u8) | ((kv as u8) << 1) | ((scene::is_foliage_mesh(mesh_name) as u8) << 2);
         places.push((
             flags,
             id,

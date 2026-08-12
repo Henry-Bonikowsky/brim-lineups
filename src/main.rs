@@ -25,6 +25,42 @@ fn main() {
         pack::pack(std::path::Path::new(&args[2]), std::path::Path::new(&args[3]));
         return;
     }
+    if args.get(1).map(|a| a == "browserefs").unwrap_or(false) {
+        // DEBUG (review loop): browserefs <pack.gz> <tx> <ty> [prefix] [row]
+        // site browse flow; prints top-10 refs, renders row's aim+wide
+        use std::io::Read as _;
+        let mut bytes = Vec::new();
+        flate2::read::GzDecoder::new(std::fs::File::open(&args[2]).expect("pack"))
+            .read_to_end(&mut bytes)
+            .expect("gunzip");
+        let (cs, vs) = scene::load_pack(&bytes);
+        let cfg = sim::Cfg::default();
+        let (tx, ty): (f32, f32) = (args[3].parse().unwrap(), args[4].parse().unwrap());
+        let target = V3::new(tx, ty, cs.ground_z(tx, ty).expect("ground"));
+        let lineups = solve::solve(&cs, Some(&vs), &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
+        for (k, l) in lineups.iter().take(10).enumerate() {
+            println!(
+                "row {:2} t {:4.1}s err {:5.0} stand ({:.0},{:.0}) ref: {:?}",
+                k + 1, l.time, l.err, l.stand.x, l.stand.y,
+                l.ui_ref.map(|(n, d, g, _, _)| (n, g, d.round()))
+            );
+        }
+        if let Some(prefix) = args.get(5) {
+            let row: usize = args.get(6).and_then(|r| r.parse().ok()).unwrap_or(1);
+            let l = &lineups[row - 1];
+            let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
+            // native HUD resolution: pixel-exact reference review
+            let mut aim = render::render_pov_bytes(&vs, eye, l.yaw, l.pitch, 2000, 1250);
+            if let Some((_, _, _, fx, fy)) = l.ui_ref {
+                render::stamp_ring(&mut aim, fx, fy);
+            }
+            std::fs::write(format!("{prefix}_aim.bmp"), &aim).unwrap();
+            let (we, wy, wp) = render::wide_cam(&vs, l.stand, l.yaw);
+            let wide = render::render_marked_bytes(&vs, we, wy, wp, l.stand + V3::new(0.0, 0.0, 40.0));
+            std::fs::write(format!("{prefix}_wide.bmp"), &wide).unwrap();
+        }
+        return;
+    }
     if args.get(1).map(|a| a == "packrender").unwrap_or(false) {
         // packrender <pack.gz> <tx> <ty> <outPrefix>: browse-solve + render row 1
         // from the PACKED scenes (native run of the exact wasm code path)
@@ -38,7 +74,7 @@ fn main() {
         let cfg = sim::Cfg::default();
         let tz = cs.ground_z(tx, ty).expect("ground");
         let target = V3::new(tx, ty, tz);
-        let lineups = solve::solve(&cs, &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
+        let lineups = solve::solve(&cs, Some(&vs), &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
         eprintln!("{} lineups", lineups.len());
         let l = &lineups[0];
         eprintln!("row1: stand ({:.0},{:.0},{:.0}) yaw {:.1} pitch {:.1} rest ({:.0},{:.0},{:.0})",
@@ -213,7 +249,7 @@ fn main() {
     let min_dist: f32 =
         min_dist_override.unwrap_or_else(|| get("--min-dist").map(|s| s.parse().unwrap()).unwrap_or(1800.0));
     let stands = scene.stands.clone();
-    let lineups = solve::solve(&scene, &stands, target, tol, min_dist, min_dist_override.is_none(), false, &cfg);
+    let lineups = solve::solve(&scene, None, &stands, target, tol, min_dist, min_dist_override.is_none(), false, &cfg);
     eprintln!("solved in {:.1?}: {} distinct lineups within {tol}u", t0.elapsed(), lineups.len());
 
     println!(
