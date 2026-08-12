@@ -31,6 +31,20 @@ const UI_ANCHORS: [(&str, f32, f32); 12] = [
 /// best (anchor name, edge distance, grade 1..2, screen fx, fy); grade 2 =
 /// dead on.
 fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Option<(&'static str, f32, u8, f32, f32)> {
+    ui_reference_ex(scene, eye, yaw, pitch, cfg, 0.005).map(|(r, _)| r)
+}
+
+/// ui_reference plus the screen position of the feature-edge crossing nearest
+/// the winning anchor (what align_reference steers onto). `s` is the probe
+/// grid spacing in screen fractions (0.005 = the display default).
+fn ui_reference_ex(
+    scene: &Scene,
+    eye: V3,
+    yaw: f32,
+    pitch: f32,
+    cfg: &Cfg,
+    s: f32,
+) -> Option<((&'static str, f32, u8, f32, f32), (f32, f32))> {
     use parry3d::query::{Ray, RayCast};
     let (sy, cy) = yaw.to_radians().sin_cos();
     let (sp, cp) = pitch.to_radians().sin_cos();
@@ -59,7 +73,7 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Opti
     let crease = |a: &(f32, V3), b: &(f32, V3)| -> bool {
         a.0.is_finite() && b.0.is_finite() && a.0.min(b.0) < 9000.0 && a.1.dot(&b.1).abs() < 0.6
     };
-    let mut best: Option<(&'static str, f32, u8, f32, f32)> = None;
+    let mut best: Option<((&'static str, f32, u8, f32, f32), (f32, f32))> = None;
     for (name, ax0, ay0) in UI_ANCHORS {
         // apply the user's HUD calibration: scale about bottom-center + dy
         let (ax, ay) = if name == "crosshair" {
@@ -70,11 +84,10 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Opti
                 1.0 - (1.0 - ay0) * cfg.hud_scale + cfg.hud_dy / 100.0,
             )
         };
-        const S: f32 = 0.005; // ~0.3 deg horizontally
         let mut d = [[(0.0f32, V3::zeros()); 5]; 5];
         for (j, dj) in (-2i32..=2).enumerate() {
             for (i, di) in (-2i32..=2).enumerate() {
-                d[j][i] = depth_at(ax + di as f32 * S, ay + dj as f32 * S);
+                d[j][i] = depth_at(ax + di as f32 * s, ay + dj as f32 * s);
             }
         }
         // edge crossing adjacent to the center = grade 2; anywhere = grade 1.
@@ -82,40 +95,97 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Opti
         // old code min'd the horizontal pair for vertical edges - inf leak)
         let mut grade = 0u8;
         let mut dist = f32::INFINITY;
-        let hit = |r: f32, a: f32, b: f32, grade: &mut u8, dist: &mut f32| {
+        // nearest tripped pair's crossing (midpoint): what alignment steers onto
+        let mut best_r = f32::MAX;
+        let mut cross = (ax, ay);
+        let mut hit = |r: f32, a: f32, b: f32, cx: f32, cy: f32, grade: &mut u8, dist: &mut f32| {
             if r <= 1.0 {
                 *grade = 2;
             } else if *grade == 0 {
                 *grade = 1;
             }
             *dist = dist.min(a.min(b));
+            if r < best_r {
+                best_r = r;
+                cross = (cx, cy);
+            }
         };
         for j in 0..5 {
             for i in 0..5 {
                 if i < 4 && (edgy(d[j][i].0, d[j][i + 1].0) || crease(&d[j][i], &d[j][i + 1])) {
                     let r = ((i as f32 + 0.5 - 2.0).abs()).max((j as f32 - 2.0).abs());
-                    hit(r, d[j][i].0, d[j][i + 1].0, &mut grade, &mut dist);
+                    let (cx, cy) = (ax + (i as f32 + 0.5 - 2.0) * s, ay + (j as f32 - 2.0) * s);
+                    hit(r, d[j][i].0, d[j][i + 1].0, cx, cy, &mut grade, &mut dist);
                 }
                 if j < 4 && (edgy(d[j][i].0, d[j + 1][i].0) || crease(&d[j][i], &d[j + 1][i])) {
                     let r = ((i as f32 - 2.0).abs()).max((j as f32 + 0.5 - 2.0).abs());
-                    hit(r, d[j][i].0, d[j + 1][i].0, &mut grade, &mut dist);
+                    let (cx, cy) = (ax + (i as f32 - 2.0) * s, ay + (j as f32 + 0.5 - 2.0) * s);
+                    hit(r, d[j][i].0, d[j + 1][i].0, cx, cy, &mut grade, &mut dist);
                 }
             }
         }
         if grade > 0 {
             let better = match best {
-                Some((_, _, g, _, _)) => grade > g,
+                Some(((_, _, g, _, _), _)) => grade > g,
                 None => true,
             };
             if better {
-                best = Some((name, dist, grade, ax, ay));
+                best = Some(((name, dist, grade, ax, ay), cross));
             }
         }
-        if matches!(best, Some((_, _, 2, _, _))) && name == "crosshair" {
+        if matches!(best, Some(((_, _, 2, _, _), _))) && name == "crosshair" {
             break; // crosshair dead-on beats everything
         }
     }
     best
+}
+
+/// Nudge a covered lineup's aim by sub-degree steps until the winning UI
+/// anchor sits EXACTLY on its feature edge (the in-game "kiss the corner"
+/// motion), keeping the throw only if it still covers `target`. The coarse
+/// sweep grid (1 deg) can never do this by itself - references it finds are
+/// near-misses. Updates yaw/pitch/rest/time/bounces/err/ui_ref on success.
+fn align_reference(scene: &Scene, origin: V3, l: &mut Lineup, target: V3, tol: f32, cfg: &Cfg) -> bool {
+    let tan_v = (103.0f32.to_radians() / 2.0).tan() * 9.0 / 16.0;
+    let tan_h = tan_v * 1.6;
+    let (mut yaw, mut aim) = (l.yaw, l.pitch);
+    let mut aligned = false;
+    let mut s = 0.005;
+    for _ in 0..4 {
+        let Some(((_, _, _, ax, ay), (cx, cy))) = ui_reference_ex(scene, origin, yaw, aim, cfg, s) else {
+            return false;
+        };
+        let (dfx, dfy) = (cx - ax, cy - ay);
+        if dfx.abs() < 0.0015 && dfy.abs() < 0.0015 {
+            aligned = true;
+            break;
+        }
+        // small-angle screen->camera: turning right shifts the world left
+        yaw += (dfx * 2.0 * tan_h).to_degrees();
+        aim += (-dfy * 2.0 * tan_v).to_degrees();
+        s *= 0.5; // finer probe grid as we close in
+    }
+    if !aligned || (yaw - l.yaw).abs() + (aim - l.pitch).abs() > 2.0 {
+        return false; // never converged, or drifted implausibly far
+    }
+    let launch = crate::sim::launch_pitch(aim, cfg);
+    let Some(o) = crate::sim::fly(scene, crate::sim::hand_origin(origin, yaw, cfg), dir_from(yaw, launch), cfg) else {
+        return false;
+    };
+    let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+    let dz = (o.rest.z - target.z).abs();
+    let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+    if !(err < tol && crate::sim::fire_covers(scene, o.rest, target)) {
+        return false; // the aligned aim no longer lands the throw
+    }
+    l.yaw = yaw;
+    l.pitch = aim;
+    l.rest = o.rest;
+    l.time = o.time;
+    l.bounces = o.bounces;
+    l.err = err;
+    l.ui_ref = ui_reference(scene, origin, yaw, aim, cfg);
+    true
 }
 
 #[derive(Clone)]
@@ -359,6 +429,11 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
                     out.extend(best_miss);
                 }
                 for b in &mut out {
+                    // snap the aim so the reference point sits exactly on its
+                    // feature (only kept when the nudged throw still covers)
+                    if b.covered {
+                        align_reference(scene, origin, b, target, tol, cfg);
+                    }
                     finish(scene, target, tol, cfg, origin, b);
                 }
                 out.sort_by(|a, b| a.time.total_cmp(&b.time));
