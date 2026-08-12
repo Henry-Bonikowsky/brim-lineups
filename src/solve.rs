@@ -128,18 +128,19 @@ fn ui_reference_ex(
         // collect tripped feature-edge pairs, nearest the anchor first, then
         // keep the first one whose crossing is a POINT feature (ring test) -
         // a bare edge line never becomes a reference
-        let mut pairs: Vec<(f32, f32, f32, f32, f32)> = Vec::new(); // (r, a, b, cx, cy)
+        type Pair = (f32, (f32, f32, (f32, V3)), (f32, f32, (f32, V3)));
+        let mut pairs: Vec<Pair> = Vec::new(); // (r, endpoint0, endpoint1)
         for j in 0..5 {
             for i in 0..5 {
                 if i < 4 && (edgy(d[j][i].0, d[j][i + 1].0) || crease(&d[j][i], &d[j][i + 1])) {
                     let r = ((i as f32 + 0.5 - 2.0).abs()).max((j as f32 - 2.0).abs());
-                    let (cx, cy) = (ax + (i as f32 + 0.5 - 2.0) * s, ay + (j as f32 - 2.0) * s);
-                    pairs.push((r, d[j][i].0, d[j][i + 1].0, cx, cy));
+                    let (px, py) = (ax + (i as f32 - 2.0) * s, ay + (j as f32 - 2.0) * s);
+                    pairs.push((r, (px, py, d[j][i]), (px + s, py, d[j][i + 1])));
                 }
                 if j < 4 && (edgy(d[j][i].0, d[j + 1][i].0) || crease(&d[j][i], &d[j + 1][i])) {
                     let r = ((i as f32 - 2.0).abs()).max((j as f32 + 0.5 - 2.0).abs());
-                    let (cx, cy) = (ax + (i as f32 - 2.0) * s, ay + (j as f32 + 0.5 - 2.0) * s);
-                    pairs.push((r, d[j][i].0, d[j + 1][i].0, cx, cy));
+                    let (px, py) = (ax + (i as f32 - 2.0) * s, ay + (j as f32 - 2.0) * s);
+                    pairs.push((r, (px, py, d[j][i]), (px, py + s, d[j + 1][i])));
                 }
             }
         }
@@ -147,10 +148,24 @@ fn ui_reference_ex(
         let mut grade = 0u8;
         let mut dist = f32::INFINITY;
         let mut cross = (ax, ay);
-        for &(r, a, b, cx, cy) in pairs.iter().take(6) {
+        for &(r, e0, e1) in pairs.iter().take(6) {
+            // bisect the crossing ONTO the feature before ring-testing: with
+            // an off-center probe a straight edge cuts the ring into a small
+            // arc + big arc and masquerades as a tip
+            let ((mut x0, mut y0, mut s0), (mut x1, mut y1, mut s1)) = (e0, e1);
+            for _ in 0..5 {
+                let (mx, my) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
+                let sm = depth_at(mx, my);
+                if edgy(s0.0, sm.0) || crease(&s0, &sm) {
+                    (x1, y1, s1) = (mx, my, sm);
+                } else {
+                    (x0, y0, s0) = (mx, my, sm);
+                }
+            }
+            let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
             if is_point(cx, cy, s) {
                 grade = if r <= 1.0 { 2 } else { 1 };
-                dist = a.min(b);
+                dist = s0.0.min(s1.0);
                 cross = (cx, cy);
                 break;
             }

@@ -1,8 +1,10 @@
 // Solver worker for the static (GitHub Pages) build: the wasm solve can run
 // for a while, so it must never block the page. Same JSON as the native
 // server's /solve (see src/api.rs).
-import init, { load_map, solve_json, render_lineup, traj_json, flight_stills } from './pkg/brim_lineups.js';
-const ready = init();
+// __BUILD__ is replaced with the commit SHA at deploy (pages.yml): Pages
+// caches for 10 min, and a stale worker/wasm silently runs the old solver
+import init, { load_map, solve_json, render_lineup, traj_json, flight_stills } from './pkg/brim_lineups.js?v=__BUILD__';
+const ready = init('./pkg/brim_lineups_bg.wasm?v=__BUILD__');
 onmessage = async e => {
   const { id, cmd, args } = e.data;
   try {

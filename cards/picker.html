@@ -193,7 +193,7 @@ const modeReady = (async () => {
 let worker, wid = 0;
 const wpending = {};
 function initWasm() {
-  worker = new Worker('worker.js', { type: 'module' });
+  worker = new Worker('worker.js?v=__BUILD__', { type: 'module' });
   worker.onmessage = e => {
     const p = wpending[e.data.id];
     delete wpending[e.data.id];

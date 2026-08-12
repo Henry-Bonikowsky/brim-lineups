@@ -33,6 +33,7 @@ jobs:
              cards/Infinity.png cards/Jam.png cards/Juliett.png cards/Pitt.png cards/Plummet.png \
              cards/Port.png cards/Rook.png cards/Triad.png site/
           cp cards/picker.html site/index.html
+          sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/picker.html site/index.html site/worker.js
           cp -r packs site/packs
       - uses: actions/upload-pages-artifact@v3
         with:
