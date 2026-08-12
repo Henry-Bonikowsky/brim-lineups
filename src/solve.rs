@@ -8,10 +8,13 @@ use crate::sim::{fly, Cfg};
 /// UI landmarks usable as aiming references (screen fractions of the HUD):
 /// pixel-true elements only. Lineups whose aim puts one of these ON a world
 /// silhouette edge are replicable in game without guesswork.
-const UI_ANCHORS: [(&str, f32, f32); 11] = [
+const UI_ANCHORS: [(&str, f32, f32); 12] = [
     // measured PIXEL-EXACT from Henry's full native screenshot (1999x1249,
     // 16:10). Preference order: ties keep the earlier entry.
     ("crosshair", 0.5, 0.5),
+    // Henry's go-to: the sharp chevron point under the equip prompt box
+    // (y derived from his reference screenshot via the diamond/mouse spacing)
+    ("chevron point below the equip prompt", 0.4722, 0.8963),
     ("mouse icon in the equip prompt", 0.4722, 0.8607),
     ("diamond tip above the equip prompt", 0.4722, 0.8055),
     ("left end of the Q charge bar", 0.3802, 0.9680),
@@ -39,16 +42,22 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Opti
     let tan_v = (103.0f32.to_radians() / 2.0).tan() * 9.0 / 16.0;
     let tan_h = tan_v * 1.6;
     let id = nalgebra::Isometry3::identity();
-    let depth_at = |fx: f32, fy: f32| -> f32 {
+    let depth_at = |fx: f32, fy: f32| -> (f32, V3) {
         let d = (fwd + right * ((fx * 2.0 - 1.0) * tan_h) + up * ((1.0 - fy * 2.0) * tan_v)).normalize();
-        scene
-            .mesh
-            .cast_ray(&id, &Ray::new(nalgebra::Point3::from(eye), d), 5.0e4, true)
-            .unwrap_or(f32::INFINITY)
+        match scene.mesh.cast_ray_and_get_normal(&id, &Ray::new(nalgebra::Point3::from(eye), d), 5.0e4, true) {
+            Some(h) => (h.time_of_impact, h.normal),
+            None => (f32::INFINITY, V3::zeros()),
+        }
     };
     let edgy = |a: f32, b: f32| -> bool {
         let near = a.min(b);
         near < 9000.0 && (a.max(b) / near > 1.7 || (a.is_infinite() != b.is_infinite()))
+    };
+    // a corner SEAM (two walls meeting) is the reference humans actually use:
+    // no depth jump at all, but the surface normal snaps. Same-distance
+    // neighbors on sharply angled faces count as a feature edge.
+    let crease = |a: &(f32, V3), b: &(f32, V3)| -> bool {
+        a.0.is_finite() && b.0.is_finite() && a.0.min(b.0) < 9000.0 && a.1.dot(&b.1).abs() < 0.6
     };
     let mut best: Option<(&'static str, f32, u8, f32, f32)> = None;
     for (name, ax0, ay0) in UI_ANCHORS {
@@ -62,7 +71,7 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Opti
             )
         };
         const S: f32 = 0.005; // ~0.3 deg horizontally
-        let mut d = [[0.0f32; 5]; 5];
+        let mut d = [[(0.0f32, V3::zeros()); 5]; 5];
         for (j, dj) in (-2i32..=2).enumerate() {
             for (i, di) in (-2i32..=2).enumerate() {
                 d[j][i] = depth_at(ax + di as f32 * S, ay + dj as f32 * S);
@@ -83,13 +92,13 @@ fn ui_reference(scene: &Scene, eye: V3, yaw: f32, pitch: f32, cfg: &Cfg) -> Opti
         };
         for j in 0..5 {
             for i in 0..5 {
-                if i < 4 && edgy(d[j][i], d[j][i + 1]) {
+                if i < 4 && (edgy(d[j][i].0, d[j][i + 1].0) || crease(&d[j][i], &d[j][i + 1])) {
                     let r = ((i as f32 + 0.5 - 2.0).abs()).max((j as f32 - 2.0).abs());
-                    hit(r, d[j][i], d[j][i + 1], &mut grade, &mut dist);
+                    hit(r, d[j][i].0, d[j][i + 1].0, &mut grade, &mut dist);
                 }
-                if j < 4 && edgy(d[j][i], d[j + 1][i]) {
+                if j < 4 && (edgy(d[j][i].0, d[j + 1][i].0) || crease(&d[j][i], &d[j + 1][i])) {
                     let r = ((i as f32 - 2.0).abs()).max((j as f32 + 0.5 - 2.0).abs());
-                    hit(r, d[j][i], d[j + 1][i], &mut grade, &mut dist);
+                    hit(r, d[j][i].0, d[j + 1][i].0, &mut grade, &mut dist);
                 }
             }
         }
