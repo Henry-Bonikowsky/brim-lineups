@@ -116,14 +116,20 @@ impl Scene {
         use parry3d::query::{Ray, RayCast};
         let mut z_top = 6000.0f32;
         let mut hits: Vec<f32> = Vec::new();
-        for _ in 0..8 {
+        // walk ALL stacked layers down to the map floor: an 8-hit cap plus
+        // bailing on sub-1u coplanar sandwiches (roof trim, stacked beams over
+        // Bonsai mid) used to stop ~1500u above the real ground, resolving
+        // clicks onto rooftops and killing every genuinely-near lineup
+        for _ in 0..64 {
             let ray = Ray::new(Point3::new(x, y, z_top), V3::new(0.0, 0.0, -1.0));
             match self.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, z_top - self.min_z + 100.0, true) {
-                Some(t) if t > 1.0 => {
+                Some(t) => {
+                    if t > 1.0 {
+                        hits.push(z_top - t);
+                    }
                     z_top -= t + 5.0;
-                    hits.push(z_top + 5.0);
                 }
-                _ => break,
+                None => break,
             }
         }
         if hits.is_empty() {
