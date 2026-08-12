@@ -40,8 +40,8 @@ fn main() {
         let lineups = solve::solve(&cs, Some(&vs), &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
         for (k, l) in lineups.iter().take(10).enumerate() {
             println!(
-                "row {:2} t {:4.1}s err {:5.0} stand ({:.0},{:.0}) ref: {:?}",
-                k + 1, l.time, l.err, l.stand.x, l.stand.y,
+                "row {:2} t {:4.1}s err {:5.0} stand ({:.0},{:.0}) yaw {:.3} pitch {:.3} ref: {:?}",
+                k + 1, l.time, l.err, l.stand.x, l.stand.y, l.yaw, l.pitch,
                 l.ui_ref.map(|(n, d, g, _, _)| (n, g, d.round()))
             );
         }
@@ -58,6 +58,31 @@ fn main() {
             let (we, wy, wp) = render::wide_cam(&vs, l.stand, l.yaw);
             let wide = render::render_marked_bytes(&vs, we, wy, wp, l.stand + V3::new(0.0, 0.0, 40.0));
             std::fs::write(format!("{prefix}_wide.bmp"), &wide).unwrap();
+        }
+        return;
+    }
+    if args.get(1).map(|a| a == "cornerdbg").unwrap_or(false) {
+        // TEMP DEBUG: cornerdbg <pack.gz> <sx> <sy> <yaw> <pitch> - best_corner
+        // at three scales around the crosshair, printed as screen fractions
+        use std::io::Read as _;
+        let mut bytes = Vec::new();
+        flate2::read::GzDecoder::new(std::fs::File::open(&args[2]).expect("pack"))
+            .read_to_end(&mut bytes)
+            .expect("gunzip");
+        let (cs, vs) = scene::load_pack(&bytes);
+        let cfg = sim::Cfg::default();
+        let f = |k: usize| -> f32 { args[k].parse().unwrap() };
+        let (sx, sy, yaw, pitch) = (f(3), f(4), f(5), f(6));
+        let stand = V3::new(sx, sy, cs.ground_z(sx, sy).expect("ground"));
+        let origin = stand + V3::new(0.0, 0.0, cfg.eye_z);
+        for (half, step) in [(0.0143f32, 0.0007f32), (0.005, 0.0004), (0.0015, 0.0001)] {
+            match solve::debug_best_corner(&vs, origin, yaw, pitch, 0.5, 0.5, half, step) {
+                Some((cx, cy, r, d)) => println!(
+                    "half {half:.4} step {step:.4}: corner at ({cx:.5},{cy:.5}) = px ({:.1},{:.1}) resp {r:.1} depth {d:.0}",
+                    cx * 2000.0, cy * 1250.0
+                ),
+                None => println!("half {half:.4} step {step:.4}: none above floor"),
+            }
         }
         return;
     }

@@ -24,7 +24,7 @@ const GROUND_TILE: f32 = 400.0;
 /// tri-planar along their dominant horizontal axis (the dump has no UVs, so
 /// world projection is the best available - materials read correctly and
 /// stay aligned to world verticals for lining up references).
-fn surface_color(scene: &crate::scene::Scene, tri: u32, n: V3, wp: V3) -> [f32; 3] {
+pub fn surface_color(scene: &crate::scene::Scene, tri: u32, n: V3, wp: V3) -> [f32; 3] {
     match scene.tex_of(tri) {
         Some(t) => {
             if n.z.abs() > 0.62 {
