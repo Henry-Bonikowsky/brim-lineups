@@ -334,40 +334,39 @@ fn render_ex(
                 V3::new(d.dot(&right), d.dot(&up), d.dot(&fwd))
             })
             .collect();
-        if cam.iter().all(|c| c.z < 1.0) {
+        // near-plane clip (z >= 1): map surfaces are huge single triangles, so
+        // a camera standing close to a wall/floor puts one vertex behind the
+        // plane; dropping the whole tri (the old behavior) erased entire
+        // surfaces from stills. Clip instead, lerping world coords in step.
+        const NEAR: f32 = 1.0;
+        let mut poly: Vec<(V3, V3)> = cam.iter().copied().zip(p.iter().copied()).collect();
+        if poly.iter().all(|(c, _)| c.z < NEAR) {
             continue; // fully behind
         }
-        // project (skip tris crossing the near plane; acceptable for stills)
-        if cam.iter().any(|c| c.z < 1.0) {
-            continue;
+        if poly.iter().any(|(c, _)| c.z < NEAR) {
+            let mut clipped: Vec<(V3, V3)> = Vec::with_capacity(4);
+            for i in 0..poly.len() {
+                let (a, aw) = poly[i];
+                let (b, bw) = poly[(i + 1) % poly.len()];
+                if a.z >= NEAR {
+                    clipped.push((a, aw));
+                }
+                if (a.z >= NEAR) != (b.z >= NEAR) {
+                    let t = (NEAR - a.z) / (b.z - a.z);
+                    clipped.push((a + (b - a) * t, aw + (bw - aw) * t));
+                }
+            }
+            poly = clipped;
+            if poly.len() < 3 {
+                continue;
+            }
         }
-        // early frustum reject: whole triangle outside one screen edge
-        if cam.iter().all(|c| c.x > c.z * tan_h)
-            || cam.iter().all(|c| c.x < -c.z * tan_h)
-            || cam.iter().all(|c| c.y > c.z * tan_v)
-            || cam.iter().all(|c| c.y < -c.z * tan_v)
+        // early frustum reject: whole polygon outside one screen edge
+        if poly.iter().all(|(c, _)| c.x > c.z * tan_h)
+            || poly.iter().all(|(c, _)| c.x < -c.z * tan_h)
+            || poly.iter().all(|(c, _)| c.y > c.z * tan_v)
+            || poly.iter().all(|(c, _)| c.y < -c.z * tan_v)
         {
-            continue;
-        }
-        let scr: Vec<(f32, f32, f32)> = cam
-            .iter()
-            .map(|c| {
-                (
-                    (c.x / (c.z * tan_h) * 0.5 + 0.5) * W as f32,
-                    (0.5 - c.y / (c.z * tan_v) * 0.5) * H as f32,
-                    c.z,
-                )
-            })
-            .collect();
-        let (min_x, max_x) = (
-            scr.iter().map(|s| s.0).fold(f32::MAX, f32::min).max(0.0) as usize,
-            (scr.iter().map(|s| s.0).fold(f32::MIN, f32::max).min(W as f32 - 1.0)) as usize,
-        );
-        let (min_y, max_y) = (
-            scr.iter().map(|s| s.1).fold(f32::MAX, f32::min).max(0.0) as usize,
-            (scr.iter().map(|s| s.1).fold(f32::MIN, f32::max).min(H as f32 - 1.0)) as usize,
-        );
-        if min_x > max_x || min_y > max_y {
             continue;
         }
         // face normal shading (world space)
@@ -382,44 +381,69 @@ fn render_ex(
         // every face samples its real diffuse per pixel (floors planar,
         // walls tri-planar via surface_color)
         let tex = scene.tex_of(tri_idx as u32);
-        let (ax, ay) = (scr[0].0, scr[0].1);
-        let (bx, by) = (scr[1].0, scr[1].1);
-        let (cx, cxy) = (scr[2].0, scr[2].1);
-        let den = (by - cxy) * (ax - cx) + (cx - bx) * (ay - cxy);
-        if den.abs() < 1e-6 {
-            continue;
-        }
-        for py in min_y..=max_y {
-            for px in min_x..=max_x {
-                let (fx, fy) = (px as f32 + 0.5, py as f32 + 0.5);
-                let l0 = ((by - cxy) * (fx - cx) + (cx - bx) * (fy - cxy)) / den;
-                let l1 = ((cxy - ay) * (fx - cx) + (ax - cx) * (fy - cxy)) / den;
-                let l2 = 1.0 - l0 - l1;
-                if l0 < 0.0 || l1 < 0.0 || l2 < 0.0 {
-                    continue;
-                }
-                let (w0, w1, w2) = (l0 / scr[0].2, l1 / scr[1].2, l2 / scr[2].2);
-                let z = 1.0 / (w0 + w1 + w2);
-                let idx = py * W + px;
-                if z < depth[idx] {
-                    depth[idx] = z;
-                    let fog = (z / 9000.0).min(0.75);
-                    let l = lambert * (1.0 - fog);
-                    let mat = match tex {
-                        Some(_) => {
-                            // perspective-correct world position for the sample
-                            let wp = (p[0] * w0 + p[1] * w1 + p[2] * w2) * z;
-                            surface_color(scene, tri_idx as u32, n, wp)
-                        }
-                        None => mat,
-                    };
-                    // boost material color toward readable brightness
-                    shade[idx] = [
-                        (mat[0] * 1.35).min(1.0) * l + 0.55 * fog,
-                        (mat[1] * 1.35).min(1.0) * l + 0.60 * fog,
-                        (mat[2] * 1.35).min(1.0) * l + 0.65 * fog,
-                    ];
-                    is_sky[idx] = false;
+        // fan-triangulate the clipped polygon (3 or 4 verts)
+        for k in 1..poly.len() - 1 {
+            let sub = [poly[0], poly[k], poly[k + 1]];
+            let scr: Vec<(f32, f32, f32)> = sub
+                .iter()
+                .map(|(c, _)| {
+                    (
+                        (c.x / (c.z * tan_h) * 0.5 + 0.5) * W as f32,
+                        (0.5 - c.y / (c.z * tan_v) * 0.5) * H as f32,
+                        c.z,
+                    )
+                })
+                .collect();
+            let (min_x, max_x) = (
+                scr.iter().map(|s| s.0).fold(f32::MAX, f32::min).max(0.0) as usize,
+                (scr.iter().map(|s| s.0).fold(f32::MIN, f32::max).min(W as f32 - 1.0)) as usize,
+            );
+            let (min_y, max_y) = (
+                scr.iter().map(|s| s.1).fold(f32::MAX, f32::min).max(0.0) as usize,
+                (scr.iter().map(|s| s.1).fold(f32::MIN, f32::max).min(H as f32 - 1.0)) as usize,
+            );
+            if min_x > max_x || min_y > max_y {
+                continue;
+            }
+            let (ax, ay) = (scr[0].0, scr[0].1);
+            let (bx, by) = (scr[1].0, scr[1].1);
+            let (cx, cxy) = (scr[2].0, scr[2].1);
+            let den = (by - cxy) * (ax - cx) + (cx - bx) * (ay - cxy);
+            if den.abs() < 1e-6 {
+                continue;
+            }
+            for py in min_y..=max_y {
+                for px in min_x..=max_x {
+                    let (fx, fy) = (px as f32 + 0.5, py as f32 + 0.5);
+                    let l0 = ((by - cxy) * (fx - cx) + (cx - bx) * (fy - cxy)) / den;
+                    let l1 = ((cxy - ay) * (fx - cx) + (ax - cx) * (fy - cxy)) / den;
+                    let l2 = 1.0 - l0 - l1;
+                    if l0 < 0.0 || l1 < 0.0 || l2 < 0.0 {
+                        continue;
+                    }
+                    let (w0, w1, w2) = (l0 / scr[0].2, l1 / scr[1].2, l2 / scr[2].2);
+                    let z = 1.0 / (w0 + w1 + w2);
+                    let idx = py * W + px;
+                    if z < depth[idx] {
+                        depth[idx] = z;
+                        let fog = (z / 9000.0).min(0.75);
+                        let l = lambert * (1.0 - fog);
+                        let mat = match tex {
+                            Some(_) => {
+                                // perspective-correct world position for the sample
+                                let wp = (sub[0].1 * w0 + sub[1].1 * w1 + sub[2].1 * w2) * z;
+                                surface_color(scene, tri_idx as u32, n, wp)
+                            }
+                            None => mat,
+                        };
+                        // boost material color toward readable brightness
+                        shade[idx] = [
+                            (mat[0] * 1.35).min(1.0) * l + 0.55 * fog,
+                            (mat[1] * 1.35).min(1.0) * l + 0.60 * fog,
+                            (mat[2] * 1.35).min(1.0) * l + 0.65 * fog,
+                        ];
+                        is_sky[idx] = false;
+                    }
                 }
             }
         }
