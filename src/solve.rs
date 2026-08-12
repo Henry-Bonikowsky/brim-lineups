@@ -94,16 +94,44 @@ fn ui_reference_ex(
                 && a.0.max(b.0) / a.0.min(b.0) < 1.3
                 && a.1.dot(&b.1).abs() > 0.8
         };
-        // circular group boundaries + smallest contiguous arc
+        // contiguous same-surface arcs around the ring: (start slot, length)
         let breaks: Vec<usize> = (0..12).filter(|&k| !same(&ring[k], &ring[(k + 1) % 12])).collect();
-        if breaks.len() >= 3 {
-            return true; // >=3 surface groups meet here: a junction
+        if breaks.len() < 2 {
+            return false; // 0-1 groups: flat surface or lone glitch, no feature
         }
-        if breaks.len() == 2 {
-            let arc = (breaks[1] - breaks[0]).min(12 - (breaks[1] - breaks[0]));
-            return arc <= 4; // small arc = tip/corner; ~half/half = straight edge
+        let arcs: Vec<(usize, usize)> = breaks
+            .iter()
+            .enumerate()
+            .map(|(n, &b)| {
+                let start = (b + 1) % 12;
+                let end = breaks[(n + 1) % breaks.len()];
+                (start, (end + 12 - start) % 12 + 1)
+            })
+            .collect();
+        // a LINE passes through the ring: the same surface (or sky) shows up
+        // as two arcs on roughly opposite sides. Ropes, wires, rails and thin
+        // trim all read this way - and none of them pin a point. Depth-only
+        // comparison: a thin cylinder's normals differ side to side.
+        let same_side = |a: (usize, usize), b: (usize, usize)| -> bool {
+            let (ra, rb) = (&ring[a.0], &ring[b.0]);
+            let both_inf = ra.0.is_infinite() && rb.0.is_infinite();
+            let both_near = ra.0.is_finite() && rb.0.is_finite() && ra.0.max(rb.0) / ra.0.min(rb.0) < 1.3;
+            if !(both_inf || both_near) {
+                return false;
+            }
+            let ca = a.0 as f32 + a.1 as f32 / 2.0;
+            let cb = b.0 as f32 + b.1 as f32 / 2.0;
+            ((ca - cb).rem_euclid(12.0) - 6.0).abs() <= 2.0 // ~antipodal
+        };
+        for i in 0..arcs.len() {
+            for j in i + 1..arcs.len() {
+                if same_side(arcs[i], arcs[j]) {
+                    return false; // the feature continues through: a line
+                }
+            }
         }
-        false
+        // what's left: a junction of distinct surfaces, or a tip (small arc)
+        arcs.len() >= 3 || arcs.iter().map(|a| a.1).min().unwrap_or(12) <= 4
     };
     let mut best: Option<((&'static str, f32, u8, f32, f32), (f32, f32))> = None;
     for (name, ax0, ay0) in UI_ANCHORS {
