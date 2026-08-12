@@ -572,9 +572,12 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         });
         eprintln!("stands: {} -> {} after reachability gate", before, stands.len());
 
-        // keep only the LARGEST connected walkable network (<=130u steps,
-        // neighbors within 420u): isolated perches, scaffold tops and
-        // ability-only towers form small islands and vanish
+        // keep every LARGE connected walkable network (<=130u steps, neighbors
+        // within 420u): isolated perches, scaffold tops and ability-only
+        // towers form small islands and vanish. Networks joined only by
+        // one-way drops / rope ascenders (Bonsai splits into two ~1000-stand
+        // halves) are all real playable ground - keeping only the single
+        // largest one deleted half the map
         let n = stands.len();
         let mut parent: Vec<usize> = (0..n).collect();
         fn find(p: &mut Vec<usize>, i: usize) -> usize {
@@ -605,8 +608,10 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         for i in 0..n {
             *counts.entry(find(&mut parent, i)).or_default() += 1;
         }
-        if let Some((&main_root, _)) = counts.iter().max_by_key(|(_, c)| **c) {
-            let keep: Vec<bool> = (0..n).map(|i| find(&mut parent, i) == main_root).collect();
+        if let Some(&max_count) = counts.values().max() {
+            let min_keep = max_count / 10;
+            let keep: Vec<bool> =
+                (0..n).map(|i| counts[&find(&mut parent, i)] > min_keep).collect();
             let mut k = 0;
             stands.retain(|_| {
                 k += 1;

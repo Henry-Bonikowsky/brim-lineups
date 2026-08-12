@@ -213,7 +213,8 @@ async function ensurePack(m, say) {
   try {
     const url = `packs/${m}.blp.gz`;
     let cache = null;
-    try { cache = await caches.open('bl-packs-v1'); } catch {}
+    // v2: repacked 2026-08-12 (multi-network stand fix); old cache dropped
+    try { caches.delete('bl-packs-v1'); cache = await caches.open('bl-packs-v2'); } catch {}
     let resp = cache && await cache.match(url);
     const cached = !!resp;
     if (!resp) {
