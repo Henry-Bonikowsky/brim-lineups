@@ -8,16 +8,23 @@ use crate::sim::{fly, Cfg};
 /// UI landmarks usable as aiming references (screen fractions of the HUD):
 /// pixel-true elements only. Lineups whose aim puts one of these ON a world
 /// silhouette edge are replicable in game without guesswork.
-const UI_ANCHORS: [(&str, f32, f32); 12] = [
+const UI_ANCHORS: [(&str, f32, f32); 18] = [
     // measured PIXEL-EXACT from cards/hud.png (1999x1249) - the overlay the
-    // site composites, so anchor and drawn pixel agree by construction. The
-    // old hand-measured table was 5-11px off and every "aligned" reference
-    // rendered visibly wrong. Preference order: ties keep the earlier entry.
+    // site composites, so anchor and drawn pixel agree by construction.
+    // Henry: ALL sharp tips in the UI are usable anchors. The mouse crescent
+    // is NOT here - it is his tool for lining up on non-point features.
     ("crosshair", 0.5, 0.5),
-    // Henry's go-tos on the equip prompt column (all at x 0.4665)
     ("chevron point below the equip prompt", 0.4660, 0.8855),
-    ("white crescent tip under the mouse icon", 0.4665, 0.8713),
     ("white dot above the equip prompt", 0.4665, 0.8078),
+    ("top tip of the E flame icon", 0.4652, 0.9119),
+    ("bottom tip of the E flame icon", 0.4667, 0.9424),
+    ("bottom tip of the Q icon", 0.4010, 0.9440),
+    ("top of the Q icon", 0.4012, 0.9207),
+    ("top of the MB4 icon", 0.5318, 0.9167),
+    ("bottom tip of the MB4 icon", 0.5328, 0.9416),
+    ("top of the Z icon", 0.5975, 0.9087),
+    // Z bottom dropped: 41% of its surroundings are covered by the icon's own
+    // graphics - corners aligned there hide behind HUD art
     ("left end of the Q charge bar", 0.3802, 0.9644),
     ("right end of the Q charge bar", 0.4222, 0.9640),
     ("left end of the E charge bar", 0.4457, 0.9644),
@@ -55,13 +62,10 @@ fn ui_reference_candidates(
                 1.0 - (1.0 - ay0) * cfg.hud_scale + cfg.hud_dy / 100.0,
             )
         };
-        if let Some((cx, cy, resp, dist)) = best_corner(scene, eye, yaw, pitch, ax, ay, 0.0143, 0.0005) {
+        if let Some((cx, cy, resp, dist)) = best_corner(scene, eye, yaw, pitch, ax, ay, 0.0143, 0.0004) {
             let grade = if ((cx - ax).powi(2) + (cy - ay).powi(2)).sqrt() < 0.005 { 2u8 } else { 1 };
             // the crosshair is the most natural anchor to line up
             let score = resp * if name == "crosshair" { 1.5 } else { 1.0 };
-            if std::env::var_os("BL_CALIB").is_some() {
-                eprintln!("  cand {name}: resp {resp:.3} dist {dist:.0}");
-            }
             cands.push((score, ((name, dist, grade, ax, ay), (cx, cy))));
         }
     }
@@ -74,10 +78,6 @@ fn ui_reference_candidates(
 /// pixel, `half` fractions half-width), Sobel gradients, Harris response
 /// smoothed 5x5, foliage-poisoned windows excluded. Returns
 /// (fx, fy, response, depth) of the best corner above the clarity floor.
-pub fn debug_best_corner(scene: &Scene, eye: V3, yaw: f32, pitch: f32, ax: f32, ay: f32, half: f32, step: f32) -> Option<(f32, f32, f32, f32)> {
-    best_corner(scene, eye, yaw, pitch, ax, ay, half, step)
-}
-
 /// Strongest visually-clear corner in a patch of the rendered view centered
 /// on (ax, ay). A clear corner is where the silhouette BOUNDARY between the
 /// near surface and its background (sky or much deeper geometry) forms a
@@ -138,31 +138,76 @@ fn best_corner(
             lum[j * n + i] = px;
         }
     }
-    // near/far mask: far = sky or well behind the patch's foreground
-    let dmin = dep.iter().copied().fold(f32::INFINITY, f32::min);
-    if !dmin.is_finite() {
-        return None; // pure sky
+    // two masks, best corner wins across both:
+    // 1) sky/solid from ray misses - pixel-EXACT for silhouettes (luminance
+    //    clustering pulled bright wall pixels into the sky class and put tips
+    //    pixels off);
+    // 2) two-means luminance split - the mask the eye builds for interior
+    //    contrast lines (two overlapping roofs are both "near" by depth but
+    //    their contrast line is plain to see).
+    let mut masks: Vec<Vec<bool>> = Vec::new();
+    let sky_cells = dep.iter().filter(|d| !d.is_finite()).count();
+    if sky_cells * 30 > n * n {
+        masks.push(dep.iter().map(|d| !d.is_finite()).collect());
     }
-    let far: Vec<bool> = dep.iter().map(|&d| !d.is_finite() || d > dmin * 2.5 + 200.0).collect();
-    let (r1, r2) = (5i32, 10i32);
+    let mut t = 0.5f32;
+    let (mut m_lo, mut m_hi) = (0.0f32, 0.0f32);
+    let mut ok = true;
+    for _ in 0..8 {
+        let (mut slo, mut nlo, mut shi, mut nhi) = (0.0f32, 0i32, 0.0f32, 0i32);
+        for &l in &lum {
+            if l < t {
+                slo += l;
+                nlo += 1;
+            } else {
+                shi += l;
+                nhi += 1;
+            }
+        }
+        if nlo == 0 || nhi == 0 {
+            ok = false;
+            break;
+        }
+        (m_lo, m_hi) = (slo / nlo as f32, shi / nhi as f32);
+        t = (m_lo + m_hi) * 0.5;
+    }
+    if ok && m_hi - m_lo >= 0.12 {
+        masks.push(lum.iter().map(|&l| l >= t).collect());
+    }
+    if masks.is_empty() {
+        return None; // uniform patch: nothing to line up on
+    }
+    let mut overall: Option<(f32, f32, f32, f32)> = None;
+    for (mk, far) in masks.iter().enumerate() {
+        // the sky/solid mask (index 0 when present) is pixel-exact: prefer
+        // its corners over luminance-cluster ones at similar strength
+        let mask_boost = if mk == 0 && sky_cells * 30 > n * n { 1.5 } else { 1.0 };
+        let far = far.as_slice();
+    let (r0, r1, r2) = (2i32, 5i32, 10i32);
     let mut best: Option<(f32, usize, usize)> = None;
     let ni = n as i32;
     for j in (r2 as usize)..n - r2 as usize {
         for i in (r2 as usize)..n - r2 as usize {
             let here = far[j * n + i];
-            // boundary cells only: a 4-neighbor on the other side
-            let boundary = [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)]
-                .iter()
-                .any(|(dx, dy)| far[((j as i32 + dy) * ni + i as i32 + dx) as usize] != here);
-            if !boundary {
+            // boundary cells only - and the boundary must be a real visible
+            // EDGE right here (hard local luminance step), not the soft line
+            // where a shading gradient crosses the two-means threshold
+            let mut local_step = 0.0f32;
+            for (dx, dy) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
+                let idx = ((j as i32 + dy) * ni + i as i32 + dx) as usize;
+                if far[idx] != here {
+                    local_step = local_step.max((lum[idx] - lum[j * n + i]).abs());
+                }
+            }
+            if local_step < 0.10 {
                 continue;
             }
             // wedge fractions at two radii + foliage poison + contrast
             let mut ok = true;
-            let mut devs = [0.0f32; 2];
+            let mut devs = [0.0f32; 3];
             let mut lum_near = (0.0f32, 0i32);
             let mut lum_far = (0.0f32, 0i32);
-            for (k, r) in [r1, r2].into_iter().enumerate() {
+            for (k, r) in [r0, r1, r2].into_iter().enumerate() {
                 let (mut nn, mut nt) = (0i32, 0i32);
                 for dj in -r..=r {
                     for di in -r..=r {
@@ -176,11 +221,11 @@ fn best_corner(
                         nt += 1;
                         if !far[idx] {
                             nn += 1;
-                            if k == 0 {
+                            if k == 1 {
                                 lum_near.0 += lum[idx];
                                 lum_near.1 += 1;
                             }
-                        } else if k == 0 {
+                        } else if k == 1 {
                             lum_far.0 += lum[idx];
                             lum_far.1 += 1;
                         }
@@ -188,8 +233,8 @@ fn best_corner(
                 }
                 devs[k] = (nn as f32 / nt as f32 - 0.5).abs();
             }
-            if !ok || devs[0] < 0.15 || devs[1] < 0.12 {
-                continue; // straight edge, short notch, or foliage nearby
+            if !ok || devs[0] < 0.12 || devs[1] < 0.15 || devs[2] < 0.12 {
+                continue; // straight, ROUNDED (soft up close), short, or leafy
             }
             let contrast = if lum_near.1 > 0 && lum_far.1 > 0 {
                 (lum_near.0 / lum_near.1 as f32 - lum_far.0 / lum_far.1 as f32).abs()
@@ -199,13 +244,13 @@ fn best_corner(
             if contrast < 0.12 {
                 continue; // geometrically sharp, optically invisible
             }
-            let score = (devs[0] + devs[1]) * contrast;
+            let score = (devs[1] + devs[2]) * contrast;
             if score > CORNER_FLOOR && best.is_none_or(|(bs, _, _)| score > bs) {
                 best = Some((score, i, j));
             }
         }
     }
-    best.map(|(sc, i, j)| {
+    let this = best.map(|(sc, i, j)| {
         // display depth: nearest solid hit around the corner
         let mut d = f32::INFINITY;
         for wj in j - 2..=j + 2 {
@@ -213,8 +258,82 @@ fn best_corner(
                 d = d.min(dep[wj * n + wi]);
             }
         }
-        (ax + (i as f32 - c0) * step, ay + (j as f32 - c0) * step, sc, d)
-    })
+        // snap to the wedge TIP: the perceptual point is the extremum where
+        // the minority region penetrates deepest (a pocket's deepest pixel, a
+        // peak's outermost pixel), not the wedge centroid ("close" is not on)
+        let (mut fi, mut fj) = (i as i32, j as i32);
+        {
+            // minority class around the corner
+            let (mut nn, mut nt) = (0i32, 0i32);
+            for dj in -r1..=r1 {
+                for di in -r1..=r1 {
+                    if di * di + dj * dj > r1 * r1 {
+                        continue;
+                    }
+                    nt += 1;
+                    if !far[((j as i32 + dj) * ni + i as i32 + di) as usize] {
+                        nn += 1;
+                    }
+                }
+            }
+            let minority_far = nn * 2 > nt; // near majority -> minority is far
+            let mut best_tip: Option<(f32, i32, i32)> = None;
+            for dj in -r2..=r2 {
+                for di in -r2..=r2 {
+                    let (wi, wj) = (i as i32 + di, j as i32 + dj);
+                    if wi < 3 || wj < 3 || wi >= ni - 3 || wj >= ni - 3 {
+                        continue;
+                    }
+                    if far[(wj * ni + wi) as usize] != minority_far {
+                        continue;
+                    }
+                    // minority fraction in two tight discs: tip = most
+                    // surrounded; the r=2 disc breaks ties to the exact pixel
+                    let (mut mn3, mut mt3, mut mn2, mut mt2) = (0i32, 0i32, 0i32, 0i32);
+                    for tj in -3i32..=3 {
+                        for ti in -3i32..=3 {
+                            let rr = ti * ti + tj * tj;
+                            if rr > 9 {
+                                continue;
+                            }
+                            let m = far[((wj + tj) * ni + wi + ti) as usize] == minority_far;
+                            mt3 += 1;
+                            if m {
+                                mn3 += 1;
+                            }
+                            if rr <= 4 {
+                                mt2 += 1;
+                                if m {
+                                    mn2 += 1;
+                                }
+                            }
+                        }
+                    }
+                    let frac = mn3 as f32 / mt3 as f32 + 0.1 * (mn2 as f32 / mt2 as f32);
+                    if best_tip.is_none_or(|(bf, _, _)| frac < bf) {
+                        best_tip = Some((frac, wi, wj));
+                    }
+                }
+            }
+            if let Some((_, wi, wj)) = best_tip {
+                (fi, fj) = (wi, wj);
+            }
+        }
+        (ax + (fi as f32 - c0) * step, ay + (fj as f32 - c0) * step, sc, d)
+    });
+    if let Some(mut c) = this {
+        c.2 *= mask_boost;
+        // atmospheric perspective: a corner at 60m is fog-washed and reads
+        // borderline even when geometrically sharp - prefer near corners
+        if c.3.is_finite() {
+            c.2 /= 1.0 + c.3 / 6000.0;
+        }
+        if overall.is_none_or(|o| c.2 > o.2) {
+            overall = Some(c);
+        }
+    }
+    }
+    overall
 }
 
 /// Minimum Harris response for a corner to count as CLEAR. Calibrated on
@@ -234,15 +353,20 @@ fn align_reference(scene: &Scene, vis: Option<&Scene>, origin: V3, l: &mut Lineu
     let tan_v = (103.0f32.to_radians() / 2.0).tan() * 9.0 / 16.0;
     let tan_h = tan_v * 1.6;
     for ((name, dist, _, ax, ay), (cx0, cy0)) in
-        ui_reference_candidates(vscene, origin, l.yaw, l.pitch, cfg, 0.0).into_iter().take(3)
+        ui_reference_candidates(vscene, origin, l.yaw, l.pitch, cfg, 0.0).into_iter().take(6)
     {
         let (mut yaw, mut aim) = (l.yaw, l.pitch);
         let (mut cx, mut cy) = (cx0, cy0);
+        // already lined up at the row's own angle: take it, zero physics risk
+        if (cx0 - ax).abs() < 0.0003 && (cy0 - ay).abs() < 0.0003 {
+            l.ui_ref = Some((name, dist, 2, ax, ay));
+            return true;
+        }
         let mut aligned = false;
         for it in 0..8 {
             let (dfx, dfy) = (cx - ax, cy - ay);
-            if dfx.abs() < 0.0005 && dfy.abs() < 0.0005 {
-                aligned = true; // within a native pixel; apex fit is sub-pixel
+            if dfx.abs() < 0.0003 && dfy.abs() < 0.0003 {
+                aligned = true; // within ~0.6 native px
                 break;
             }
             // small-angle screen->camera: turning right shifts the world left
@@ -254,7 +378,7 @@ fn align_reference(scene: &Scene, vis: Option<&Scene>, origin: V3, l: &mut Lineu
             // step), so scale never changes; sub-pixel precision comes from
             // the edge-line intersection refinement instead
             let _ = it;
-            let Some((bx, by, _, _)) = best_corner(vscene, origin, yaw, aim, ax, ay, 0.0143, 0.0005) else {
+            let Some((bx, by, _, _)) = best_corner(vscene, origin, yaw, aim, ax, ay, 0.0143, 0.0004) else {
                 break;
             };
             (cx, cy) = (bx, by);
@@ -555,7 +679,7 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
                         let key = (crate::sim::launch_pitch(b.pitch, cfg) / 8.0).round() as i32;
                         if let Some(a) = alts.get_mut(&key) {
                             a.sort_by(|x, y| x.0.total_cmp(&y.0));
-                            for &(t, y, p) in a.iter().filter(|(t, ..)| *t <= b.time + 0.5).take(12) {
+                            for &(t, y, p) in a.iter().filter(|(t, ..)| *t <= b.time + 0.8).take(16) {
                                 if (y - b.yaw).abs() + (p - b.pitch).abs() < 0.05 {
                                     continue; // the angle we already tried
                                 }
