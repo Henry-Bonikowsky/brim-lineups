@@ -5,6 +5,20 @@ use crate::scene::{Scene, V3};
 use crate::par::*;
 use crate::sim::{fly, Cfg};
 
+/// Wall-clock phase timer; a no-op on wasm (Instant panics there).
+pub(crate) struct Timer(#[cfg(not(target_arch = "wasm32"))] std::time::Instant);
+impl Timer {
+    pub(crate) fn new() -> Self {
+        Timer(#[cfg(not(target_arch = "wasm32"))] std::time::Instant::now())
+    }
+    pub(crate) fn secs(&self) -> f32 {
+        #[cfg(not(target_arch = "wasm32"))]
+        return self.0.elapsed().as_secs_f32();
+        #[cfg(target_arch = "wasm32")]
+        0.0
+    }
+}
+
 /// UI landmarks usable as aiming references (screen fractions of the HUD):
 /// pixel-true elements only. Lineups whose aim puts one of these ON a world
 /// silhouette edge are replicable in game without guesswork.
@@ -109,34 +123,57 @@ fn best_corner(
     let ntris = scene.mesh.indices().len() as u32;
     let n = ((half / step) as usize) * 2 + 1;
     let c0 = (n / 2) as f32;
+    // one patch pixel: (luminance, foliage, depth)
+    let sample = |fx: f32, fy: f32| -> (f32, bool, f32) {
+        let d = (fwd + right * ((fx * 2.0 - 1.0) * tan_h) + up * ((1.0 - fy * 2.0) * tan_v)).normalize();
+        match scene.mesh.cast_ray_and_get_normal(&id, &Ray::new(nalgebra::Point3::from(eye), d), 5.0e4, true) {
+            Some(h) => {
+                let tri = match h.feature {
+                    parry3d::shape::FeatureId::Face(f) => f % ntris.max(1),
+                    _ => 0,
+                };
+                let nrm = h.normal;
+                let mat = crate::render::surface_color(scene, tri, nrm, eye + d * h.time_of_impact);
+                let l = 0.299 * mat[0] + 0.587 * mat[1] + 0.114 * mat[2];
+                let lambert = 0.22 + 0.72 * nrm.dot(&V3::new(0.55, 0.45, 0.70)).abs();
+                // MUST match render_ex's fog (corner luminance = rendered luminance)
+                let fog = (h.time_of_impact / 20000.0).min(0.5);
+                ((l * 1.35).min(1.0) * lambert * (1.0 - fog) + 0.6 * fog, scene.foliage_at(tri), h.time_of_impact)
+            }
+            None => (0.8, false, f32::INFINITY), // sky
+        }
+    };
+    // cheap 9x9 pre-gate: a mask (and thus a corner) needs sky in the patch
+    // (>3.3% for the silhouette mask) or a luminance split >=0.12 (two-means
+    // mask). A coarse scan finding NO sky and a spread under 0.05 means only
+    // sub-percent features could flip that, and those fail the two-radii
+    // long-edge rule anyway - skip the dense scan (73x73 rays) entirely.
+    // Measured ~1.75x on refine (Ascent browse: solve 2.1s -> 1.2s).
+    {
+        let (mut lo, mut hi, mut sky) = (f32::MAX, f32::MIN, false);
+        for j in 0..9 {
+            for i in 0..9 {
+                let (l, _, d) =
+                    sample(ax + (i as f32 - 4.0) / 4.0 * half, ay + (j as f32 - 4.0) / 4.0 * half);
+                sky |= !d.is_finite();
+                lo = lo.min(l);
+                hi = hi.max(l);
+            }
+        }
+        if !sky && hi - lo < 0.05 {
+            return None;
+        }
+    }
     // rendered luminance + foliage + depth per patch pixel
     let mut lum = vec![0.0f32; n * n];
     let mut leaf = vec![false; n * n];
     let mut dep = vec![f32::INFINITY; n * n];
     for j in 0..n {
         for i in 0..n {
-            let fx = ax + (i as f32 - c0) * step;
-            let fy = ay + (j as f32 - c0) * step;
-            let d = (fwd + right * ((fx * 2.0 - 1.0) * tan_h) + up * ((1.0 - fy * 2.0) * tan_v)).normalize();
-            let px = match scene.mesh.cast_ray_and_get_normal(&id, &Ray::new(nalgebra::Point3::from(eye), d), 5.0e4, true) {
-                Some(h) => {
-                    let tri = match h.feature {
-                        parry3d::shape::FeatureId::Face(f) => f % ntris.max(1),
-                        _ => 0,
-                    };
-                    leaf[j * n + i] = scene.foliage_at(tri);
-                    dep[j * n + i] = h.time_of_impact;
-                    let nrm = h.normal;
-                    let mat = crate::render::surface_color(scene, tri, nrm, eye + d * h.time_of_impact);
-                    let l = 0.299 * mat[0] + 0.587 * mat[1] + 0.114 * mat[2];
-                    let lambert = 0.22 + 0.72 * nrm.dot(&V3::new(0.55, 0.45, 0.70)).abs();
-                    // MUST match render_ex's fog (corner luminance = rendered luminance)
-                    let fog = (h.time_of_impact / 20000.0).min(0.5);
-                    (l * 1.35).min(1.0) * lambert * (1.0 - fog) + 0.6 * fog
-                }
-                None => 0.8, // sky
-            };
-            lum[j * n + i] = px;
+            let (l, f, d) = sample(ax + (i as f32 - c0) * step, ay + (j as f32 - c0) * step);
+            lum[j * n + i] = l;
+            leaf[j * n + i] = f;
+            dep[j * n + i] = d;
         }
     }
     // two masks, best corner wins across both:
@@ -476,6 +513,14 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
 /// click even when its fire cannot reach the click itself - the user browses
 /// nearby end locations and picks one. Sorted by landing distance.
 pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg) -> Vec<Lineup> {
+    solve_impl(scene, vis, stands, target, tol, min_dist, strict, browse, cfg, true)
+}
+
+/// `align_all=false` (refine pass): reference alignment - the expensive
+/// per-anchor corner scans - runs only for the fastest covered family per
+/// stand, since the caller keeps just that one. Everything else identical.
+#[allow(clippy::too_many_arguments)]
+fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg, align_all: bool) -> Vec<Lineup> {
     let paired = !strict && stands.len() == 1;
     // POSITION RULE (strict/solver-picked stands only): a lineup stand must
     // sit against TWO faces (wall corner, angled walls, object against wall)
@@ -485,6 +530,7 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
     // choice: snap to a corner when one is in reach (repeatability for free),
     // otherwise take the exact spot and label it pos 0.
     let mut free_stand = false;
+    let t_pin = Timer::new();
     let stands: Vec<V3> = if strict {
         let n_in = stands.len();
         let pinned: Vec<V3> = stands.par_iter().filter_map(|s| wedge_stand(scene, *s)).collect();
@@ -509,6 +555,10 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
             .collect()
     };
     let wedged = !free_stand;
+    if strict {
+        eprintln!("[t] pin {:.2}s", t_pin.secs());
+    }
+    let t_sweep = Timer::new();
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
     let max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
@@ -667,13 +717,26 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
                     // the user sees WHY (err > tol labels it)
                     out.extend(best_miss);
                 }
-                for b in &mut out {
+                // align_all=false: only the fastest covered family gets the
+                // (expensive) reference alignment - it is the only row the
+                // refine caller keeps
+                let align_idx: Option<usize> = if align_all {
+                    None
+                } else {
+                    out.iter()
+                        .enumerate()
+                        .filter(|(_, l)| l.covered)
+                        .min_by(|a, b| a.1.time.total_cmp(&b.1.time))
+                        .map(|(i, _)| i)
+                };
+                for (fi, b) in out.iter_mut().enumerate() {
+                    let want_ref = b.covered && (align_all || align_idx == Some(fi));
                     // snap the aim so the reference point sits exactly on its
                     // feature. A reference is only real when the ANGLE is
                     // perfectly aligned - if the snap fails (or the row is a
                     // miss), showing the near-miss detection would be a lie
-                    let mut refd = b.covered && align_reference(scene, vis, origin, b, target, tol, cfg);
-                    if !refd && b.covered {
+                    let mut refd = want_ref && align_reference(scene, vis, origin, b, target, tol, cfg);
+                    if !refd && want_ref {
                         // no reference at the fastest angle: walk the covered
                         // alternates of this family (nearest time first, max
                         // +0.5s) until one of them aligns onto a feature
@@ -742,10 +805,11 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
 
     if strict || !paired {
         eprintln!(
-            "flights: {} never stopped, {} landed far, {} within tol",
+            "flights: {} never stopped, {} landed far, {} within tol [t] sweep {:.2}s",
             n_none.load(Relaxed),
             n_far.load(Relaxed),
-            n_near.load(Relaxed)
+            n_near.load(Relaxed),
+            t_sweep.secs()
         );
     }
     // a lineup the solver itself rates near-zero forgiveness is untrustworthy
@@ -797,12 +861,22 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
     // and keep its true fastest covered throw; browse rows optimize hitting
     // their OWN landing spot
     out.truncate(24);
+    let t_refine = Timer::new();
     let mut out: Vec<Lineup> = out
         .par_iter()
         .map(|l| {
             let (rt, rtol) = if browse { (l.rest, 450.0) } else { (target, tol) };
-            let fams = solve(scene, vis, &[l.stand], rt, rtol, 0.0, false, false, cfg);
-            match fams.into_iter().filter(|f| f.covered).min_by(|a, b| a.time.total_cmp(&b.time)) {
+            let fams = solve_impl(scene, vis, &[l.stand], rt, rtol, 0.0, false, false, cfg, false);
+            let mut cov: Vec<Lineup> = fams.into_iter().filter(|f| f.covered).collect();
+            cov.sort_by(|a, b| a.time.total_cmp(&b.time));
+            // the aligned family (the only one carrying a reference) wins the
+            // usual <=0.4s reference preference over a barely-faster raw row
+            let pick = cov
+                .iter()
+                .position(|f| f.ui_ref.is_some())
+                .filter(|&i| cov[i].time - cov[0].time <= 0.4)
+                .unwrap_or(0);
+            match (!cov.is_empty()).then(|| cov.swap_remove(pick)) {
                 Some(mut f) => {
                     // err stays relative to the original click for display/sort
                     let dxy = ((f.rest.x - target.x).powi(2) + (f.rest.y - target.y).powi(2)).sqrt();
@@ -814,6 +888,7 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
             }
         })
         .collect();
+    eprintln!("[t] refine {:.2}s", t_refine.secs());
     out.sort_by(|a, b| {
         key(a).total_cmp(&key(b)).then(a.stand.x.total_cmp(&b.stand.x)).then(a.stand.y.total_cmp(&b.stand.y))
     });

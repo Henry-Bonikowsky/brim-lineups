@@ -33,11 +33,15 @@ fn main() {
         flate2::read::GzDecoder::new(std::fs::File::open(&args[2]).expect("pack"))
             .read_to_end(&mut bytes)
             .expect("gunzip");
+        let t0 = std::time::Instant::now();
         let (cs, vs) = scene::load_pack(&bytes);
+        eprintln!("[t] load_pack {:.2}s", t0.elapsed().as_secs_f32());
         let cfg = sim::Cfg::default();
         let (tx, ty): (f32, f32) = (args[3].parse().unwrap(), args[4].parse().unwrap());
         let target = V3::new(tx, ty, cs.ground_z(tx, ty).expect("ground"));
+        let t1 = std::time::Instant::now();
         let lineups = solve::solve(&cs, Some(&vs), &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
+        eprintln!("[t] solve {:.2}s", t1.elapsed().as_secs_f32());
         for (k, l) in lineups.iter().take(10).enumerate() {
             println!(
                 "row {:2} t {:4.1}s err {:5.0} stand ({:.0},{:.0},{:.1}) yaw {:.3} pitch {:.3} ref: {:?}",
