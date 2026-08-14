@@ -82,16 +82,10 @@ pub fn lit(scene: &crate::scene::Scene, tri: u32, n: V3, wp: V3, eye: V3, detail
     let ambc = [amb * 0.94, amb * 0.98, amb * 1.04];
     let fog = (dist / 20000.0).min(0.45);
     let fogc = [0.70, 0.78, 0.88];
-    let mut c: [f32; 3] = std::array::from_fn(|i| {
+    std::array::from_fn(|i| {
         let t = albedo[i] * (ambc[i] + 0.85 * sun * scene.sun_color[i]);
-        (t * 1.15 / (1.0 + 0.45 * t)) * (1.0 - fog) + fogc[i] * fog
-    });
-    // gentle saturation lift toward the game's punchy grade
-    let l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
-    for ch in &mut c {
-        *ch = (l + (*ch - l) * 1.18).clamp(0.0, 1.0);
-    }
-    c
+        ((t * 1.15 / (1.0 + 0.45 * t)) * (1.0 - fog) + fogc[i] * fog).clamp(0.0, 1.0)
+    })
 }
 
 pub fn surface_color(scene: &crate::scene::Scene, tri: u32, _n: V3, wp: V3) -> [f32; 3] {
