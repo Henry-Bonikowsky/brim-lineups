@@ -1,4 +1,4 @@
-//! Synthetic lineup screenshots: first-person render of the map geometry from
+﻿//! Synthetic lineup screenshots: first-person render of the map geometry from
 //! the stand point looking along the crosshair direction. Matching the in-game
 //! screen to this image reproduces the aim (Valorant fixed 103 deg horizontal FOV).
 
@@ -17,26 +17,31 @@ fn tan_vh(w: usize, h: usize) -> (f32, f32) {
     let tan_v = (HFOV_DEG.to_radians() / 2.0).tan() * 9.0 / 16.0;
     (tan_v * w as f32 / h as f32, tan_v)
 }
-/// world units per ground-texture repeat (planar mapping; no UVs in the dump)
-const GROUND_TILE: f32 = 400.0;
 
-/// Real diffuse for a surface hit. Floors sample world-planar XY; walls
-/// tri-planar along their dominant horizontal axis (the dump has no UVs, so
-/// world projection is the best available - materials read correctly and
-/// stay aligned to world verticals for lining up references).
-pub fn surface_color(scene: &crate::scene::Scene, tri: u32, n: V3, wp: V3) -> [f32; 3] {
-    match scene.tex_of(tri) {
-        Some(t) => {
-            if n.z.abs() > 0.62 {
-                t.sample_world(wp.x, wp.y, GROUND_TILE)
-            } else if n.x.abs() > n.y.abs() {
-                t.sample_world(wp.y, wp.z, GROUND_TILE)
-            } else {
-                t.sample_world(wp.x, wp.z, GROUND_TILE)
-            }
-        }
-        None => scene.color_of(tri),
+/// Real diffuse for a surface hit: the tri's material texture sampled at the
+/// authored UVs (barycentric of the world point within the tri). Falls back
+/// to the flat material color when the surface has no texture.
+pub fn surface_color(scene: &crate::scene::Scene, tri: u32, _n: V3, wp: V3) -> [f32; 3] {
+    let (Some(t), Some(uv3)) = (scene.tex_of(tri), scene.uvs.get(tri as usize)) else {
+        return scene.color_of(tri);
+    };
+    let vtx = scene.mesh.vertices();
+    let idx = scene.mesh.indices()[tri as usize];
+    let p = |k: usize| V3::new(vtx[idx[k] as usize].x, vtx[idx[k] as usize].y, vtx[idx[k] as usize].z);
+    let (a, b, c) = (p(0), p(1), p(2));
+    let (v0, v1, v2) = (b - a, c - a, wp - a);
+    let (d00, d01, d11, d20, d21) =
+        (v0.dot(&v0), v0.dot(&v1), v1.dot(&v1), v2.dot(&v0), v2.dot(&v1));
+    let den = d00 * d11 - d01 * d01;
+    if den.abs() < 1e-9 {
+        return scene.color_of(tri);
     }
+    let bv = (d11 * d20 - d01 * d21) / den;
+    let bw = (d00 * d21 - d01 * d20) / den;
+    let bu = 1.0 - bv - bw;
+    let u = uv3[0][0] * bu + uv3[1][0] * bv + uv3[2][0] * bw;
+    let v = uv3[0][1] * bu + uv3[1][1] * bv + uv3[2][1] * bw;
+    t.sample_uv_bilinear(u.rem_euclid(1.0), v.rem_euclid(1.0))
 }
 
 pub fn render(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str) {
@@ -254,7 +259,7 @@ pub fn render_pov_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, w:
                     // every face gets its real in-game diffuse: floors
                     // world-planar, walls tri-planar (see surface_color)
                     let mat = surface_color(scene, tri, n, eye + dir * hit.time_of_impact);
-                    let fog = (hit.time_of_impact / 9000.0).min(0.75);
+                    let fog = (hit.time_of_impact / 20000.0).min(0.5);
                     let l = lambert * (1.0 - fog);
                     (
                         (((mat[2] * 1.35).min(1.0) * l + 0.65 * fog).clamp(0.0, 1.0) * 255.0) as u8,
@@ -426,7 +431,7 @@ fn render_ex(
                     let idx = py * W + px;
                     if z < depth[idx] {
                         depth[idx] = z;
-                        let fog = (z / 9000.0).min(0.75);
+                        let fog = (z / 20000.0).min(0.5);
                         let l = lambert * (1.0 - fog);
                         let mat = match tex {
                             Some(_) => {

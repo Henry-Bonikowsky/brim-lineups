@@ -130,7 +130,8 @@ fn best_corner(
                     let mat = crate::render::surface_color(scene, tri, nrm, eye + d * h.time_of_impact);
                     let l = 0.299 * mat[0] + 0.587 * mat[1] + 0.114 * mat[2];
                     let lambert = 0.22 + 0.72 * nrm.dot(&V3::new(0.55, 0.45, 0.70)).abs();
-                    let fog = (h.time_of_impact / 9000.0).min(0.75);
+                    // MUST match render_ex's fog (corner luminance = rendered luminance)
+                    let fog = (h.time_of_impact / 20000.0).min(0.5);
                     (l * 1.35).min(1.0) * lambert * (1.0 - fog) + 0.6 * fog
                 }
                 None => 0.8, // sky
@@ -980,6 +981,7 @@ mod tests {
             mesh: TriMesh::new(verts, tris),
             stands: vec![],
             min_z: 0.0,
+            uvs: vec![],
             tri_owner: vec![(0, "ground".into())],
             tri_color: vec![(0, [0.6, 0.6, 0.6])],
             tri_tex: vec![],

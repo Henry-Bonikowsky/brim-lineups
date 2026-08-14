@@ -83,6 +83,15 @@ const MESH_BLACKLIST: [&str; 13] = [
     "RadianiteTubeStraight", "RadianiteTubeElbow",
 ];
 
+/// One parsed OBJ: positions, optional per-vertex UVs (parallel to `vs`),
+/// faces, and material sections (first face index, texture key from usemtl).
+pub struct ObjMesh {
+    pub vs: Vec<[f32; 3]>,
+    pub uvs: Vec<[f32; 2]>,
+    pub fs: Vec<[u32; 3]>,
+    pub sections: Vec<(u32, String)>,
+}
+
 /// Small diffuse texture (BGR, top-down rows) for ground sampling.
 pub struct TexImg {
     pub w: usize,
@@ -91,18 +100,30 @@ pub struct TexImg {
 }
 
 impl TexImg {
-    /// World-planar sample (floors tile roughly every `scale` units).
-    pub fn sample_world(&self, wx: f32, wy: f32, scale: f32) -> [f32; 3] {
-        let u = (wx / scale).rem_euclid(1.0);
-        let v = (wy / scale).rem_euclid(1.0);
-        self.sample_uv(u, v)
-    }
-
     pub fn sample_uv(&self, u: f32, v: f32) -> [f32; 3] {
         let x = ((u * self.w as f32) as usize).min(self.w - 1);
         let y = ((v * self.h as f32) as usize).min(self.h - 1);
         let o = (y * self.w + x) * 3;
         [self.px[o + 2] as f32 / 255.0, self.px[o + 1] as f32 / 255.0, self.px[o] as f32 / 255.0]
+    }
+
+    /// Bilinear sample, wrapping at the edges (textures tile).
+    pub fn sample_uv_bilinear(&self, u: f32, v: f32) -> [f32; 3] {
+        let fx = u * self.w as f32 - 0.5;
+        let fy = v * self.h as f32 - 0.5;
+        let (x0, y0) = (fx.floor(), fy.floor());
+        let (tx, ty) = (fx - x0, fy - y0);
+        let xi = |x: f32| (x.rem_euclid(self.w as f32) as usize).min(self.w - 1);
+        let yi = |y: f32| (y.rem_euclid(self.h as f32) as usize).min(self.h - 1);
+        let (x0u, x1u, y0u, y1u) = (xi(x0), xi(x0 + 1.0), yi(y0), yi(y0 + 1.0));
+        let at = |x: usize, y: usize, ch: usize| self.px[(y * self.w + x) * 3 + ch] as f32 / 255.0;
+        let mut out = [0.0f32; 3];
+        for (i, ch) in [2usize, 1, 0].into_iter().enumerate() {
+            let top = at(x0u, y0u, ch) * (1.0 - tx) + at(x1u, y0u, ch) * tx;
+            let bot = at(x0u, y1u, ch) * (1.0 - tx) + at(x1u, y1u, ch) * tx;
+            out[i] = top * (1.0 - ty) + bot * ty;
+        }
+        out
     }
 }
 
@@ -110,6 +131,9 @@ pub struct Scene {
     pub mesh: TriMesh,
     pub stands: Vec<V3>,
     pub min_z: f32,
+    /// Per-triangle UV coords (parallel to the tri soup); empty for collision
+    /// scenes (only renders need UVs).
+    pub uvs: Vec<[[f32; 2]; 3]>,
     /// (first triangle index, source label) per placement, for debug attribution
     pub tri_owner: Vec<(u32, String)>,
     /// (first triangle index, material color) per placement
@@ -210,9 +234,14 @@ pub(crate) fn load_bmp(path: &Path) -> Option<TexImg> {
     let off = u32::from_le_bytes(d[10..14].try_into().ok()?) as usize;
     let w = i32::from_le_bytes(d[18..22].try_into().ok()?) as usize;
     let h = i32::from_le_bytes(d[22..26].try_into().ok()?).unsigned_abs() as usize;
-    let row = (w * 3 + 3) & !3;
+    // rows are normally 4-byte padded, but the uvtex writer emits unpadded
+    // rows (only matters for widths not divisible by 4)
+    let mut row = (w * 3 + 3) & !3;
     if d.len() < off + row * h {
-        return None;
+        row = w * 3;
+        if d.len() < off + row * h {
+            return None;
+        }
     }
     let mut px = vec![0u8; w * h * 3];
     for y in 0..h {
@@ -245,10 +274,13 @@ pub(crate) fn rot3(v: &Value) -> [f32; 3] {
     [g("Pitch"), g("Yaw"), g("Roll")]
 }
 
-/// Minimal OBJ reader for valo_dump meshes (v/f triangles only), local space.
-pub(crate) fn load_obj(path: &Path) -> Option<(Vec<[f32; 3]>, Vec<[u32; 3]>)> {
+/// Minimal OBJ reader for valo_dump meshes, local space. Handles plain
+/// `v/f` files and the uvtex form (`vt`, `usemtl <texKey>`, `f a/a b/b c/c`
+/// with vt parallel to v). `sections` = (first face index, texture key).
+pub(crate) fn load_obj(path: &Path) -> Option<ObjMesh> {
     let text = std::fs::read_to_string(path).ok()?;
-    let (mut vs, mut fs) = (Vec::new(), Vec::new());
+    let (mut vs, mut uvs, mut fs) = (Vec::new(), Vec::new(), Vec::new());
+    let mut sections: Vec<(u32, String)> = Vec::new();
     for line in text.lines() {
         let mut it = line.split_ascii_whitespace();
         match it.next() {
@@ -259,17 +291,30 @@ pub(crate) fn load_obj(path: &Path) -> Option<(Vec<[f32; 3]>, Vec<[u32; 3]>)> {
                 }
                 vs.push(p);
             }
+            Some("vt") => {
+                let mut p = [0f32; 2];
+                for x in &mut p {
+                    *x = it.next()?.parse().ok()?;
+                }
+                uvs.push(p);
+            }
+            Some("usemtl") => {
+                sections.push((fs.len() as u32, it.next().unwrap_or("none").to_string()));
+            }
             Some("f") => {
                 let mut t = [0u32; 3];
                 for x in &mut t {
-                    *x = it.next()?.parse::<u32>().ok()? - 1;
+                    *x = it.next()?.split('/').next()?.parse::<u32>().ok()? - 1;
                 }
                 fs.push(t);
             }
             _ => {}
         }
     }
-    Some((vs, fs))
+    if uvs.len() != vs.len() {
+        uvs.clear(); // malformed or absent: treat as no UVs
+    }
+    Some(ObjMesh { vs, uvs, fs, sections })
 }
 
 /// Rotation matrix (rows = rotated axes) from a UE quaternion.
@@ -331,7 +376,19 @@ pub(crate) fn keep_instance(
     if mode == Mode::Collision && MESH_BLACKLIST.iter().any(|b| mesh.contains(b)) {
         return false;
     }
-    if mode == Mode::Visual && mesh.contains("Sky") {
+    if mode == Mode::Visual
+        && (mesh.contains("Sky")
+            // invisible-in-game utility meshes: per-prop collision shells
+            // (BVProjectile stand-ins and Environment *_Col/*Collision*
+            // meshes) and lighting blockers. They must keep COLLIDING where
+            // the collision filters load them, but rendering them paints
+            // gray walls over real art the player can see through.
+            || !mesh.contains("/Environment/")
+            || mesh.ends_with("_Col")
+            || mesh.contains("Collision")
+            || mesh.contains("LightBlocker")
+            || mesh.contains("LightLeakBlocker"))
+    {
         return false;
     }
     // component collision override: cosmetics (glow columns, outlines, FX
@@ -378,7 +435,9 @@ pub(crate) fn parse_subinsts(i: &Value) -> SubInsts {
 
 /// World-space triangle expansion for one placement: EXACTLY the float ops of
 /// the original loader (both the native JSON path and the wasm pack path call
-/// this, so their triangle soups are bit-identical).
+/// this, so their triangle soups are bit-identical). When `uvs_out` is given
+/// (visual scenes), per-tri UVs are appended in the same order; meshes without
+/// UVs contribute zero triples.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn place_tris(
     vs: &[[f32; 3]],
@@ -388,6 +447,8 @@ pub(crate) fn place_tris(
     scale: [f32; 3],
     subinsts: &SubInsts,
     tris: &mut Vec<[[f32; 3]; 3]>,
+    uvs_in: &[[f32; 2]],
+    uvs_out: Option<&mut Vec<[[f32; 2]; 3]>>,
 ) {
     let m = rotm(rot[0], rot[1], rot[2]);
     let comp = |v: [f32; 3]| -> [f32; 3] {
@@ -420,6 +481,18 @@ pub(crate) fn place_tris(
             tris.push([comp(vs[f[0] as usize]), comp(vs[f[1] as usize]), comp(vs[f[2] as usize])]);
         }
     }
+    if let Some(uv_out) = uvs_out {
+        let reps = if subinsts.is_empty() { 1 } else { subinsts.len() };
+        if uvs_in.is_empty() {
+            uv_out.extend(std::iter::repeat([[0.0f32; 2]; 3]).take(reps * fs.len()));
+        } else {
+            for _ in 0..reps {
+                for f in fs.iter() {
+                    uv_out.push([uvs_in[f[0] as usize], uvs_in[f[1] as usize], uvs_in[f[2] as usize]]);
+                }
+            }
+        }
+    }
 }
 
 /// Collision scene for the flight sim (strict molly-blocking filter).
@@ -450,10 +523,13 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
     .clone();
 
     let allowed = allowed_umaps(dir);
-    let mut objs: HashMap<String, Option<(Vec<[f32; 3]>, Vec<[u32; 3]>)>> = HashMap::new();
+    let mut objs: HashMap<String, Option<ObjMesh>> = HashMap::new();
+    // textures deduped by usemtl key (one diffuse per material, shared by
+    // every mesh section that uses it)
     let mut texs: HashMap<String, Option<std::sync::Arc<TexImg>>> = HashMap::new();
     let mut tri_tex: Vec<(u32, Option<std::sync::Arc<TexImg>>)> = Vec::new();
     let mut tris: Vec<[[f32; 3]; 3]> = Vec::new();
+    let mut uv_soup: Vec<[[f32; 2]; 3]> = Vec::new();
     let mut tri_owner: Vec<(u32, String)> = Vec::new();
     let mut tri_foliage: Vec<(u32, bool)> = Vec::new();
     let mut tri_color: Vec<(u32, [f32; 3])> = Vec::new();
@@ -472,24 +548,52 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         let entry = objs
             .entry(obj_name.clone())
             .or_insert_with(|| load_obj(&dir.join("meshes").join(&obj_name)));
-        let Some((vs, fs)) = entry else { continue };
-        tri_owner.push((tris.len() as u32, format!("{umap}:{}", i["component"].as_str().unwrap_or("?"))));
-        tri_foliage.push((tris.len() as u32, is_foliage_mesh(mesh)));
+        let Some(om) = entry else { continue };
+        let base = tris.len() as u32;
+        tri_owner.push((base, format!("{umap}:{}", mesh.rsplit('/').next().unwrap_or("?"))));
+        tri_foliage.push((base, is_foliage_mesh(mesh)));
         tri_color.push((
-            tris.len() as u32,
+            base,
             colors.get(&obj_name.trim_end_matches(".obj").to_string()).copied().unwrap_or([0.62, 0.62, 0.62]),
         ));
-        let tex = texs
-            .entry(obj_name.clone())
-            .or_insert_with(|| {
-                load_bmp(&dir.join("textures").join(obj_name.trim_end_matches(".obj").to_string() + ".bmp"))
-                    .map(std::sync::Arc::new)
-            })
-            .clone();
-        tri_tex.push((tris.len() as u32, tex));
         let subinsts = parse_subinsts(i);
+        // per-section texture binding, repeated per sub-instance (faces are
+        // emitted rep-major by place_tris)
+        if om.sections.is_empty() {
+            tri_tex.push((base, None));
+        } else {
+            let reps = if subinsts.is_empty() { 1 } else { subinsts.len() } as u32;
+            let nf = om.fs.len() as u32;
+            for rep in 0..reps {
+                for (ff, key) in &om.sections {
+                    let tex = texs
+                        .entry(key.clone())
+                        .or_insert_with(|| {
+                            let t = (key != "none")
+                                .then(|| load_bmp(&dir.join("textures").join(format!("{key}.bmp"))).map(std::sync::Arc::new))
+                                .flatten();
+                            if t.is_none() && key != "none" {
+                                eprintln!("texture missing: {key}");
+                            }
+                            t
+                        })
+                        .clone();
+                    tri_tex.push((base + rep * nf + ff, tex));
+                }
+            }
+        }
         skipped_inst += subinsts.len(); // counted as expanded now
-        place_tris(vs, fs, xyz(&i["location"], 0.0), rot3(&i["rotation"]), xyz(&i["scale"], 1.0), &subinsts, &mut tris);
+        place_tris(
+            &om.vs,
+            &om.fs,
+            xyz(&i["location"], 0.0),
+            rot3(&i["rotation"]),
+            xyz(&i["scale"], 1.0),
+            &subinsts,
+            &mut tris,
+            &om.uvs,
+            visual.then_some(&mut uv_soup),
+        );
         used += 1;
     }
 
@@ -542,9 +646,10 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
     // Riot's ability-targeting mesh (navmesh-derived), extracted as targeting.obj
     // via `valo_dump obj .../TargetingMeshes/<Map>_NavMesh_Targeting <dir>/targeting.obj`
     if stands.len() < 200 {
-        if let Some((vs, fs)) = load_obj(&dir.join("targeting.obj")) {
+        if let Some(om) = load_obj(&dir.join("targeting.obj")) {
+            let (vs, fs) = (&om.vs, &om.fs);
             let before = stands.len();
-            for f in &fs {
+            for f in fs {
                 let (a, b, c) = (vs[f[0] as usize], vs[f[1] as usize], vs[f[2] as usize]);
                 let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
                 let w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
@@ -652,7 +757,7 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         }
     }
 
-    Scene { mesh, stands, min_z, tri_owner, tri_color, tri_tex, tri_foliage }
+    Scene { mesh, stands, min_z, uvs: uv_soup, tri_owner, tri_color, tri_tex, tri_foliage }
 }
 
 // ---- packed map bundles (web build) ----
@@ -675,7 +780,7 @@ impl<'a> Rd<'a> {
 /// Load a packed map (already gunzipped) into (collision, visual) scenes.
 pub fn load_pack(bytes: &[u8]) -> (Scene, Scene) {
     let mut r = Rd(bytes, 0);
-    assert_eq!(r.bytes(4), b"BLP1", "bad pack magic");
+    assert_eq!(r.bytes(4), b"BLP2", "bad pack magic");
     let ntex = r.u32() as usize;
     let mut texs: Vec<std::sync::Arc<TexImg>> = Vec::with_capacity(ntex);
     for _ in 0..ntex {
@@ -683,13 +788,16 @@ pub fn load_pack(bytes: &[u8]) -> (Scene, Scene) {
         texs.push(std::sync::Arc::new(TexImg { w, h, px: r.bytes(w * h * 3).to_vec() }));
     }
     let nmesh = r.u32() as usize;
-    let mut meshes: Vec<(Vec<[f32; 3]>, Vec<[u32; 3]>, i32)> = Vec::with_capacity(nmesh);
+    // (vs, uvs, fs, sections: (first face, texture id or -1))
+    type PackMesh = (Vec<[f32; 3]>, Vec<[f32; 2]>, Vec<[u32; 3]>, Vec<(u32, i32)>);
+    let mut meshes: Vec<PackMesh> = Vec::with_capacity(nmesh);
     for _ in 0..nmesh {
-        let tex = r.u32() as i32;
-        let (nv, nf) = (r.u32() as usize, r.u32() as usize);
+        let (nv, nuv, nf, nsec) = (r.u32() as usize, r.u32() as usize, r.u32() as usize, r.u32() as usize);
         let vs: Vec<[f32; 3]> = (0..nv).map(|_| r.f3()).collect();
+        let uvs: Vec<[f32; 2]> = (0..nuv).map(|_| [r.f32(), r.f32()]).collect();
         let fs: Vec<[u32; 3]> = (0..nf).map(|_| [r.u32(), r.u32(), r.u32()]).collect();
-        meshes.push((vs, fs, tex));
+        let secs: Vec<(u32, i32)> = (0..nsec).map(|_| (r.u32(), r.u32() as i32)).collect();
+        meshes.push((vs, uvs, fs, secs));
     }
     let nplace = r.u32() as usize;
     struct Place {
@@ -715,17 +823,40 @@ pub fn load_pack(bytes: &[u8]) -> (Scene, Scene) {
     let stands: Vec<V3> = (0..nstand).map(|_| { let p = r.f3(); V3::new(p[0], p[1], p[2]) }).collect();
 
     let build = |bit: u8, stands: Vec<V3>| -> Scene {
+        let visual = bit == 2;
         let mut tris: Vec<[[f32; 3]; 3]> = Vec::new();
+        let mut uv_soup: Vec<[[f32; 2]; 3]> = Vec::new();
         let mut tri_tex: Vec<(u32, Option<std::sync::Arc<TexImg>>)> = Vec::new();
         let mut tri_foliage: Vec<(u32, bool)> = Vec::new();
         for p in &places {
             if p.flags & bit == 0 {
                 continue;
             }
-            let (vs, fs, tex) = &meshes[p.mesh as usize];
-            tri_tex.push((tris.len() as u32, (*tex >= 0).then(|| texs[*tex as usize].clone())));
-            tri_foliage.push((tris.len() as u32, p.flags & 4 != 0));
-            place_tris(vs, fs, p.loc, p.rot, p.scale, &p.subinsts, &mut tris);
+            let (vs, uvs, fs, secs) = &meshes[p.mesh as usize];
+            let base = tris.len() as u32;
+            if secs.is_empty() {
+                tri_tex.push((base, None));
+            } else {
+                let reps = if p.subinsts.is_empty() { 1 } else { p.subinsts.len() } as u32;
+                let nf = fs.len() as u32;
+                for rep in 0..reps {
+                    for (ff, t) in secs {
+                        tri_tex.push((base + rep * nf + ff, (*t >= 0).then(|| texs[*t as usize].clone())));
+                    }
+                }
+            }
+            tri_foliage.push((base, p.flags & 4 != 0));
+            place_tris(
+                vs,
+                fs,
+                p.loc,
+                p.rot,
+                p.scale,
+                &p.subinsts,
+                &mut tris,
+                uvs,
+                visual.then_some(&mut uv_soup),
+            );
         }
         let min_z = tris.iter().flat_map(|t| t.iter().map(|v| v[2])).fold(f32::MAX, f32::min);
         let vertices: Vec<Point3<f32>> =
@@ -736,6 +867,7 @@ pub fn load_pack(bytes: &[u8]) -> (Scene, Scene) {
             mesh: TriMesh::new(vertices, indices),
             stands,
             min_z,
+            uvs: uv_soup,
             tri_owner: vec![],
             tri_color: vec![],
             tri_tex,

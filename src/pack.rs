@@ -32,9 +32,12 @@ pub fn pack(dir: &Path, out: &Path) {
     .clone();
     let allowed = scene::allowed_umaps(dir);
 
-    // mesh + texture tables, deduped by obj name, in first-use order
+    // mesh + texture tables, deduped by obj name / usemtl key, in first-use order
     let mut mesh_ids: HashMap<String, Option<u32>> = HashMap::new();
-    let mut meshes: Vec<(Vec<[f32; 3]>, Vec<[u32; 3]>, i32)> = Vec::new();
+    // (vs, uvs, fs, sections: (first face, texture id or -1))
+    type PackMesh = (Vec<[f32; 3]>, Vec<[f32; 2]>, Vec<[u32; 3]>, Vec<(u32, i32)>);
+    let mut meshes: Vec<PackMesh> = Vec::new();
+    let mut tex_ids: HashMap<String, i32> = HashMap::new();
     let mut textures: Vec<scene::TexImg> = Vec::new();
     // placements in instances.json order: (flags, mesh, loc, rot, scale, subinsts)
     let mut places: Vec<(u8, u32, [f32; 3], [f32; 3], [f32; 3], scene::SubInsts)> = Vec::new();
@@ -50,16 +53,27 @@ pub fn pack(dir: &Path, out: &Path) {
         let id = mesh_ids
             .entry(obj_name.clone())
             .or_insert_with(|| {
-                let (vs, fs) = scene::load_obj(&dir.join("meshes").join(&obj_name))?;
-                let tex = scene::load_bmp(
-                    &dir.join("textures").join(obj_name.trim_end_matches(".obj").to_string() + ".bmp"),
-                )
-                .map(|t| {
-                    textures.push(t);
-                    textures.len() as i32 - 1
-                })
-                .unwrap_or(-1);
-                meshes.push((vs, fs, tex));
+                let om = scene::load_obj(&dir.join("meshes").join(&obj_name))?;
+                let secs: Vec<(u32, i32)> = om
+                    .sections
+                    .iter()
+                    .map(|(ff, key)| {
+                        let id = *tex_ids.entry(key.clone()).or_insert_with(|| {
+                            if key == "none" {
+                                return -1;
+                            }
+                            match scene::load_bmp(&dir.join("textures").join(format!("{key}.bmp"))) {
+                                Some(t) => {
+                                    textures.push(t);
+                                    textures.len() as i32 - 1
+                                }
+                                None => -1,
+                            }
+                        });
+                        (*ff, id)
+                    })
+                    .collect();
+                meshes.push((om.vs, om.uvs, om.fs, secs));
                 Some(meshes.len() as u32 - 1)
             })
             .clone();
@@ -82,7 +96,7 @@ pub fn pack(dir: &Path, out: &Path) {
     let vref = scene::load_visual(dir);
 
     let mut b: Vec<u8> = Vec::new();
-    b.extend_from_slice(b"BLP1");
+    b.extend_from_slice(b"BLP2");
     put_u32(&mut b, textures.len() as u32);
     for t in &textures {
         b.extend_from_slice(&(t.w as u16).to_le_bytes());
@@ -90,17 +104,26 @@ pub fn pack(dir: &Path, out: &Path) {
         b.extend_from_slice(&t.px);
     }
     put_u32(&mut b, meshes.len() as u32);
-    for (vs, fs, tex) in &meshes {
-        put_u32(&mut b, *tex as u32);
+    for (vs, uvs, fs, secs) in &meshes {
         put_u32(&mut b, vs.len() as u32);
+        put_u32(&mut b, uvs.len() as u32);
         put_u32(&mut b, fs.len() as u32);
+        put_u32(&mut b, secs.len() as u32);
         for v in vs {
             put_f3(&mut b, *v);
+        }
+        for u in uvs {
+            put_f32(&mut b, u[0]);
+            put_f32(&mut b, u[1]);
         }
         for f in fs {
             for x in f {
                 put_u32(&mut b, *x);
             }
+        }
+        for (ff, t) in secs {
+            put_u32(&mut b, *ff);
+            put_u32(&mut b, *t as u32);
         }
     }
     put_u32(&mut b, places.len() as u32);
@@ -136,6 +159,13 @@ pub fn pack(dir: &Path, out: &Path) {
             "{name}: vertex soup differs"
         );
         assert_eq!(p.min_z.to_bits(), r.min_z.to_bits(), "{name}: min_z");
+        assert_eq!(p.uvs.len(), r.uvs.len(), "{name}: uv count");
+        assert!(
+            p.uvs.iter().zip(&r.uvs).all(|(a, b)| {
+                a.iter().zip(b).all(|(x, y)| x[0].to_bits() == y[0].to_bits() && x[1].to_bits() == y[1].to_bits())
+            }),
+            "{name}: uv soup differs"
+        );
         assert_eq!(
             p.tri_tex.len(),
             r.tri_tex.len(),

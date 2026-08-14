@@ -7,8 +7,11 @@ extraction and the math.
 
 ## Data prerequisite
 
-Per-map dumps produced by `ValoBoard/tools/valo_dump` (`map` mode), at
-`ValoBoard/third_party/valorant_dump/<Map>/` (instances.json + meshes/*.obj + navmesh.json).
+Per-map dumps produced by `ValoBoard/tools/valo_dump` (`map` mode, then `uvtex` mode), at
+`ValoBoard/third_party/valorant_dump/<Map>/` (instances.json + meshes/*.obj + navmesh.json
++ textures/*.bmp). `uvtex` rewrites the OBJs with real UVs + per-material sections
+(`usemtl <texKey>`) and exports each referenced diffuse texture once at 256px; renders
+sample those textures at the authored UVs, so surfaces look like the real game.
 
 ## Usage
 

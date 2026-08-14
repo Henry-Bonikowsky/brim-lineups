@@ -213,8 +213,8 @@ async function ensurePack(m, say) {
   try {
     const url = `packs/${m}.blp.gz`;
     let cache = null;
-    // v3: repacked 2026-08-12 (foliage flag for reference gating); old caches dropped
-    try { caches.delete('bl-packs-v1'); caches.delete('bl-packs-v2'); cache = await caches.open('bl-packs-v3'); } catch {}
+    // v4: repacked 2026-08-14 (BLP2: real UVs + per-material textures); old caches dropped
+    try { caches.delete('bl-packs-v1'); caches.delete('bl-packs-v2'); caches.delete('bl-packs-v3'); cache = await caches.open('bl-packs-v4'); } catch {}
     let resp = cache && await cache.match(url);
     const cached = !!resp;
     if (!resp) {

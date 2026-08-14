@@ -169,12 +169,18 @@ fn main() {
             for (name, o, d) in [
                 ("down from +2000", V3::new(c[0], c[1], c[2] + 2000.0), V3::new(0.0, 0.0, -1.0)),
                 ("up from point", V3::new(c[0], c[1], c[2]), V3::new(0.0, 0.0, 1.0)),
+                ("north (+x)", V3::new(c[0], c[1], c[2]), V3::new(1.0, 0.0, 0.0)),
+                ("south (-x)", V3::new(c[0], c[1], c[2]), V3::new(-1.0, 0.0, 0.0)),
+                ("east (+y)", V3::new(c[0], c[1], c[2]), V3::new(0.0, 1.0, 0.0)),
+                ("west (-y)", V3::new(c[0], c[1], c[2]), V3::new(0.0, -1.0, 0.0)),
             ] {
                 let ray = Ray::new(nalgebra::Point3::from(o), d);
                 match sc.mesh.cast_ray_and_get_normal(&nalgebra::Isometry3::identity(), &ray, 1.0e5, true) {
                     Some(h) => {
+                        // backface hits report face id + ntris (parry): fold back
+                        let ntris = sc.mesh.indices().len() as u32;
                         let owner = match h.feature {
-                            parry3d::shape::FeatureId::Face(f) => sc.owner_of(f),
+                            parry3d::shape::FeatureId::Face(f) => sc.owner_of(f % ntris.max(1)),
                             _ => "?",
                         };
                         println!("[{label:>10}] {name}: dist {:.1} -> z={:.1} [{owner}]", h.time_of_impact, o.z + d.z * h.time_of_impact);
