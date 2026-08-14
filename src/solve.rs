@@ -124,6 +124,7 @@ fn best_corner(
     let n = ((half / step) as usize) * 2 + 1;
     let c0 = (n / 2) as f32;
     // one patch pixel: (luminance, foliage, depth)
+    let lum_of = |c: [f32; 3]| 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
     let sample = |fx: f32, fy: f32| -> (f32, bool, f32) {
         let d = (fwd + right * ((fx * 2.0 - 1.0) * tan_h) + up * ((1.0 - fy * 2.0) * tan_v)).normalize();
         match scene.mesh.cast_ray_and_get_normal(&id, &Ray::new(nalgebra::Point3::from(eye), d), 5.0e4, true) {
@@ -132,15 +133,13 @@ fn best_corner(
                     parry3d::shape::FeatureId::Face(f) => f % ntris.max(1),
                     _ => 0,
                 };
-                let nrm = h.normal;
-                let mat = crate::render::surface_color(scene, tri, nrm, eye + d * h.time_of_impact);
-                let l = 0.299 * mat[0] + 0.587 * mat[1] + 0.114 * mat[2];
-                let lambert = 0.22 + 0.72 * nrm.dot(&V3::new(0.55, 0.45, 0.70)).abs();
-                // MUST match render_ex's fog (corner luminance = rendered luminance)
-                let fog = (h.time_of_impact / 20000.0).min(0.5);
-                ((l * 1.35).min(1.0) * lambert * (1.0 - fog) + 0.6 * fog, scene.foliage_at(tri), h.time_of_impact)
+                // the render's exact shading minus the shadow ray: references
+                // anchor on geometry/material contrast, never on our
+                // synthetic shadows (the game's baked ones differ)
+                let c = crate::render::lit(scene, tri, h.normal, eye + d * h.time_of_impact, eye, false);
+                (lum_of(c), scene.foliage_at(tri), h.time_of_impact)
             }
-            None => (0.8, false, f32::INFINITY), // sky
+            None => (lum_of(crate::render::sky_color(d, scene.sun, scene.sun_color)), false, f32::INFINITY),
         }
     };
     // cheap 9x9 pre-gate: a mask (and thus a corner) needs sky in the patch
@@ -1056,6 +1055,8 @@ mod tests {
             mesh: TriMesh::new(verts, tris),
             stands: vec![],
             min_z: 0.0,
+            sun: V3::new(0.55, 0.45, 0.70),
+            sun_color: [1.0; 3],
             uvs: vec![],
             tri_owner: vec![(0, "ground".into())],
             tri_color: vec![(0, [0.6, 0.6, 0.6])],

@@ -39,6 +39,50 @@ pub(crate) fn is_foliage_mesh(mesh: &str) -> bool {
         .any(|k| ml.contains(k))
 }
 
+/// Real sun from the map's Lighting umap exports: the strongest
+/// DirectionalLightComponent with a rotation (UE forward vector = the light's
+/// travel direction; we store the opposite, pointing AT the sun) plus its
+/// color. Juliett names the file Juliett_LightingTest.json, so scan every
+/// *Lighting*.json in the dump dir.
+pub(crate) fn sun_of(dir: &Path) -> Option<(V3, [f32; 3])> {
+    let mut best: Option<(f64, V3, [f32; 3])> = None;
+    for entry in std::fs::read_dir(dir).ok()? {
+        let p = entry.ok()?.path();
+        let name = p.file_name()?.to_str()?;
+        if !name.contains("Lighting") || !name.ends_with(".json") {
+            continue;
+        }
+        let Ok(txt) = std::fs::read_to_string(&p) else { continue };
+        let Ok(v) = serde_json::from_str::<Value>(&txt) else { continue };
+        for e in v.as_array().into_iter().flatten() {
+            if e["Type"].as_str() != Some("DirectionalLightComponent") {
+                continue;
+            }
+            let props = &e["Properties"];
+            let rot = &props["RelativeRotation"];
+            let (Some(pitch), Some(yaw)) = (rot["Pitch"].as_f64(), rot["Yaw"].as_f64()) else {
+                continue;
+            };
+            let inten = props["Intensity"].as_f64().unwrap_or(0.0);
+            if best.as_ref().is_some_and(|(bi, ..)| inten <= *bi) {
+                continue;
+            }
+            let (sp, cp) = (pitch as f32).to_radians().sin_cos();
+            let (sy, cy) = (yaw as f32).to_radians().sin_cos();
+            // light forward = direction the light travels; sun sits opposite
+            let to_sun = -V3::new(cp * cy, cp * sy, sp);
+            let c = &props["LightColor"];
+            let col = [
+                c["R"].as_f64().unwrap_or(255.0) as f32 / 255.0,
+                c["G"].as_f64().unwrap_or(255.0) as f32 / 255.0,
+                c["B"].as_f64().unwrap_or(255.0) as f32 / 255.0,
+            ];
+            best = Some((inten, to_sun, col));
+        }
+    }
+    best.map(|(_, d, c)| (d, c))
+}
+
 /// The authoritative filter: the persistent level's own streaming list.
 /// Always-loaded sublevels plus the BombMode set are what the live bomb-mode
 /// map consists of; everything else (old art variants, alt modes, dev levels)
@@ -127,10 +171,18 @@ impl TexImg {
     }
 }
 
+/// Legacy oblique light direction: the default sun when a map ships no
+/// DirectionalLight (test scenes).
+pub const DEFAULT_SUN: [f32; 3] = [0.55, 0.45, 0.70];
+
 pub struct Scene {
     pub mesh: TriMesh,
     pub stands: Vec<V3>,
     pub min_z: f32,
+    /// Unit vector pointing TOWARD the map's sun (from its DirectionalLight)
+    /// and the sun's color, 0..1 per channel.
+    pub sun: V3,
+    pub sun_color: [f32; 3],
     /// Per-triangle UV coords (parallel to the tri soup); empty for collision
     /// scenes (only renders need UVs).
     pub uvs: Vec<[[f32; 2]; 3]>,
@@ -757,7 +809,9 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         }
     }
 
-    Scene { mesh, stands, min_z, uvs: uv_soup, tri_owner, tri_color, tri_tex, tri_foliage }
+    let (sun, sun_color) =
+        sun_of(dir).unwrap_or((V3::new(DEFAULT_SUN[0], DEFAULT_SUN[1], DEFAULT_SUN[2]), [1.0; 3]));
+    Scene { mesh, stands, min_z, sun, sun_color, uvs: uv_soup, tri_owner, tri_color, tri_tex, tri_foliage }
 }
 
 // ---- packed map bundles (web build) ----
@@ -780,7 +834,9 @@ impl<'a> Rd<'a> {
 /// Load a packed map (already gunzipped) into (collision, visual) scenes.
 pub fn load_pack(bytes: &[u8]) -> (Scene, Scene) {
     let mut r = Rd(bytes, 0);
-    assert_eq!(r.bytes(4), b"BLP2", "bad pack magic");
+    assert_eq!(r.bytes(4), b"BLP3", "bad pack magic");
+    let sun = { let p = r.f3(); V3::new(p[0], p[1], p[2]) };
+    let sun_color = r.f3();
     let ntex = r.u32() as usize;
     let mut texs: Vec<std::sync::Arc<TexImg>> = Vec::with_capacity(ntex);
     for _ in 0..ntex {
@@ -867,6 +923,8 @@ pub fn load_pack(bytes: &[u8]) -> (Scene, Scene) {
             mesh: TriMesh::new(vertices, indices),
             stands,
             min_z,
+            sun,
+            sun_color,
             uvs: uv_soup,
             tri_owner: vec![],
             tri_color: vec![],

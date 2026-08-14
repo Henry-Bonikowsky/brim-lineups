@@ -21,6 +21,52 @@ fn tan_vh(w: usize, h: usize) -> (f32, f32) {
 /// Real diffuse for a surface hit: the tri's material texture sampled at the
 /// authored UVs (barycentric of the world point within the tri). Falls back
 /// to the flat material color when the surface has no texture.
+/// Sky for a view ray: vertical gradient plus a glow around the map's sun.
+/// Shared by both renderers.
+pub fn sky_color(dir: V3, sun: V3, sun_color: [f32; 3]) -> [f32; 3] {
+    let t = dir.z.clamp(0.0, 1.0).powf(0.7);
+    let mut c = [0.78 - 0.36 * t, 0.86 - 0.24 * t, 0.93 - 0.05 * t];
+    let g = dir.dot(&sun).max(0.0).powf(200.0) * 1.2;
+    for (i, ch) in c.iter_mut().enumerate() {
+        *ch = (*ch + g * sun_color[i]).min(1.0);
+    }
+    c
+}
+
+/// THE lit surface color: albedo x (hemispheric ambient + the map's real sun
+/// N.L, optionally shadow-rayed) + distance fog. The rasterizer, the
+/// walk-mode raycaster and solve's corner luminance (shadow=false there,
+/// references anchor on geometry, not our synthetic shadows) all shade
+/// through this one function - keep them identical or the references drift
+/// from the pictures.
+pub fn lit(scene: &crate::scene::Scene, tri: u32, n: V3, wp: V3, eye: V3, shadow: bool) -> [f32; 3] {
+    use parry3d::query::{Ray, RayCast};
+    let albedo = surface_color(scene, tri, n, wp);
+    let v = wp - eye;
+    let dist = v.norm();
+    let nn = if n.dot(&v) > 0.0 { -n } else { n }; // orient toward the camera
+    let mut sun = nn.dot(&scene.sun).max(0.0);
+    if sun > 0.0 && shadow {
+        // offset off the surface so the ray does not re-hit its own tri
+        let o = wp + nn * 2.0;
+        if scene
+            .mesh
+            .cast_ray(&nalgebra::Isometry3::identity(), &Ray::new(nalgebra::Point3::from(o), scene.sun), 5.0e4, true)
+            .is_some()
+        {
+            sun = 0.0;
+        }
+    }
+    // baked-GI stand-in: shade stays luminous in game, so ambient sits high
+    let amb = 0.68 + 0.16 * nn.z;
+    let fog = (dist / 20000.0).min(0.5);
+    let fogc = [0.55, 0.60, 0.65];
+    std::array::from_fn(|i| {
+        ((albedo[i] * (amb + 0.80 * sun * scene.sun_color[i])).min(1.0) * (1.0 - fog) + fogc[i] * fog)
+            .clamp(0.0, 1.0)
+    })
+}
+
 pub fn surface_color(scene: &crate::scene::Scene, tri: u32, _n: V3, wp: V3) -> [f32; 3] {
     let (Some(t), Some(uv3)) = (scene.tex_of(tri), scene.uvs.get(tri as usize)) else {
         return scene.color_of(tri);
@@ -250,24 +296,17 @@ pub fn render_pov_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, w:
             let o = x * 3;
             let (b, g, r) = match scene.mesh.cast_ray_and_get_normal(&id, &ray, 5.0e4, true) {
                 Some(hit) => {
-                    let n = hit.normal;
-                    let lambert = 0.22 + 0.72 * n.dot(&V3::new(0.55, 0.45, 0.70)).abs();
                     let tri = match hit.feature {
                         parry3d::shape::FeatureId::Face(i) => i % ntris.max(1),
                         _ => 0,
                     };
-                    // every face gets its real in-game diffuse: floors
-                    // world-planar, walls tri-planar (see surface_color)
-                    let mat = surface_color(scene, tri, n, eye + dir * hit.time_of_impact);
-                    let fog = (hit.time_of_impact / 20000.0).min(0.5);
-                    let l = lambert * (1.0 - fog);
-                    (
-                        (((mat[2] * 1.35).min(1.0) * l + 0.65 * fog).clamp(0.0, 1.0) * 255.0) as u8,
-                        (((mat[1] * 1.35).min(1.0) * l + 0.60 * fog).clamp(0.0, 1.0) * 255.0) as u8,
-                        (((mat[0] * 1.35).min(1.0) * l + 0.55 * fog).clamp(0.0, 1.0) * 255.0) as u8,
-                    )
+                    let c = lit(scene, tri, hit.normal, eye + dir * hit.time_of_impact, eye, true);
+                    ((c[2] * 255.0) as u8, (c[1] * 255.0) as u8, (c[0] * 255.0) as u8)
                 }
-                None => (235u8, 195u8, 140u8),
+                None => {
+                    let c = sky_color(dir, scene.sun, scene.sun_color);
+                    ((c[2] * 255.0) as u8, (c[1] * 255.0) as u8, (c[0] * 255.0) as u8)
+                }
             };
             rowbuf[o] = b;
             rowbuf[o + 1] = g;
@@ -324,12 +363,12 @@ fn render_ex(
     let (tan_h, tan_v) = tan_vh(W, H);
 
     let mut depth = vec![f32::INFINITY; W * H];
-    let mut shade = vec![[0.55f32; 3]; W * H]; // rgb, sky-ish base
+    let mut shade = vec![[0.55f32; 3]; W * H]; // rgb, filled by the shading pass
     let mut is_sky = vec![true; W * H];
+    let mut tri_of = vec![0u32; W * H];
 
     let vtx = scene.mesh.vertices();
     for (tri_idx, tri) in scene.mesh.indices().iter().enumerate() {
-        let mat = scene.color_of(tri_idx as u32);
         let p: Vec<V3> = tri.iter().map(|&i| V3::new(vtx[i as usize].x, vtx[i as usize].y, vtx[i as usize].z)).collect();
         // camera space: x right, y up, z forward
         let cam: Vec<V3> = p
@@ -374,18 +413,10 @@ fn render_ex(
         {
             continue;
         }
-        // face normal shading (world space)
-        let n = (p[1] - p[0]).cross(&(p[2] - p[0]));
-        let nl = n.norm();
-        if nl < 1e-3 {
+        // degenerate reject (shading itself happens in the post-pass)
+        if (p[1] - p[0]).cross(&(p[2] - p[0])).norm() < 1e-3 {
             continue;
         }
-        let n = n / nl;
-        // oblique hillshade light: floors mid-gray, walls contrast both ways
-        let lambert = 0.22 + 0.72 * n.dot(&V3::new(0.55, 0.45, 0.70)).abs();
-        // every face samples its real diffuse per pixel (floors planar,
-        // walls tri-planar via surface_color)
-        let tex = scene.tex_of(tri_idx as u32);
         // fan-triangulate the clipped polygon (3 or 4 verts)
         for k in 1..poly.len() - 1 {
             let sub = [poly[0], poly[k], poly[k + 1]];
@@ -431,27 +462,37 @@ fn render_ex(
                     let idx = py * W + px;
                     if z < depth[idx] {
                         depth[idx] = z;
-                        let fog = (z / 20000.0).min(0.5);
-                        let l = lambert * (1.0 - fog);
-                        let mat = match tex {
-                            Some(_) => {
-                                // perspective-correct world position for the sample
-                                let wp = (sub[0].1 * w0 + sub[1].1 * w1 + sub[2].1 * w2) * z;
-                                surface_color(scene, tri_idx as u32, n, wp)
-                            }
-                            None => mat,
-                        };
-                        // boost material color toward readable brightness
-                        shade[idx] = [
-                            (mat[0] * 1.35).min(1.0) * l + 0.55 * fog,
-                            (mat[1] * 1.35).min(1.0) * l + 0.60 * fog,
-                            (mat[2] * 1.35).min(1.0) * l + 0.65 * fog,
-                        ];
+                        tri_of[idx] = tri_idx as u32;
                         is_sky[idx] = false;
                     }
                 }
             }
         }
+    }
+
+    // shading pass: reconstruct the world point per pixel, light it through
+    // the shared `lit` (real sun + shadow ray), sky through the gradient
+    {
+        use crate::par::*;
+        let idxs = scene.mesh.indices();
+        let (depth, is_sky, tri_of) = (&depth, &is_sky, &tri_of);
+        shade.par_chunks_mut(W).enumerate().for_each(|(y, row)| {
+            for (x, out) in row.iter_mut().enumerate() {
+                let i = y * W + x;
+                let sx = (x as f32 + 0.5) / W as f32 * 2.0 - 1.0;
+                let sy2 = 1.0 - (y as f32 + 0.5) / H as f32 * 2.0;
+                let dir = fwd + right * (sx * tan_h) + up * (sy2 * tan_v);
+                if is_sky[i] {
+                    *out = sky_color(dir.normalize(), scene.sun, scene.sun_color);
+                } else {
+                    let t = idxs[tri_of[i] as usize];
+                    let p = |k: usize| V3::new(vtx[t[k] as usize].x, vtx[t[k] as usize].y, vtx[t[k] as usize].z);
+                    let n = (p(1) - p(0)).cross(&(p(2) - p(0))).normalize();
+                    // dir has forward-component 1, so t = stored z is exact
+                    *out = lit(scene, tri_of[i], n, eye + dir * depth[i], eye, true);
+                }
+            }
+        });
     }
 
     // world-space grid on geometry (stand views): 100u lines, heavier at 500u
@@ -487,15 +528,11 @@ fn render_ex(
         for x in 0..W {
             let i = y * W + x;
             let o = ((H - 1 - y) * W + x) * 3;
-            let (b, g, r) = if is_sky[i] {
-                (235u8, 195u8, 140u8) // sky blue-ish
-            } else {
-                (
-                    (shade[i][2].clamp(0.0, 1.0) * 255.0) as u8,
-                    (shade[i][1].clamp(0.0, 1.0) * 255.0) as u8,
-                    (shade[i][0].clamp(0.0, 1.0) * 255.0) as u8,
-                )
-            };
+            let (b, g, r) = (
+                (shade[i][2].clamp(0.0, 1.0) * 255.0) as u8,
+                (shade[i][1].clamp(0.0, 1.0) * 255.0) as u8,
+                (shade[i][0].clamp(0.0, 1.0) * 255.0) as u8,
+            );
             px[o] = b;
             px[o + 1] = g;
             px[o + 2] = r;

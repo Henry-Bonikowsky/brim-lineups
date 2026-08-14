@@ -96,7 +96,9 @@ pub fn pack(dir: &Path, out: &Path) {
     let vref = scene::load_visual(dir);
 
     let mut b: Vec<u8> = Vec::new();
-    b.extend_from_slice(b"BLP2");
+    b.extend_from_slice(b"BLP3");
+    put_f3(&mut b, [cref.sun.x, cref.sun.y, cref.sun.z]);
+    put_f3(&mut b, cref.sun_color);
     put_u32(&mut b, textures.len() as u32);
     for t in &textures {
         b.extend_from_slice(&(t.w as u16).to_le_bytes());
@@ -159,6 +161,7 @@ pub fn pack(dir: &Path, out: &Path) {
             "{name}: vertex soup differs"
         );
         assert_eq!(p.min_z.to_bits(), r.min_z.to_bits(), "{name}: min_z");
+        assert!(p.sun == r.sun && p.sun_color == r.sun_color, "{name}: sun");
         assert_eq!(p.uvs.len(), r.uvs.len(), "{name}: uv count");
         assert!(
             p.uvs.iter().zip(&r.uvs).all(|(a, b)| {
