@@ -39,32 +39,59 @@ pub fn sky_color(dir: V3, sun: V3, sun_color: [f32; 3]) -> [f32; 3] {
 /// references anchor on geometry, not our synthetic shadows) all shade
 /// through this one function - keep them identical or the references drift
 /// from the pictures.
-pub fn lit(scene: &crate::scene::Scene, tri: u32, n: V3, wp: V3, eye: V3, shadow: bool) -> [f32; 3] {
+pub fn lit(scene: &crate::scene::Scene, tri: u32, n: V3, wp: V3, eye: V3, detail: bool) -> [f32; 3] {
     use parry3d::query::{Ray, RayCast};
+    let id = nalgebra::Isometry3::identity();
     let albedo = surface_color(scene, tri, n, wp);
     let v = wp - eye;
     let dist = v.norm();
     let nn = if n.dot(&v) > 0.0 { -n } else { n }; // orient toward the camera
     let mut sun = nn.dot(&scene.sun).max(0.0);
-    if sun > 0.0 && shadow {
+    if sun > 0.0 && detail {
         // offset off the surface so the ray does not re-hit its own tri
         let o = wp + nn * 2.0;
-        if scene
-            .mesh
-            .cast_ray(&nalgebra::Isometry3::identity(), &Ray::new(nalgebra::Point3::from(o), scene.sun), 5.0e4, true)
-            .is_some()
-        {
+        if scene.mesh.cast_ray(&id, &Ray::new(nalgebra::Point3::from(o), scene.sun), 5.0e4, true).is_some() {
             sun = 0.0;
         }
     }
     // baked-GI stand-in: shade stays luminous in game, so ambient sits high
-    let amb = 0.68 + 0.16 * nn.z;
-    let fog = (dist / 20000.0).min(0.5);
-    let fogc = [0.55, 0.60, 0.65];
-    std::array::from_fn(|i| {
-        ((albedo[i] * (amb + 0.80 * sun * scene.sun_color[i])).min(1.0) * (1.0 - fog) + fogc[i] * fog)
-            .clamp(0.0, 1.0)
-    })
+    let mut amb = 0.66 + 0.14 * nn.z;
+    if detail {
+        // 4-ray hemisphere occlusion (deterministic): corners, undersides and
+        // contact points darken, which is what makes lighting read everywhere.
+        // Steep rays + a grazing-hit floor avoid speckle from a surface's own
+        // coplanar neighbors.
+        let t1n = if nn.z.abs() < 0.9 { nn.cross(&V3::new(0.0, 0.0, 1.0)) } else { nn.cross(&V3::new(1.0, 0.0, 0.0)) }
+            .normalize();
+        let t2n = nn.cross(&t1n);
+        let o = nalgebra::Point3::from(wp + nn * 4.0);
+        let mut open = 0;
+        for d in [t1n, -t1n, t2n, -t2n] {
+            let dir = nn * 0.66 + d * 0.75;
+            match scene.mesh.cast_ray(&id, &Ray::new(o, dir), 260.0, true) {
+                Some(t) if t > 14.0 => {}
+                Some(_) => open += 1, // grazing self-hit: not real cover
+                None => open += 1,
+            }
+        }
+        amb *= 0.70 + 0.30 * open as f32 / 4.0;
+    }
+    // cool skylight ambient, the map's warm sun, bluish distance haze.
+    // Tone-map shoulder instead of a hard clamp: a clamp pushed every bright
+    // albedo to 1.0 in sun AND shade, erasing the lighting on most surfaces.
+    let ambc = [amb * 0.94, amb * 0.98, amb * 1.04];
+    let fog = (dist / 20000.0).min(0.45);
+    let fogc = [0.70, 0.78, 0.88];
+    let mut c: [f32; 3] = std::array::from_fn(|i| {
+        let t = albedo[i] * (ambc[i] + 0.85 * sun * scene.sun_color[i]);
+        (t * 1.15 / (1.0 + 0.45 * t)) * (1.0 - fog) + fogc[i] * fog
+    });
+    // gentle saturation lift toward the game's punchy grade
+    let l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+    for ch in &mut c {
+        *ch = (l + (*ch - l) * 1.18).clamp(0.0, 1.0);
+    }
+    c
 }
 
 pub fn surface_color(scene: &crate::scene::Scene, tri: u32, _n: V3, wp: V3) -> [f32; 3] {
