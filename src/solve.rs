@@ -338,7 +338,9 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 };
                 for (yaw, pitch) in sw {
                     {
-                        if pitch <= -89.0 || pitch >= 89.0 {
+                        // sweeps iterate LAUNCH pitch: above the game's
+                        // launch clamp the flight is fiction - skip
+                        if pitch <= -89.0 || pitch > crate::sim::LAUNCH_MAX {
                             continue;
                         }
                         let hand = crate::sim::hand_origin(origin, yaw, cfg);

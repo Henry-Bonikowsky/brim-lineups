@@ -28,6 +28,14 @@ pub struct Cfg {
                      // extracted); calibration knob via --radius.
 }
 
+/// The game CLAMPS launch pitch: aiming higher than ~67 deg does not throw
+/// steeper. Found 2026-08-15 from Henry's working Sunset lineup: his
+/// recovered aim was 81.3 deg (sky-silhouette fit, IoU 0.94), the sim
+/// launched it at 82.8 and died 2.6km short on a roof; the real throw's
+/// range requires launch 70.0-70.5. Without a clamp no constant fits both
+/// this and the aim-24/58.6 anchors. Calibration knob, +-0.25 uncertainty.
+pub const LAUNCH_MAX: f32 = 70.3;
+
 /// Crosshair (aim) pitch -> launch pitch. UpwardArc 8 is NOT a constant
 /// offset: it tapers QUADRATICALLY to zero at straight-up - near-full at
 /// flat aims, falling away fast on high lobs. Fitted 2026-08-10 from two
@@ -35,14 +43,18 @@ pub struct Cfg {
 /// than a linear taper predicted (sim side-hit trace matched his real
 /// throw at +1 deg), while his calibrated high lob at aim 58.6 needs the
 /// linear-taper-minus-6%-power carry, which this curve reproduces within
-/// ~1.5% at the file-validated speed/gravity.
+/// ~1.5% at the file-validated speed/gravity. Clamped at LAUNCH_MAX.
 pub fn launch_pitch(aim: f32, cfg: &Cfg) -> f32 {
     let a = aim.clamp(0.0, 90.0) / 90.0;
-    aim + cfg.arc_deg * (1.0 - a * a)
+    (aim + cfg.arc_deg * (1.0 - a * a)).min(LAUNCH_MAX)
 }
 
 /// Inverse of launch_pitch (what to aim so the launch comes out at `launch`).
+/// Launches above LAUNCH_MAX are impossible in game; callers must not
+/// request them (sweeps skip). At exactly the clamp this returns the
+/// LOWEST aim that reaches it.
 pub fn aim_pitch(launch: f32, cfg: &Cfg) -> f32 {
+    let launch = launch.min(LAUNCH_MAX);
     if launch <= cfg.arc_deg {
         launch - cfg.arc_deg // downward/flat branch: full arc applies
     } else {
@@ -490,10 +502,13 @@ mod tests {
     fn arc_taper_roundtrip() {
         let cfg = Cfg::default();
         assert!((launch_pitch(0.0, &cfg) - 8.0).abs() < 1e-4);
-        assert!((launch_pitch(90.0, &cfg) - 90.0).abs() < 1e-4);
         assert!((launch_pitch(24.1, &cfg) - 31.53).abs() < 0.01, "near-full arc at low pitch");
         assert!((launch_pitch(58.6, &cfg) - 63.21).abs() < 0.01, "tapered arc on high lobs");
-        for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6, 75.0, 89.0] {
+        // the game clamps launch pitch: aiming higher throws no steeper
+        // (Henry's Sunset lineup, aim 81.3 -> real launch ~70)
+        assert!((launch_pitch(81.3, &cfg) - LAUNCH_MAX).abs() < 1e-4, "clamped high lob");
+        assert!((launch_pitch(90.0, &cfg) - LAUNCH_MAX).abs() < 1e-4, "clamped straight up");
+        for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6, 65.0] {
             let back = aim_pitch(launch_pitch(aim, &cfg), &cfg);
             assert!((back - aim).abs() < 1e-3, "roundtrip {aim} -> {back}");
         }
