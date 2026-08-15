@@ -24,6 +24,84 @@ impl Timer {
 /// rule: closest to the click first, time only inside the band).
 const ERR_BAND: f32 = 50.0;
 
+/// Walking distance (from the spike) beyond which a stand counts as fully
+/// safe: nobody retaking will hike 40m+ before they can even see you.
+const APPROACH_SAFE: f32 = 4000.0;
+
+/// For each queried stand: the walking distance a retaker starting AT the
+/// spike must cover before they first have line of sight to the thrower's
+/// head. Henry: crow-flies distance says nothing - a 50m lineup one doorway
+/// from site is easy to punish and a bad lineup. Dijkstra over the navmesh
+/// stand graph (same <=130u step / <=420u neighbor rule the loader uses),
+/// then per stand walk the nodes nearest-first until one sees it.
+fn approach_dists(scene: &Scene, target: V3, queries: &[V3]) -> Vec<f32> {
+    use parry3d::query::{Ray, RayCast};
+    let nodes = &scene.stands;
+    let n = nodes.len();
+    if n == 0 {
+        return vec![APPROACH_SAFE; queries.len()];
+    }
+    let mut adj: Vec<Vec<(u32, f32)>> = vec![Vec::new(); n];
+    for i in 0..n {
+        for j in i + 1..n {
+            let d = nodes[j] - nodes[i];
+            if d.z.abs() <= 130.0 {
+                let dxy = (d.x * d.x + d.y * d.y).sqrt();
+                if dxy <= 420.0 {
+                    adj[i].push((j as u32, dxy));
+                    adj[j].push((i as u32, dxy));
+                }
+            }
+        }
+    }
+    let start = (0..n)
+        .min_by(|&a, &b| (nodes[a] - target).norm().total_cmp(&(nodes[b] - target).norm()))
+        .unwrap();
+    let mut dist = vec![f32::INFINITY; n];
+    dist[start] = 0.0;
+    // positive-f32 bit patterns order like the floats: cheap Dijkstra keys
+    let mut heap = std::collections::BinaryHeap::new();
+    heap.push(std::cmp::Reverse((0u32, start)));
+    while let Some(std::cmp::Reverse((dbits, i))) = heap.pop() {
+        let dcur = f32::from_bits(dbits);
+        if dcur > dist[i] || dcur > APPROACH_SAFE {
+            continue;
+        }
+        for &(j, w) in &adj[i] {
+            let nd = dcur + w;
+            if nd < dist[j as usize] {
+                dist[j as usize] = nd;
+                heap.push(std::cmp::Reverse((nd.to_bits(), j as usize)));
+            }
+        }
+    }
+    let mut order: Vec<usize> = (0..n).filter(|&i| dist[i] <= APPROACH_SAFE).collect();
+    order.sort_by(|&a, &b| dist[a].total_cmp(&dist[b]));
+    let id = nalgebra::Isometry3::identity();
+    queries
+        .iter()
+        .map(|s| {
+            let head = s + V3::new(0.0, 0.0, 175.0);
+            for &i in &order {
+                let eye = nodes[i] + V3::new(0.0, 0.0, 160.0);
+                let v = head - eye;
+                let dl = v.norm();
+                // -60 margin like the old site-exposure check: peeking around
+                // the thrower's own cover corner doesn't count as seen
+                if dl < 60.0
+                    || scene
+                        .mesh
+                        .cast_ray(&id, &Ray::new(nalgebra::Point3::from(eye), v / dl), dl - 60.0, true)
+                        .is_none()
+                {
+                    return dist[i];
+                }
+            }
+            APPROACH_SAFE
+        })
+        .collect()
+}
+
 #[derive(Clone)]
 pub struct Lineup {
     pub dist: f32, // stand-to-target range (lineups are long throws, not tosses)
@@ -39,7 +117,8 @@ pub struct Lineup {
     pub spread: f32,     // worst landing deviation across those jitters (fragility)
     pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
     pub wedged: bool,    // stand is corner-pinned (always true for solver-picked stands)
-    pub exposed: bool,   // someone at the site can see the thrower: shown last, labeled
+    pub exposed: bool,   // a retaker sees the thrower within 8m of leaving the spike
+    pub approach: f32,   // walking distance from the spike before the thrower is in view
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
 }
 
@@ -135,7 +214,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     let t_sweep = Timer::new();
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
-    let (n_stand_any, n_stand_conf, n_expo) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
+    let (n_stand_any, n_stand_conf) = (AtomicUsize::new(0), AtomicUsize::new(0));
     // physics ceiling, and for the solver's own hunts Henry's rule: a lineup
     // further than 55m (5500u) is not worth learning - the hunt never offers
     // one. A user-locked stand (paired) is his choice and stays uncapped
@@ -282,6 +361,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                             pos_forgive: 0.0,
                             wedged,
                             exposed: false,
+                            approach: 0.0,
                             aim_ref: None,
                         };
                         if !sel {
@@ -383,33 +463,9 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 });
             }
             if let Some(b) = &mut best {
-                // a LINEUP is thrown from cover: nobody standing anywhere around
-                // the site may have line of sight to the thrower. Sample defender
-                // eyes on rings around the target; ANY clear sightline kills it.
-                use parry3d::query::{Ray, RayCast};
-                let mut site_eyes = vec![target + V3::new(0.0, 0.0, 160.0)];
-                for (ring, n) in [(350.0f32, 6usize), (650.0, 8)] {
-                    for k in 0..n {
-                        let a = k as f32 / n as f32 * std::f32::consts::TAU;
-                        site_eyes.push(target + V3::new(a.cos() * ring, a.sin() * ring, 160.0));
-                    }
-                }
-                let exposed = strict && site_eyes.iter().any(|se| {
-                    let v = se - origin;
-                    let d = v.norm();
-                    let sight = Ray::new(nalgebra::Point3::from(origin), v / d);
-                    scene
-                        .mesh
-                        .cast_ray(&nalgebra::Isometry3::identity(), &sight, d - 60.0, true)
-                        .is_none()
-                });
-                // exposure no longer KILLS the stand: hidden-from-site is the
-                // rule, but a click must still offer positions when cover is
-                // scarce - exposed rows are flagged, ranked last, and labeled
-                if exposed {
-                    n_expo.fetch_add(1, Relaxed);
-                    b.exposed = true;
-                }
+                // exposure/approach (how far a retaker walks before seeing
+                // this stand) is computed once for the deduped survivors
+                // after the sweep - see the approach_dists call below
                 // browse: forgiveness/anchoring are about reliably hitting the
                 // lineup's OWN landing spot (the user picked it by end
                 // location), not about covering the original click.
@@ -458,6 +514,17 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     if paired {
         // angle families from the locked stand: easy positions first, then
         // closest-landing band, then time (Henry's optimal-angle order)
+        if finish_all {
+            // top-level paired call (not a refine sub-solve): one stand, one
+            // approach lookup for the labels
+            if let Some(s) = all.first().map(|l| l.stand) {
+                let a = approach_dists(scene, target, &[s])[0];
+                for l in &mut all {
+                    l.approach = a;
+                    l.exposed = a < 800.0;
+                }
+            }
+        }
         sturdy(&mut all);
         let minerr = all.iter().filter(|l| l.covered).map(|l| l.err).fold(f32::INFINITY, f32::min);
         let band = |l: &Lineup| ((l.err - minerr) / ERR_BAND).max(0.0).floor();
@@ -481,13 +548,23 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
         }
     }
     let mut out: Vec<Lineup> = by_cell.into_values().collect();
+    // approach = walking distance from the spike before a retaker SEES the
+    // thrower (crow-flies says nothing: a 50m stand one doorway from site
+    // is easy to punish). Drives ranking; <800u (8m) = the EXPOSED label
+    let t_app = Timer::new();
+    let q: Vec<V3> = out.iter().map(|l| l.stand).collect();
+    for (l, a) in out.iter_mut().zip(approach_dists(scene, target, &q)) {
+        l.approach = a;
+        l.exposed = a < 800.0;
+    }
     if strict {
         eprintln!(
-            "[funnel] stands: any-covered-angle {} -> sphere-confirmed {} -> exposure-flagged {} -> deduped {}",
+            "[funnel] stands: any-covered-angle {} -> sphere-confirmed {} -> deduped {} ({} exposed) [t] approach {:.2}s",
             n_stand_any.load(Relaxed),
             n_stand_conf.load(Relaxed),
-            n_expo.load(Relaxed),
-            out.len()
+            out.len(),
+            out.iter().filter(|l| l.exposed).count(),
+            t_app.secs()
         );
     }
     // no sturdiness cull BEFORE refine: coarse-angle forgiveness says nothing
@@ -502,12 +579,16 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
         if browse {
             l.err
         } else {
-            // fragile rows survive the cull but sink below sturdy ones;
-            // exposed rows sink below everything hidden. err weighs in
-            // across stands too - accuracy beats speed
+            // accuracy first, then SAFETY: the longer a retaker must walk
+            // from the spike before seeing you, the better the position
+            // (replaces the crow-flies distance preference - Henry: it says
+            // nothing). Fragile rows sink below sturdy; exposed below all
             let fragile = if l.forgive < 0.25 { 5.0 } else { 0.0 };
             let expo = if l.exposed { 30.0 } else { 0.0 };
-            l.err / 150.0 + l.dist / 2000.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0 + fragile + expo
+            l.err / 150.0 + l.time * 0.35 - l.approach.min(APPROACH_SAFE) / 800.0
+                - l.pos_grade() as f32 * 10.0
+                + fragile
+                + expo
         }
     };
     out.sort_by(|a, b| {
@@ -534,7 +615,8 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     let dxy = ((f.rest.x - target.x).powi(2) + (f.rest.y - target.y).powi(2)).sqrt();
                     let dz = (f.rest.z - target.z).abs();
                     f.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
-                    f.exposed = l.exposed; // the paired sub-solve never checks exposure
+                    // the paired sub-solve never computes exposure/approach
+                    (f.exposed, f.approach) = (l.exposed, l.approach);
                     Some(f)
                 }
                 // even the dense sphere-confirmed re-sweep found no covered
@@ -751,6 +833,27 @@ mod tests {
 
         let open = scene_with_walls(&[]);
         assert!(wedge_stand(&open, V3::new(0.0, 0.0, 0.0)).is_none(), "open ground has no pin");
+    }
+
+    /// A stand right behind a wall is 9m from the spike as the crow flies,
+    /// but a retaker must walk the whole detour around the wall before they
+    /// can see it: approach must reflect the WALK, not the straight line.
+    #[test]
+    fn approach_respects_walls() {
+        let mut scene = scene_with_walls(&[([500.0, -2000.0, 500.0, 2000.0], 400.0)]);
+        let mut nodes = vec![V3::new(0.0, 0.0, 0.0), V3::new(400.0, 0.0, 0.0)];
+        for k in 1..=6 {
+            nodes.push(V3::new(400.0, k as f32 * 400.0, 0.0));
+        }
+        nodes.push(V3::new(800.0, 2400.0, 0.0));
+        for k in (0..=5).rev() {
+            nodes.push(V3::new(900.0, k as f32 * 400.0, 0.0));
+        }
+        scene.stands = nodes;
+        let target = V3::new(0.0, 0.0, 0.0);
+        let a = approach_dists(&scene, target, &[V3::new(400.0, 0.0, 0.0), V3::new(900.0, 0.0, 0.0)]);
+        assert!(a[0] < 100.0, "same-side stand is seen immediately, got {}", a[0]);
+        assert!(a[1] > 2500.0 && a[1] <= 4000.0, "behind-wall stand needs the long detour, got {}", a[1]);
     }
 }
 
