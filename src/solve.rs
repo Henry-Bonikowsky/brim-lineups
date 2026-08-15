@@ -422,6 +422,9 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                         finished_first = true;
                     }
                     if pickable {
+                        if b.covered {
+                            polish(scene, target, tol, cfg, origin, b);
+                        }
                         finish(scene, target, tol, cfg, origin, b);
                     }
                 }
@@ -635,6 +638,36 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
         key(a).total_cmp(&key(b)).then(a.stand.x.total_cmp(&b.stand.x)).then(a.stand.y.total_cmp(&b.stand.y))
     });
     out
+}
+
+/// Continuous angle polish: the sweep grid is 1 x 1.25 deg, so its best
+/// angle can sit a whole cell off the true optimum. Pattern-search descent
+/// on (yaw, pitch) at full sphere physics - keep any move that lands CLOSER
+/// and still covers - down to 0.05 deg steps. ~10-30 flights per row.
+fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Lineup) {
+    let mut step = 0.6f32;
+    while step > 0.05 {
+        let mut improved = false;
+        for (dy, dp) in [(step, 0.0), (-step, 0.0), (0.0, step), (0.0, -step)] {
+            let (y, p) = (b.yaw + dy, b.pitch + dp);
+            let launch = crate::sim::launch_pitch(p, cfg);
+            let Some(o) = fly(scene, crate::sim::hand_origin(origin, y, cfg), dir_from(y, launch), cfg)
+            else {
+                continue;
+            };
+            let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+            let dz = (o.rest.z - target.z).abs();
+            let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+            if err < b.err && err < tol && crate::sim::fire_covers(scene, o.rest, target) {
+                (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err) = (y, p, o.rest, o.time, o.bounces, err);
+                improved = true;
+                break; // retry the same step size from the better spot
+            }
+        }
+        if !improved {
+            step *= 0.5;
+        }
+    }
 }
 
 /// Post-processing shared by both modes: crosshair reference point + aim
