@@ -213,7 +213,7 @@ async function ensurePack(m, say) {
     const url = `packs/${m}.blp.gz`;
     let cache = null;
     // v7: repacked 2026-08-14 (tint fix: Summit no longer orange; no saturation lift); old caches dropped
-    try { for (const v of ['bl-packs-v1','bl-packs-v2','bl-packs-v3','bl-packs-v4','bl-packs-v5','bl-packs-v6']) caches.delete(v); cache = await caches.open('bl-packs-v7'); } catch {}
+    try { for (const v of ['bl-packs-v1','bl-packs-v2','bl-packs-v3','bl-packs-v4','bl-packs-v5','bl-packs-v6','bl-packs-v7']) caches.delete(v); cache = await caches.open('bl-packs-v8'); } catch {}
     let resp = cache && await cache.match(url);
     const cached = !!resp;
     if (!resp) {
