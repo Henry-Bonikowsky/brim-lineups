@@ -176,7 +176,78 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
 /// click even when its fire cannot reach the click itself - the user browses
 /// nearby end locations and picks one. Sorted by landing distance.
 pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg) -> Vec<Lineup> {
-    solve_impl(scene, stands, target, tol, min_dist, strict, browse, cfg, true)
+    // a right-clicked stand also tries WALL-PRESSED variants: "stand up
+    // against that box" is the standard lineup stance (Henry's market
+    // volley only exists pressed against the kiosk, 1.3m from his click)
+    // and the corner pin only handles two-face corners
+    let mut sv: Vec<V3> = stands.to_vec();
+    if !strict && stands.len() == 1 {
+        sv.extend(press_candidates(scene, stands[0]));
+    }
+    solve_impl(scene, &sv, target, tol, min_dist, strict, browse, cfg, true)
+}
+
+/// Capsule-pressed positions against each distinct wall within reach of a
+/// user-chosen stand (single face - the W-press stance the corner pin does
+/// not cover). Ground- and headroom-validated, deduped, max 4.
+fn press_candidates(scene: &Scene, stand: V3) -> Vec<V3> {
+    use parry3d::query::{Ray, RayCast};
+    let id = nalgebra::Isometry3::identity();
+    let mut out: Vec<V3> = Vec::new();
+    for k in 0..16 {
+        if out.len() >= 4 {
+            break;
+        }
+        let a = k as f32 / 16.0 * std::f32::consts::TAU;
+        let d = V3::new(a.cos(), a.sin(), 0.0);
+        let o = stand + V3::new(0.0, 0.0, 90.0);
+        let Some(hit) = scene.mesh.cast_ray_and_get_normal(&id, &Ray::new(nalgebra::Point3::from(o), d), 260.0, true)
+        else {
+            continue;
+        };
+        let mut n = hit.normal;
+        if n.dot(&d) > 0.0 {
+            n = -n;
+        }
+        if V3::new(n.x, n.y, 0.0).norm() < 0.7 {
+            continue; // ramp/floor, not a wall
+        }
+        let nh = V3::new(n.x, n.y, 0.0).normalize();
+        let p = o + d * hit.time_of_impact + nh * 42.0;
+        // Henry's rule: a wall press is only repeatable when the wall gives
+        // you something to line up with. Geometric proxy: the face must END
+        // or BREAK (edge, seam >10u, abutting object) within ~120u along the
+        // wall on at least one side - a short box face passes, the middle of
+        // a long featureless wall does not
+        let along = V3::new(-nh.y, nh.x, 0.0);
+        let anchored = [along, -along].iter().any(|dir| {
+            (1..=4).any(|s| {
+                // origin 12u off the face; a continuing flat face hits at ~12
+                let so = p + *dir * (s as f32 * 30.0) - nh * 30.0;
+                let back = Ray::new(nalgebra::Point3::from(so), -nh);
+                match scene.mesh.cast_ray(&id, &back, 60.0, true) {
+                    None => true,                    // wall ended
+                    Some(t) => (t - 12.0).abs() > 10.0, // seam/step
+                }
+            })
+        });
+        if !anchored {
+            continue;
+        }
+        // ground near the stand's level + standing headroom
+        let down = Ray::new(nalgebra::Point3::new(p.x, p.y, stand.z + 50.0), V3::new(0.0, 0.0, -1.0));
+        let Some(t) = scene.mesh.cast_ray(&id, &down, 170.0, true) else { continue };
+        let gz = stand.z + 50.0 - t;
+        let up = Ray::new(nalgebra::Point3::new(p.x, p.y, gz + 10.0), V3::new(0.0, 0.0, 1.0));
+        if scene.mesh.cast_ray(&id, &up, 210.0, true).is_some() {
+            continue;
+        }
+        let c = V3::new(p.x, p.y, gz);
+        if out.iter().all(|q| (q - c).norm() > 30.0) {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// `finish_all=false` (refine pass): forgiveness (16 swept-sphere flights per
@@ -184,7 +255,7 @@ pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, 
 /// keeps just that one. Everything else identical.
 #[allow(clippy::too_many_arguments)]
 fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg, finish_all: bool) -> Vec<Lineup> {
-    let paired = !strict && stands.len() == 1;
+    let paired = !strict;
     // POSITION RULE (strict/solver-picked stands only): a lineup stand must
     // sit against TWO faces (wall corner, angled walls, object against wall)
     // so pressing W into it stops the player on the same spot every time.
@@ -508,8 +579,8 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                         // from the coarse grid's best, across a roof band no
                         // hill-climb crosses). 0.5 deg steps, +-3 deg
                         let (y0, p0) = (b.yaw, b.pitch);
-                        for dy in -6..=6 {
-                            for dp in -6..=6 {
+                        for dy in -10..=10 {
+                            for dp in -10..=10 {
                                 let (y, p) = (y0 + dy as f32 * 0.5, p0 + dp as f32 * 0.5);
                                 let launch = crate::sim::launch_pitch(p, cfg);
                                 let Some(o) =
@@ -618,11 +689,12 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // forgiveness culling either: every on-spike row shows with its numbers
     if paired {
         if finish_all {
-            // top-level paired call (not a refine sub-solve): one stand, one
-            // approach lookup for the labels
-            if let Some(s) = all.first().map(|l| l.stand) {
-                let a = approach_dists(scene, target, &[s])[0];
-                for l in &mut all {
+            // top-level paired call (not a refine sub-solve): approach per
+            // distinct stand (press candidates give paired several stands)
+            let q: Vec<V3> = all.iter().map(|l| l.stand).collect();
+            if !q.is_empty() {
+                let ds = approach_dists(scene, target, &q);
+                for (l, a) in all.iter_mut().zip(ds) {
                     l.approach = a;
                     l.exposed = a < 800.0;
                 }

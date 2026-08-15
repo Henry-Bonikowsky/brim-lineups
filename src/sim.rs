@@ -29,11 +29,12 @@ pub struct Cfg {
                      // extracted); calibration knob via --radius.
 }
 
-/// The game CLAMPS launch pitch: aiming higher does not throw steeper.
-/// 65.0 is Henry's 2026-08-15 call ("make the clamp 65 and if a problem
-/// arises fix it then") after his bridge-slope lineup contradicted the
-/// earlier 70.3 fit (whose source screenshot is gone). Calibration knob.
-pub const LAUNCH_MAX: f32 = 65.0;
+/// Effectively NO launch clamp: two of Henry's real lineups (the freeway
+/// bridge bounce, launch ~83; the market skylight volley, launch 77.5)
+/// prove steep launches fly per the raw taper curve. The old 70.3 clamp
+/// came from a sky-fit whose screenshot is gone and is now outvoted; 88
+/// only guards the degenerate straight-up case.
+pub const LAUNCH_MAX: f32 = 88.0;
 
 /// Crosshair (aim) pitch -> launch pitch. UpwardArc 8 is NOT a constant
 /// offset: it tapers QUADRATICALLY to zero at straight-up - near-full at
@@ -529,10 +530,10 @@ mod tests {
         assert!((launch_pitch(0.0, &cfg) - 8.0).abs() < 1e-4);
         assert!((launch_pitch(24.1, &cfg) - 31.53).abs() < 0.01, "near-full arc at low pitch");
         assert!((launch_pitch(58.6, &cfg) - 63.21).abs() < 0.01, "tapered arc on high lobs");
-        // the game clamps launch pitch: aiming higher throws no steeper
-        // (Henry's Sunset lineup, aim 81.3 -> real launch ~70)
-        assert!((launch_pitch(81.3, &cfg) - LAUNCH_MAX).abs() < 1e-4, "clamped high lob");
-        assert!((launch_pitch(90.0, &cfg) - LAUNCH_MAX).abs() < 1e-4, "clamped straight up");
+        // no practical clamp: steep launches follow the raw taper curve
+        // (Henry's skylight volley at launch 77.5, bridge bounce ~83)
+        assert!((launch_pitch(81.3, &cfg) - 82.777).abs() < 0.01, "steep lob unclamped");
+        assert!((launch_pitch(90.0, &cfg) - LAUNCH_MAX).abs() < 1e-4, "straight-up guard only");
         for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6] {
             let back = aim_pitch(launch_pitch(aim, &cfg), &cfg);
             assert!((back - aim).abs() < 1e-3, "roundtrip {aim} -> {back}");
