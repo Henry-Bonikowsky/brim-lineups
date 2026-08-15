@@ -681,10 +681,15 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
         .flatten()
         .collect();
     eprintln!("[funnel] refine kept {} rows [t] refine {:.2}s", out.len(), t_refine.secs());
-    // NO MATTER WHAT: not on the spike = not shown (Henry). Browse is the
-    // deliberate landing-browser and keeps its near-miss rows
-    if !browse {
-        out.retain(|l| l.covered && l.err <= ON_TARGET);
+    // NO MATTER WHAT: not on the spike = not shown (Henry). Misses appear
+    // ONLY when nothing lands at all - the closest few explain why the
+    // click has no lineups instead of an empty list
+    let on_spike = |l: &Lineup| l.covered && l.err <= ON_TARGET;
+    if out.iter().any(on_spike) {
+        out.retain(on_spike);
+    } else {
+        out.sort_by(|a, b| a.err.total_cmp(&b.err));
+        out.truncate(3);
     }
     rank(&mut out);
     out
