@@ -22,6 +22,7 @@ pub struct Cfg {
                           // Proven by Henry aiming left-of-lineup in the sim
                           // and nailing the real lineup. Fit knob.
     pub max_time: f32,
+    pub hand_down: f32, // launch origin BELOW the eye (muzzle height); TEST knob
     pub radius: f32, // projectile collision radius: flights are swept SPHERES,
                      // not rays - a box lip or roof edge the eye-line clears by
                      // a hair still blocks the real molly. GUESS (no file value
@@ -68,7 +69,10 @@ pub fn aim_pitch(launch: f32, cfg: &Cfg) -> f32 {
 /// crosshair (aim reference) stays at the eye. Left of view yaw in UE coords.
 pub fn hand_origin(eye: V3, yaw_deg: f32, cfg: &Cfg) -> V3 {
     let (sy, cy) = yaw_deg.to_radians().sin_cos();
-    eye + V3::new(sy, -cy, 0.0) * cfg.hand_left
+    // hand_down TEST (Henry approved trialing it): release 25u below the
+    // eye. Evidence: his box observation + row-4 wall-vs-slope; all three
+    // prior anchors (lip catch, +5px lob, row-4 face-hit) hold at 25
+    eye + V3::new(sy * cfg.hand_left, -cy * cfg.hand_left, -cfg.hand_down)
 }
 
 impl Default for Cfg {
@@ -117,6 +121,7 @@ impl Default for Cfg {
             // ZERO: Henry confirmed in-game the molly launches from screen
             // center, straight, above the crosshair. No lateral hand offset.
             hand_left: 0.0,
+            hand_down: 25.0,
             max_time: 8.0,
             radius: 15.0,
         }
