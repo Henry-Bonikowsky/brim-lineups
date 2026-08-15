@@ -267,14 +267,25 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     let t_pin = Timer::new();
     let stands: Vec<V3> = if strict {
         let n_in = stands.len();
-        let pinned: Vec<V3> = stands.par_iter().filter_map(|s| wedge_stand(scene, *s)).collect();
+        // corner pins PLUS anchored wall presses: pressing against a box or
+        // wall with a feature to line up with is just as repeatable as a
+        // corner (Henry's rule), and corner-only hunting never OFFERED the
+        // behind-a-box stances he uses
+        let pinned: Vec<V3> = stands
+            .par_iter()
+            .flat_map_iter(|s| {
+                let mut v: Vec<V3> = wedge_stand(scene, *s).into_iter().collect();
+                v.extend(press_candidates(scene, *s));
+                v.into_iter()
+            })
+            .collect();
         let mut seen = std::collections::HashSet::new();
         let out: Vec<V3> = pinned
             .into_iter()
             .filter(|p| seen.insert(((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64)))
             .collect();
         if n_in > 1 {
-            eprintln!("stands: {n_in} candidates -> {} wedge-pinned", out.len());
+            eprintln!("stands: {n_in} candidates -> {} pinned/pressed", out.len());
         }
         out
     } else {
@@ -350,9 +361,11 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                         v.push((yaw0 + dy, pitch));
                         dy += 2.0;
                     }
-                    // 1 deg pitch: indoor corridors (skylight shafts, over-
-                    // box tosses) are 1-2 deg wide and fell between 2-deg rows
-                    pitch += 1.0;
+                    // 1 deg pitch when the USER locked this stand (indoor
+                    // corridors are 1-2 deg wide and fell between 2-deg
+                    // rows); refine sub-solves keep 2 deg - they run per
+                    // stand for every strict click and 1 deg tripled solves
+                    pitch += if finish_all { 1.0 } else { 2.0 };
                 }
                 v
             } else {
@@ -395,7 +408,10 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 let sw: Vec<(f32, f32)> = if pass == 0 {
                     std::mem::take(&mut sweeps)
                 } else {
-                    if paired || !families.is_empty() {
+                    // dense rescue only where it can pay: nearby stands
+                    // (tight windows matter there); 3.5-deg steps. The old
+                    // 2.5-deg everywhere burned 1.9M flights per click
+                    if paired || !families.is_empty() || d > 4000.0 {
                         break;
                     }
                     let mut v = Vec::new();
@@ -404,9 +420,9 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                         let mut dy = -60.0f32;
                         while dy <= 60.0 {
                             v.push((yaw0 + dy, pitch));
-                            dy += 2.5;
+                            dy += 3.5;
                         }
-                        pitch += 2.5;
+                        pitch += 3.5;
                     }
                     v
                 };
@@ -630,8 +646,17 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             }
             fams.sort_by(|a, b| a[0].err.total_cmp(&b[0].err));
             let mut best: Option<Lineup> = None;
+            // budget: sphere-confirm at most the 12 closest candidates
+            // overall - a stand whose 12 best ray landings all die under
+            // the sphere isn't worth 100+ more flights (press stands
+            // tripled the stand pool; unbudgeted confirms cost ~6s/click)
+            let mut tries = 0;
             'fams: for cands in fams.iter_mut() {
                 for b in cands.iter_mut() {
+                    tries += 1;
+                    if tries > 12 {
+                        break 'fams;
+                    }
                     if confirm(b) {
                         best = Some(b.clone());
                         break 'fams;
