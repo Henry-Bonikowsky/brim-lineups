@@ -26,6 +26,17 @@ impl Timer {
 /// that gets there 4 seconds sooner.
 const ON_TARGET: f32 = 150.0;
 
+/// Throw preference: fewest bounces, then time at 0.1s granularity -
+/// inside a 0.1s bucket the more FORGIVING throw wins (Henry: "pick
+/// highest forgiveness within .1 second"), exact time last.
+fn best(a: &Lineup, b: &Lineup) -> std::cmp::Ordering {
+    a.bounces
+        .cmp(&b.bounces)
+        .then(((a.time * 10.0).floor() as i64).cmp(&((b.time * 10.0).floor() as i64)))
+        .then(b.forgive.total_cmp(&a.forgive))
+        .then(a.time.total_cmp(&b.time))
+}
+
 /// Walking distance (from the spike) beyond which a stand counts as fully
 /// safe: nobody retaking will hike 40m+ before they can even see you.
 const APPROACH_SAFE: f32 = 4000.0;
@@ -439,31 +450,41 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     // the user sees WHY (err > tol labels it)
                     out.extend(best_miss);
                 }
-                // walk rows in the caller's preference order: on-the-spot
-                // rows by TIME, then off-spot rows by closeness. refine
-                // (finish_all=false) keeps ONE row - the first covered in
-                // this order - so only that row (and the full paired list)
-                // pays the 16-flight forgiveness pass
-                let on = |l: &Lineup| {
-                    if l.covered && l.err <= ON_TARGET { l.time } else { 1000.0 + l.err }
-                };
+                // Henry's tie-break: throws within 0.1s (same bounces) are
+                // equal on speed - the most FORGIVING one wins. So the whole
+                // 0.1s leading group gets polished+finished (forgiveness is
+                // 16 flights/row, contenders only), not just the fastest;
+                // finish_all (top-level paired) still does every row
+                let hit = |l: &Lineup| l.covered && l.err <= ON_TARGET;
                 let mut order: Vec<usize> = (0..out.len()).collect();
-                order.sort_by(|&i, &j| on(&out[i]).total_cmp(&on(&out[j])));
-                let mut finished_first = false;
-                for fi in order {
-                    let b = &mut out[fi];
-                    let pickable = finish_all || (b.covered && !finished_first);
-                    if b.covered {
-                        finished_first = true;
-                    }
-                    if pickable {
+                order.sort_by(|&i, &j| {
+                    let (a, b) = (&out[i], &out[j]);
+                    hit(b).cmp(&hit(a)).then(best(a, b)).then(a.err.total_cmp(&b.err))
+                });
+                let lead = order.iter().position(|&i| hit(&out[i]));
+                for (k, &fi) in order.iter().enumerate() {
+                    let in_group = lead.is_some_and(|l| {
+                        k >= l
+                            && hit(&out[fi])
+                            && out[fi].bounces == out[order[l]].bounces
+                            && out[fi].time <= out[order[l]].time + 0.1
+                    });
+                    if finish_all || in_group {
+                        let b = &mut out[fi];
                         if b.covered {
                             polish(scene, target, tol, cfg, origin, b);
                         }
                         finish(scene, target, tol, cfg, origin, b);
                     }
                 }
-                out.sort_by(|a, b| on(a).total_cmp(&on(b)));
+                // final order: on-spot by (bounces, 0.1s time bucket,
+                // forgiveness desc, time); misses trail by closeness
+                out.sort_by(|a, b| {
+                    hit(b)
+                        .cmp(&hit(a))
+                        .then(best(a, b))
+                        .then(a.err.total_cmp(&b.err))
+                });
                 return out.into_iter();
             }
             // the ray-discovered angles must survive the real swept-sphere
@@ -537,9 +558,6 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // means a cleaner lineup exists), then least time. Nothing else ranks -
     // forgiveness/exposure/distance are labels the player judges. No
     // forgiveness culling either: every on-spike row shows with its numbers
-    let best = |a: &Lineup, b: &Lineup| {
-        a.bounces.cmp(&b.bounces).then(a.time.total_cmp(&b.time))
-    };
     if paired {
         if finish_all {
             // top-level paired call (not a refine sub-solve): one stand, one
