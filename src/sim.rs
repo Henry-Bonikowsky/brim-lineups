@@ -29,13 +29,11 @@ pub struct Cfg {
                      // extracted); calibration knob via --radius.
 }
 
-/// The game CLAMPS launch pitch: aiming higher than ~67 deg does not throw
-/// steeper. Found 2026-08-15 from Henry's working Sunset lineup: his
-/// recovered aim was 81.3 deg (sky-silhouette fit, IoU 0.94), the sim
-/// launched it at 82.8 and died 2.6km short on a roof; the real throw's
-/// range requires launch 70.0-70.5. Without a clamp no constant fits both
-/// this and the aim-24/58.6 anchors. Calibration knob, +-0.25 uncertainty.
-pub const LAUNCH_MAX: f32 = 70.3;
+/// The game CLAMPS launch pitch: aiming higher does not throw steeper.
+/// 65.0 is Henry's 2026-08-15 call ("make the clamp 65 and if a problem
+/// arises fix it then") after his bridge-slope lineup contradicted the
+/// earlier 70.3 fit (whose source screenshot is gone). Calibration knob.
+pub const LAUNCH_MAX: f32 = 65.0;
 
 /// Crosshair (aim) pitch -> launch pitch. UpwardArc 8 is NOT a constant
 /// offset: it tapers QUADRATICALLY to zero at straight-up - near-full at
@@ -535,7 +533,7 @@ mod tests {
         // (Henry's Sunset lineup, aim 81.3 -> real launch ~70)
         assert!((launch_pitch(81.3, &cfg) - LAUNCH_MAX).abs() < 1e-4, "clamped high lob");
         assert!((launch_pitch(90.0, &cfg) - LAUNCH_MAX).abs() < 1e-4, "clamped straight up");
-        for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6, 65.0] {
+        for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6] {
             let back = aim_pitch(launch_pitch(aim, &cfg), &cfg);
             assert!((back - aim).abs() < 1e-3, "roundtrip {aim} -> {back}");
         }
