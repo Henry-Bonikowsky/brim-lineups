@@ -40,7 +40,7 @@ fn main() {
         let (tx, ty): (f32, f32) = (args[3].parse().unwrap(), args[4].parse().unwrap());
         let target = V3::new(tx, ty, cs.ground_z(tx, ty).expect("ground"));
         let t1 = std::time::Instant::now();
-        let lineups = solve::solve(&cs, &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
+        let lineups = solve::solve(&cs, Some(&vs), &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
         eprintln!("[t] solve {:.2}s", t1.elapsed().as_secs_f32());
         for (k, l) in lineups.iter().take(10).enumerate() {
             println!(
@@ -73,7 +73,7 @@ fn main() {
         let cfg = sim::Cfg::default();
         let tz = cs.ground_z(tx, ty).expect("ground");
         let target = V3::new(tx, ty, tz);
-        let lineups = solve::solve(&cs, &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
+        let lineups = solve::solve(&cs, Some(&vs), &cs.stands.clone(), target, 1000.0, 1800.0, true, true, &cfg);
         eprintln!("{} lineups", lineups.len());
         let l = &lineups[0];
         eprintln!("row1: stand ({:.0},{:.0},{:.0}) yaw {:.1} pitch {:.1} rest ({:.0},{:.0},{:.0})",
@@ -260,7 +260,7 @@ fn main() {
     let min_dist: f32 =
         min_dist_override.unwrap_or_else(|| get("--min-dist").map(|s| s.parse().unwrap()).unwrap_or(1800.0));
     let stands = scene.stands.clone();
-    let lineups = solve::solve(&scene, &stands, target, tol, min_dist, min_dist_override.is_none(), false, &cfg);
+    let lineups = solve::solve(&scene, None, &stands, target, tol, min_dist, min_dist_override.is_none(), false, &cfg);
     eprintln!("solved in {:.1?}: {} distinct lineups within {tol}u", t0.elapsed(), lineups.len());
 
     println!(

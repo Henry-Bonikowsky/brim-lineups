@@ -173,7 +173,7 @@ fn solved(st: &mut St, tx: f32, ty: f32, list: bool, sx: Option<f32>, sy: Option
         st.cscene.stands.clone()
     };
     let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
-    let lineups = solve::solve(&st.cscene, &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
+    let lineups = solve::solve(&st.cscene, Some(&st.vscene), &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
     let count = lineups.len();
     st.cache = Some((key, target, lineups));
     Ok((target, count, ()))

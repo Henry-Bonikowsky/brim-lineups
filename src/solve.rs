@@ -175,22 +175,22 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
 /// browse=true (strict only): keep every lineup RESTING within tol of the
 /// click even when its fire cannot reach the click itself - the user browses
 /// nearby end locations and picks one. Sorted by landing distance.
-pub fn solve(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg) -> Vec<Lineup> {
+pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg) -> Vec<Lineup> {
     // a right-clicked stand also tries WALL-PRESSED variants: "stand up
     // against that box" is the standard lineup stance (Henry's market
     // volley only exists pressed against the kiosk, 1.3m from his click)
     // and the corner pin only handles two-face corners
     let mut sv: Vec<V3> = stands.to_vec();
     if !strict && stands.len() == 1 {
-        sv.extend(press_candidates(scene, stands[0]));
+        sv.extend(press_candidates(scene, vis, stands[0]));
     }
-    solve_impl(scene, &sv, target, tol, min_dist, strict, browse, cfg, true)
+    solve_impl(scene, vis, &sv, target, tol, min_dist, strict, browse, cfg, true)
 }
 
 /// Capsule-pressed positions against each distinct wall within reach of a
 /// user-chosen stand (single face - the W-press stance the corner pin does
 /// not cover). Ground- and headroom-validated, deduped, max 4.
-fn press_candidates(scene: &Scene, stand: V3) -> Vec<V3> {
+fn press_candidates(scene: &Scene, vis: Option<&Scene>, stand: V3) -> Vec<V3> {
     use parry3d::query::{Ray, RayCast};
     let id = nalgebra::Isometry3::identity();
     let mut out: Vec<V3> = Vec::new();
@@ -220,7 +220,11 @@ fn press_candidates(scene: &Scene, stand: V3) -> Vec<V3> {
         // wall on at least one side - a short box face passes, the middle of
         // a long featureless wall does not
         let along = V3::new(-nh.y, nh.x, 0.0);
-        let anchored = [along, -along].iter().any(|dir| {
+        // Henry's rule, both halves: a press is repeatable if the wall
+        // face ends/breaks nearby (geometric) OR carries a clear VISUAL
+        // pattern to line up with (texture detail on the rendered face -
+        // geometric-only turned every press into a corner press)
+        let geo_anchor = [along, -along].iter().any(|dir| {
             (1..=4).any(|s| {
                 // origin 12u off the face; a continuing flat face hits at ~12
                 let so = p + *dir * (s as f32 * 30.0) - nh * 30.0;
@@ -231,7 +235,7 @@ fn press_candidates(scene: &Scene, stand: V3) -> Vec<V3> {
                 }
             })
         });
-        if !anchored {
+        if !geo_anchor && !vis.map(|v| wall_pattern(v, p, nh, stand.z)).unwrap_or(false) {
             continue;
         }
         // ground near the stand's level + standing headroom
@@ -250,11 +254,71 @@ fn press_candidates(scene: &Scene, stand: V3) -> Vec<V3> {
     out
 }
 
+
+/// Does the rendered wall face around a press point carry visible DETAIL
+/// (texture pattern, trim, panel lines) a player can line up with? Samples
+/// a 3x3 luminance grid (+-45u) on the face from the VISUAL scene and looks
+/// for contrast. Henry: "wall presses only work if theres a clear pattern
+/// on the wall to line up with."
+fn wall_pattern(vis: &Scene, press: V3, nh: V3, ground_z: f32) -> bool {
+    use parry3d::query::{Ray, RayCast};
+    if vis.uvs.is_empty() {
+        return false;
+    }
+    let id = nalgebra::Isometry3::identity();
+    let along = V3::new(-nh.y, nh.x, 0.0);
+    let mut lums: Vec<f32> = Vec::with_capacity(9);
+    for i in -1..=1 {
+        for j in -1..=1 {
+            let o = press + along * (i as f32 * 45.0) + V3::new(0.0, 0.0, 140.0 + j as f32 * 45.0 + (ground_z - press.z));
+            let ray = Ray::new(nalgebra::Point3::from(o), -nh);
+            let Some(hit) = vis.mesh.cast_ray_and_get_normal(&id, &ray, 120.0, true) else { continue };
+            let tri = match hit.feature {
+                parry3d::shape::FeatureId::Face(f) => f % vis.mesh.indices().len().max(1) as u32,
+                _ => continue,
+            };
+            let q = o + (-nh) * hit.time_of_impact;
+            let idxs = vis.mesh.indices()[tri as usize];
+            let (a, b, c) = (
+                vis.mesh.vertices()[idxs[0] as usize],
+                vis.mesh.vertices()[idxs[1] as usize],
+                vis.mesh.vertices()[idxs[2] as usize],
+            );
+            // barycentric weights of q in tri (projected)
+            let (v0, v1, v2) = (b - a, c - a, nalgebra::Point3::from(q) - a);
+            let (d00, d01, d11, d20, d21) =
+                (v0.dot(&v0), v0.dot(&v1), v1.dot(&v1), v2.dot(&v0), v2.dot(&v1));
+            let den = d00 * d11 - d01 * d01;
+            if den.abs() < 1e-6 {
+                continue;
+            }
+            let w1 = (d11 * d20 - d01 * d21) / den;
+            let w2 = (d00 * d21 - d01 * d20) / den;
+            let w0 = 1.0 - w1 - w2;
+            let rgb = match (vis.tex_of(tri), vis.uvs.get(tri as usize)) {
+                (Some(tex), Some(uv)) => {
+                    let u = w0 * uv[0][0] + w1 * uv[1][0] + w2 * uv[2][0];
+                    let v = w0 * uv[0][1] + w1 * uv[1][1] + w2 * uv[2][1];
+                    tex.sample_uv(u, v)
+                }
+                _ => continue,
+            };
+            lums.push(0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]);
+        }
+    }
+    if lums.len() < 6 {
+        return false;
+    }
+    let mean = lums.iter().sum::<f32>() / lums.len() as f32;
+    let var = lums.iter().map(|l| (l - mean) * (l - mean)).sum::<f32>() / lums.len() as f32;
+    var.sqrt() > 0.04
+}
+
 /// `finish_all=false` (refine pass): forgiveness (16 swept-sphere flights per
 /// row) runs only for the fastest covered family per stand, since the caller
 /// keeps just that one. Everything else identical.
 #[allow(clippy::too_many_arguments)]
-fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg, finish_all: bool) -> Vec<Lineup> {
+fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg, finish_all: bool) -> Vec<Lineup> {
     let paired = !strict;
     // POSITION RULE (strict/solver-picked stands only): a lineup stand must
     // sit against TWO faces (wall corner, angled walls, object against wall)
@@ -275,7 +339,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             .par_iter()
             .flat_map_iter(|s| {
                 let mut v: Vec<V3> = wedge_stand(scene, *s).into_iter().collect();
-                v.extend(press_candidates(scene, *s));
+                v.extend(press_candidates(scene, vis, *s));
                 v.into_iter()
             })
             .collect();
@@ -811,7 +875,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             // browse included: every row re-tunes onto the CLICK (the old
             // self-targeting "optimize your own landing" left the picker's
             // list full of never-tuned throws while strict looked fine)
-            let fams = solve_impl(scene, &[l.stand], target, tol, 0.0, false, false, cfg, false);
+            let fams = solve_impl(scene, vis, &[l.stand], target, tol, 0.0, false, false, cfg, false);
             // rows arrive in Henry's optimal order (closest-landing band,
             // then time) - the first covered row IS the optimal angle
             let mut cov: Vec<Lineup> = fams.into_iter().filter(|f| f.covered).collect();
