@@ -48,6 +48,9 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 }
             };
             let stand = get("sx").and_then(|sx| Some((sx.parse::<f32>().ok()?, get("sy")?.parse::<f32>().ok()?)));
+            // every click logged: "that lineup was wrong" reports are only
+            // reproducible with the exact map + coordinates
+            eprintln!("[click] {map} tx={tx:.0} ty={ty:.0} stand={stand:?} n={:?}", get("n"));
             // list=1: browse mode - every lineup LANDING within tol of the
             // click, no renders (fast); n=K then renders exactly row K of the
             // identical solve (deterministic order) on demand
