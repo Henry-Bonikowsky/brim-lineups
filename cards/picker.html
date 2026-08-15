@@ -283,7 +283,8 @@ function lineupHtml(l, n) {
     : l.pos === 1
       ? `<span class='mid'>corner-pinned - press W into the corner shown in the top-down view until you stop</span>`
       : `<span class='warn'>free position - no corner in reach, stand exactly on the dot</span>`;
-  let h = `<h3>#${n}: ${verdict}. ${pos}. Thrown from ${(l.range / 100).toFixed(0)}m, ${l.time.toFixed(1)}s flight, ${bn(l.bounces)}. ${aim}.</h3>`;
+  const expo = l.exposed ? ` <span class='warn'>EXPOSED - someone at the site can see you while you throw</span>.` : '';
+  let h = `<h3>#${n}: ${verdict}. ${pos}.${expo} Thrown from ${(l.range / 100).toFixed(0)}m, ${l.time.toFixed(1)}s flight, ${bn(l.bounces)}. ${aim}.</h3>`;
   h += imgsHtml(l.imgs);
   const walkbtn = mode === 'wasm' ? '' : ` <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button>`;
   h += `<div id='vid${n}'><button onclick='flightVideo(${n})'>flight ${mode === 'wasm' ? 'path' : 'video'}</button>${walkbtn}</div>`;

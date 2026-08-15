@@ -21,8 +21,8 @@ pub fn row_json(i: usize, l: &Lineup, imgs: &str) -> String {
         .map(|(p, d)| format!("[{:.0},{:.0},{:.0},{:.0}]", p.x, p.y, p.z, d))
         .unwrap_or("null".into());
     format!(
-        "{{\"idx\":{},\"stand\":[{:.0},{:.0},{:.0}],\"rest\":[{:.0},{:.0},{:.0}],\"range\":{:.0},\"yaw\":{:.1},\"pitch\":{:.1},\"time\":{:.2},\"bounces\":{},\"err\":{:.0},\"covered\":{},\"forgive\":{:.2},\"spread\":{:.0},\"pos\":{},\"aim_ref\":{},\"imgs\":{imgs}}}",
-        i + 1, l.stand.x, l.stand.y, l.stand.z, l.rest.x, l.rest.y, l.rest.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.covered, l.forgive, l.spread, l.pos_grade(), aim
+        "{{\"idx\":{},\"stand\":[{:.0},{:.0},{:.0}],\"rest\":[{:.0},{:.0},{:.0}],\"range\":{:.0},\"yaw\":{:.1},\"pitch\":{:.1},\"time\":{:.2},\"bounces\":{},\"err\":{:.0},\"covered\":{},\"forgive\":{:.2},\"spread\":{:.0},\"pos\":{},\"exposed\":{},\"aim_ref\":{},\"imgs\":{imgs}}}",
+        i + 1, l.stand.x, l.stand.y, l.stand.z, l.rest.x, l.rest.y, l.rest.z, l.dist, l.yaw, l.pitch, l.time, l.bounces, l.err, l.covered, l.forgive, l.spread, l.pos_grade(), l.exposed, aim
     )
 }
 

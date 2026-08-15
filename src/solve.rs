@@ -34,6 +34,7 @@ pub struct Lineup {
     pub spread: f32,     // worst landing deviation across those jitters (fragility)
     pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
     pub wedged: bool,    // stand is corner-pinned (always true for solver-picked stands)
+    pub exposed: bool,   // someone at the site can see the thrower: shown last, labeled
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
 }
 
@@ -129,6 +130,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     let t_sweep = Timer::new();
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
+    let (n_stand_any, n_stand_conf, n_expo) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
     // physics ceiling, and for the solver's own hunts Henry's rule: a lineup
     // further than 55m (5500u) is not worth learning - the hunt never offers
     // one. A user-locked stand (paired) is his choice and stays uncapped
@@ -149,10 +151,27 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             // paired mode: ONE stand is cheap, so scan the full angle space
             // exhaustively (finds arch-threads and skims the ballistic anchor
             // misses) and keep the best lineup per ~8 deg pitch family
-            let mut best: Option<Lineup> = None;
             let mut best_miss: Option<Lineup> = None;
-            let mut families: std::collections::HashMap<i32, Lineup> = Default::default();
-            let sweeps: Vec<(f32, f32)> = if paired {
+            // per family: the 5 fastest ray candidates, fastest first. The
+            // sphere confirm walks them in order - a single angle that drifts
+            // under the sphere must not kill a family whose neighbors pass
+            let mut families: std::collections::HashMap<i32, Vec<Lineup>> = Default::default();
+            // swept-sphere confirmation: re-fly at full radius, rescore
+            // against the click; true = this row is real
+            let confirm = |b: &mut Lineup| -> bool {
+                let launch = crate::sim::launch_pitch(b.pitch, cfg);
+                fly(scene, crate::sim::hand_origin(origin, b.yaw, cfg), dir_from(b.yaw, launch), cfg)
+                    .map(|o| {
+                        let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+                        let dz = (o.rest.z - target.z).abs();
+                        (b.rest, b.time, b.bounces) = (o.rest, o.time, o.bounces);
+                        b.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+                        b.covered = b.err < tol && crate::sim::fire_covers(scene, o.rest, target);
+                        b.covered || (browse && b.err < tol)
+                    })
+                    .unwrap_or(false)
+            };
+            let mut sweeps: Vec<(f32, f32)> = if paired {
                 let mut v = Vec::new();
                 let mut pitch = -35.0f32;
                 while pitch <= 85.0 {
@@ -190,8 +209,30 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 }
                 v
             };
-            {
-                for (yaw, pitch) in sweeps {
+            // pass 0: the normal sweep. Pass 1 (strict only, only when pass 0
+            // found NOTHING from this stand): a dense grid - tight angular
+            // windows (doorways, arch threads) slip between the coarse steps
+            // and whole positions went missing
+            for pass in 0..2 {
+                let sw: Vec<(f32, f32)> = if pass == 0 {
+                    std::mem::take(&mut sweeps)
+                } else {
+                    if paired || !families.is_empty() {
+                        break;
+                    }
+                    let mut v = Vec::new();
+                    let mut pitch = -30.0f32;
+                    while pitch <= 85.0 {
+                        let mut dy = -5.0f32;
+                        while dy <= 5.0 {
+                            v.push((yaw0 + dy, pitch));
+                            dy += 1.25;
+                        }
+                        pitch += 2.0;
+                    }
+                    v
+                };
+                for (yaw, pitch) in sw {
                     {
                         if pitch <= -89.0 || pitch >= 89.0 {
                             continue;
@@ -235,6 +276,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                             spread: 0.0,
                             pos_forgive: 0.0,
                             wedged,
+                            exposed: false,
                             aim_ref: None,
                         };
                         if !sel {
@@ -243,41 +285,30 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                             }
                             continue;
                         }
-                        if paired {
-                            // keep the fastest throw per pitch family
-                            let key = (pitch / 8.0).round() as i32;
-                            match families.get(&key) {
-                                Some(cur) if cur.time <= cand.time => {}
-                                _ => {
-                                    families.insert(key, cand);
-                                }
-                            }
-                        } else if best.as_ref().is_none_or(|b| cand.time < b.time) {
-                            best = Some(cand);
+                        let key = (pitch / 8.0).round() as i32;
+                        let fam = families.entry(key).or_default();
+                        let pos = fam.partition_point(|c| c.time <= cand.time);
+                        if pos < 5 {
+                            fam.insert(pos, cand);
+                            fam.truncate(5);
                         }
                     }
                 }
             }
             if paired {
-                let mut out: Vec<Lineup> = families.into_values().collect();
                 // families were discovered on the cheap zero-width flight:
-                // confirm each kept row with the real swept sphere - grazes
-                // the ray cleared (box lips, roof edges) block the real molly
-                // and die here
-                out.retain_mut(|b| {
-                    let launch = crate::sim::launch_pitch(b.pitch, cfg);
-                    let Some(o) =
-                        fly(scene, crate::sim::hand_origin(origin, b.yaw, cfg), dir_from(b.yaw, launch), cfg)
-                    else {
-                        return false;
-                    };
-                    let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
-                    let dz = (o.rest.z - target.z).abs();
-                    (b.rest, b.time, b.bounces) = (o.rest, o.time, o.bounces);
-                    b.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
-                    b.covered = b.err < tol && crate::sim::fire_covers(scene, o.rest, target);
-                    b.covered || (browse && b.err < tol)
-                });
+                // sphere-confirm each family's candidates fastest-first; the
+                // first survivor represents the family. Grazes the ray
+                // cleared (box lips, roof edges) block the real molly
+                let mut out: Vec<Lineup> = Vec::new();
+                for cands in families.into_values() {
+                    for mut b in cands {
+                        if confirm(&mut b) {
+                            out.push(b);
+                            break;
+                        }
+                    }
+                }
                 if out.is_empty() {
                     // no throw lands within tolerance: report the closest miss so
                     // the user sees WHY (err > tol labels it)
@@ -302,22 +333,38 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 out.sort_by(|a, b| a.time.total_cmp(&b.time));
                 return out.into_iter();
             }
-            // the ray-discovered best must survive the real swept-sphere flight
-            if let Some(b) = &mut best {
-                let launch = crate::sim::launch_pitch(b.pitch, cfg);
-                let ok = fly(scene, crate::sim::hand_origin(origin, b.yaw, cfg), dir_from(b.yaw, launch), cfg)
-                    .map(|o| {
-                        let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
-                        let dz = (o.rest.z - target.z).abs();
-                        (b.rest, b.time, b.bounces) = (o.rest, o.time, o.bounces);
-                        b.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
-                        b.covered = b.err < tol && crate::sim::fire_covers(scene, o.rest, target);
-                        b.covered || (browse && b.err < tol)
-                    })
-                    .unwrap_or(false);
-                if !ok {
-                    best = None;
+            // the ray-discovered angles must survive the real swept-sphere
+            // flight: walk this stand's families fastest-first, and each
+            // family's candidates fastest-first - a stand only dies when
+            // EVERY discovered angle grazes (a single-angle check was
+            // erasing whole positions)
+            let mut fams: Vec<Vec<Lineup>> = families.into_values().collect();
+            if !fams.is_empty() {
+                n_stand_any.fetch_add(1, Relaxed);
+            }
+            fams.sort_by(|a, b| a[0].time.total_cmp(&b[0].time));
+            let mut best: Option<Lineup> = None;
+            'fams: for cands in fams.iter_mut() {
+                for b in cands.iter_mut() {
+                    if confirm(b) {
+                        best = Some(b.clone());
+                        break 'fams;
+                    }
                 }
+            }
+            if best.is_some() {
+                n_stand_conf.fetch_add(1, Relaxed);
+            } else {
+                // RESCUE: the coarse candidates are ray-tuned and can ALL
+                // drift under the sphere. Keep the stand's fastest candidate
+                // flagged uncovered - the refine pass re-sweeps it densely
+                // and sphere-confirms per angle; if even that finds nothing,
+                // refine drops the row. A stand must not vanish just because
+                // the coarse pool missed the sphere-correct aim
+                best = fams.first().and_then(|c| c.first()).cloned().map(|mut b| {
+                    b.covered = false;
+                    b
+                });
             }
             if let Some(b) = &mut best {
                 // a LINEUP is thrown from cover: nobody standing anywhere around
@@ -340,8 +387,12 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                         .cast_ray(&nalgebra::Isometry3::identity(), &sight, d - 60.0, true)
                         .is_none()
                 });
+                // exposure no longer KILLS the stand: hidden-from-site is the
+                // rule, but a click must still offer positions when cover is
+                // scarce - exposed rows are flagged, ranked last, and labeled
                 if exposed {
-                    return vec![].into_iter();
+                    n_expo.fetch_add(1, Relaxed);
+                    b.exposed = true;
                 }
                 // browse: forgiveness/anchoring are about reliably hitting the
                 // lineup's OWN landing spot (the user picked it by end
@@ -375,10 +426,18 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // the all-or-nothing forgiveness cliff hides otherwise-valid rows the
     // moment one sturdy lineup exists; in browse the user picks from a list
     // with forgiveness shown per row, so show everything there
+    // prefer sturdy rows (forgive >= 0.25) but NEVER cull below MIN_ROWS:
+    // Henry's rule - a click must always offer a handful of positions; a
+    // fragile row (its forgiveness is shown) beats no row at all
     let sturdy = |v: &mut Vec<Lineup>| {
-        if !browse && v.iter().any(|l| l.forgive >= 0.25) {
-            v.retain(|l| l.forgive >= 0.25);
+        const MIN_ROWS: usize = 6;
+        if browse || v.len() <= MIN_ROWS {
+            return;
         }
+        let mut fs: Vec<f32> = v.iter().map(|l| l.forgive).collect();
+        fs.sort_by(|a, b| b.total_cmp(a));
+        let floor = fs[MIN_ROWS - 1].min(0.25);
+        v.retain(|l| l.forgive >= floor);
     };
     if paired {
         // angle families from the locked stand, fastest first; easy positions first
@@ -398,7 +457,18 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
         }
     }
     let mut out: Vec<Lineup> = by_cell.into_values().collect();
-    sturdy(&mut out);
+    if strict {
+        eprintln!(
+            "[funnel] stands: any-covered-angle {} -> sphere-confirmed {} -> exposure-flagged {} -> deduped {}",
+            n_stand_any.load(Relaxed),
+            n_stand_conf.load(Relaxed),
+            n_expo.load(Relaxed),
+            out.len()
+        );
+    }
+    // no sturdiness cull BEFORE refine: coarse-angle forgiveness says nothing
+    // about the stand - refine re-tunes the angle entirely, and the real gate
+    // runs on refine's output. Culling here was erasing rescuable positions
     // rank: browse = nearest landing first (user picks by end location);
     // else easy positions first, then NEAR preference (Henry: typical picks
     // ran too far) + speed.
@@ -408,7 +478,11 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
         if browse {
             l.err
         } else {
-            l.dist / 2000.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0
+            // fragile rows survive the cull but sink below sturdy ones;
+            // exposed rows sink below everything hidden
+            let fragile = if l.forgive < 0.25 { 5.0 } else { 0.0 };
+            let expo = if l.exposed { 30.0 } else { 0.0 };
+            l.dist / 2000.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0 + fragile + expo
         }
     };
     out.sort_by(|a, b| {
@@ -434,13 +508,17 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     let dxy = ((f.rest.x - target.x).powi(2) + (f.rest.y - target.y).powi(2)).sqrt();
                     let dz = (f.rest.z - target.z).abs();
                     f.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
-                    f
+                    f.exposed = l.exposed; // the paired sub-solve never checks exposure
+                    Some(f)
                 }
-                None => l.clone(),
+                // even the dense sphere-confirmed re-sweep found no covered
+                // throw from this stand: the position is not real, drop it
+                None => None,
             }
         })
+        .flatten()
         .collect();
-    eprintln!("[t] refine {:.2}s", t_refine.secs());
+    eprintln!("[funnel] refine kept {} rows [t] refine {:.2}s", out.len(), t_refine.secs());
     // refine replaces angles, so its rows carry fresh forgiveness numbers:
     // re-apply the sturdiness gate (a 0%-forgive row "works" in the sim and
     // dies in game to a hair of aim error)
