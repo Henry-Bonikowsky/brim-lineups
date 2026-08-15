@@ -301,12 +301,12 @@ fn fly_impl(
             if n.z.abs() < 0.5 && vn.abs() > 600.0 {
                 last_wall = Some(p);
             }
-            // far-out wall scrape: model error compounds with range
-            if n.z.abs() < 0.5 && vn.abs() > 400.0 {
-                let dh = ((p.x - origin.x).powi(2) + (p.y - origin.y).powi(2)).sqrt();
-                if dh > 2500.0 {
-                    graze = true;
-                }
+            // LATE wall scrape: aim/model error compounds with flight time,
+            // so a hard wall contact deep into the flight (>2.5s) is a
+            // razor thread in game. Early wall-bangs - the intentional
+            // fast class, including banks near a far target - stay clean
+            if n.z.abs() < 0.5 && vn.abs() > 400.0 && t > 2.5 {
+                graze = true;
             }
             let vt = v - n * vn;
             // tangential friction scales with impact steepness: the
