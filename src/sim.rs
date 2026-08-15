@@ -22,10 +22,6 @@ pub struct Cfg {
                           // Proven by Henry aiming left-of-lineup in the sim
                           // and nailing the real lineup. Fit knob.
     pub max_time: f32,
-    // Henry's live HUD calibration (picker sliders): the UI layer is scaled
-    // about bottom-center and shifted; anchors must transform the same way
-    pub hud_scale: f32,
-    pub hud_dy: f32, // percent of screen height, positive = down
     pub radius: f32, // projectile collision radius: flights are swept SPHERES,
                      // not rays - a box lip or roof edge the eye-line clears by
                      // a hair still blocks the real molly. GUESS (no file value
@@ -101,8 +97,6 @@ impl Default for Cfg {
             // center, straight, above the crosshair. No lateral hand offset.
             hand_left: 0.0,
             max_time: 8.0,
-            hud_scale: 1.0,
-            hud_dy: 0.0,
             radius: 15.0,
         }
     }

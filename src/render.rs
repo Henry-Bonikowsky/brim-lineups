@@ -657,29 +657,4 @@ fn render_ex(
     bmp
 }
 
-/// Stamp a magenta ring onto a 24bpp BMP at screen fractions (fx, fy): marks
-/// the UI reference anchor on the aim image so it is unambiguous.
-pub fn stamp_ring(d: &mut [u8], fx: f32, fy: f32) {
-    if d.len() < 54 || &d[0..2] != b"BM" {
-        return;
-    }
-    let off = u32::from_le_bytes(d[10..14].try_into().unwrap()) as usize;
-    let w = i32::from_le_bytes(d[18..22].try_into().unwrap()) as usize;
-    let h = i32::from_le_bytes(d[22..26].try_into().unwrap()).unsigned_abs() as usize;
-    let row = (w * 3 + 3) & !3;
-    let (cx, cy) = ((fx * w as f32) as i32, (fy * h as f32) as i32);
-    for a in 0..96 {
-        let t = a as f32 / 96.0 * std::f32::consts::TAU;
-        for r in [16.0f32, 17.0, 18.0] {
-            let (x, y) = ((cx as f32 + t.cos() * r) as i32, (cy as f32 + t.sin() * r) as i32);
-            if x >= 0 && (x as usize) < w && y >= 0 && (y as usize) < h {
-                let o = off + (h - 1 - y as usize) * row + x as usize * 3;
-                if o + 2 < d.len() {
-                    d[o] = 255;
-                    d[o + 1] = 0;
-                    d[o + 2] = 255;
-                }
-            }
-        }
-    }
-}
+

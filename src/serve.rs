@@ -54,8 +54,6 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             let list_mode = get("list").is_some() && stand.is_none();
             let nsel: Option<usize> = get("n").and_then(|v| v.parse().ok());
             let tol: f32 = get("tol").and_then(|v| v.parse().ok()).unwrap_or(if list_mode { 1000.0 } else { 450.0 });
-            let hud_scale: f32 = get("huds").and_then(|v| v.parse().ok()).unwrap_or(1.0);
-            let hud_dy: f32 = get("huddy").and_then(|v| v.parse().ok()).unwrap_or(0.0);
 
             if let Some(pos) = cache_lru.iter().position(|(m, _, _)| m == &map) {
                 let e = cache_lru.remove(pos);
@@ -69,9 +67,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 }
             }
             let (_, cscene, vscene) = cache_lru.last().unwrap();
-            let mut cfg = Cfg::default();
-            cfg.hud_scale = hud_scale;
-            cfg.hud_dy = hud_dy;
+            let cfg = Cfg::default();
             let Some(tz) = cscene.ground_z(tx, ty) else {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no ground at target\"}"));
                 continue;
@@ -87,7 +83,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 cscene.stands.clone()
             };
             let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
-            let lineups = solve::solve(cscene, Some(vscene), &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
+            let lineups = solve::solve(cscene, &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
 
             // fresh renders for the top few; unique run id to defeat caching
             let run = std::time::SystemTime::now()
@@ -104,9 +100,6 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                     let base = format!("live/{run}_{}", i + 1);
                     let aim_path = format!("{cards_dir}/{base}_r.bmp");
                     render::render(vscene, eye, l.yaw, l.pitch, &aim_path);
-                    if let Some((_, _, _, fx, fy)) = l.ui_ref {
-                        stamp_ring(&aim_path, fx, fy); // circle the reference anchor
-                    }
                     render::render_grid(vscene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &format!("{cards_dir}/{base}_s.bmp"));
                     let (wide_eye, wyaw, wpitch) = render::wide_cam(vscene, l.stand, l.yaw);
                     render::render_marked(vscene, wide_eye, wyaw, wpitch, &format!("{cards_dir}/{base}_w.bmp"), l.stand + V3::new(0.0, 0.0, 40.0));
@@ -175,7 +168,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 cscene.stands.clone()
             };
             let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
-            let lineups = solve::solve(cscene, Some(vscene), &stands_vec, target, tol, min_dist, strict, browse, &cfg);
+            let lineups = solve::solve(cscene, &stands_vec, target, tol, min_dist, strict, browse, &cfg);
             let Some(l) = lineups.get(n - 1) else {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no such lineup\"}"));
                 continue;
@@ -313,13 +306,6 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             }
         }
     }
-}
-
-/// Stamp the UI-reference ring onto an aim BMP on disk (bytes logic in render).
-fn stamp_ring(path: &str, fx: f32, fy: f32) {
-    let Ok(mut d) = std::fs::read(path) else { return };
-    render::stamp_ring(&mut d, fx, fy);
-    let _ = std::fs::write(path, d);
 }
 
 /// Render the chase-cam flight video; returns the JSON body ({"video": ...}

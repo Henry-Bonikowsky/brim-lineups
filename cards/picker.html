@@ -272,12 +272,6 @@ const bn = b => `${b} bounce${b === 1 ? '' : 's'}`;
 const posLabel = p => p === 2 ? 'easy position' : p === 1 ? 'corner-pinned' : 'free position';
 function lineupHtml(l, n) {
   let aim = l.aim_ref ? `crosshair rests on geometry ${(l.aim_ref[3] / 100).toFixed(0)}m ahead` : 'crosshair: open sky';
-  if (l.ui_ref) {
-    const sure = l.ui_ref.grade === 2 ? 'sits ON' : 'sits NEAR';
-    aim += ` - <b class='good'>reference: the ${l.ui_ref.anchor} ${sure} an object edge - it is circled in pink on the aim image</b>`;
-  } else if (!l.aim_ref) {
-    aim += ' (no clean UI reference found for this angle)';
-  }
   const m2 = v => (v / 100).toFixed(1) + 'm';
   const verdict = l.covered
     ? `<span class='good'>fire covers your spot</span> (rests ${m2(l.err)} away)`

@@ -76,10 +76,7 @@ pub fn render_lineup(tx: f32, ty: f32, list: bool, n: u32, sx: Option<f32>, sy: 
         let l = lineups.get(n as usize - 1).ok_or("no such lineup")?;
         let cfg = Cfg::default();
         let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
-        let mut aim = render::render_bytes(&st.vscene, eye, l.yaw, l.pitch);
-        if let Some((_, _, _, fx, fy)) = l.ui_ref {
-            render::stamp_ring(&mut aim, fx, fy);
-        }
+        let aim = render::render_bytes(&st.vscene, eye, l.yaw, l.pitch);
         let stand = render::render_grid_bytes(&st.vscene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0);
         let (wide_eye, wyaw, wpitch) = render::wide_cam(&st.vscene, l.stand, l.yaw);
         let wide = render::render_marked_bytes(&st.vscene, wide_eye, wyaw, wpitch, l.stand + V3::new(0.0, 0.0, 40.0));
@@ -176,7 +173,7 @@ fn solved(st: &mut St, tx: f32, ty: f32, list: bool, sx: Option<f32>, sy: Option
         st.cscene.stands.clone()
     };
     let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
-    let lineups = solve::solve(&st.cscene, Some(&st.vscene), &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
+    let lineups = solve::solve(&st.cscene, &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
     let count = lineups.len();
     st.cache = Some((key, target, lineups));
     Ok((target, count, ()))
