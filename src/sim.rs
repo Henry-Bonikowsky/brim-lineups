@@ -274,10 +274,15 @@ fn fly_impl(
                 last_wall = Some(p);
             }
             let vt = v - n * vn;
-            // tangential friction scales with impact steepness (grazing skips
-            // barely rub the surface): the bBounceAngleAffectsFriction curve
+            // tangential friction scales with impact steepness: the
+            // bBounceAngleAffectsFriction curve is InterpolateRange 0..90 ->
+            // 0.5..1.0 - HALF friction at grazing, never zero. Scaling from
+            // 0 let shallow first bounces keep nearly all forward speed and
+            // skip miles past where the real molly dies (Henry, in-game
+            // side-by-side 2026-08-15: sim carried to the box, his throw
+            // "doesn't even get close to the target")
             let steep = (vn.abs() / v.norm().max(1.0)).clamp(0.0, 1.0);
-            v = vt * (1.0 - cfg.friction * steep) - n * vn * bounciness;
+            v = vt * (1.0 - cfg.friction * (0.5 + 0.5 * steep)) - n * vn * bounciness;
             contacts += 1;
             // a reported bounce = a NEW ARC a viewer can count: falling in,
             // rising out by >=15u (vz 180). Wall clips mid-ascent and settle
