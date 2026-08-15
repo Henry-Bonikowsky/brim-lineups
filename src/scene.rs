@@ -118,8 +118,11 @@ pub(crate) fn allowed_umaps(dir: &Path) -> Option<std::collections::HashSet<Stri
 
 /// Soft decor that does not gate projectiles in game (same family the ValoBoard
 /// sight bake prunes).
-const MESH_BLACKLIST: [&str; 13] = [
-    "Foliage", "Plant", "Sky", "Vista", "Wire", "Rope", "Paper", "Flag", "Floater",
+// "Vista" was here and WRONG: Sunset's A-alley freeway is a Vista-named
+// bridge over playable space that the real molly bounces off (Henry's
+// look-up lineup). Distant vista skyline is beyond throw range anyway.
+const MESH_BLACKLIST: [&str; 12] = [
+    "Foliage", "Plant", "Sky", "Wire", "Rope", "Paper", "Flag", "Floater",
     "Islands_", "FloatingChunk",
     // overhead radianite tube runs (Breeze def-spawn): BlockAll profile but no
     // real collision in game; Henry's lineup arcs straight through where the
@@ -439,7 +442,13 @@ pub(crate) fn keep_instance(
             || mesh.contains("BombSite")
             || mesh.contains("BVS_Bomb")
             || mesh.contains("Box_For_Volumes")
-            || (mode == Mode::Collision && umap.contains("Vista"))
+            // Vista sublevels DO collide: Sunset's A-alley freeway (an
+            // overhead bridge in playable space) lives in Art_ASiteVista and
+            // Henry's real molly bounces off its slope - excluding vistas
+            // from collision made flights sail through it ("shooting
+            // through a wall") and made every bounce-off-the-bridge lineup
+            // impossible. Genuinely distant vista scenery is beyond the
+            // throw ceiling anyway
             || UMAP_BLACKLIST.iter().any(|b| umap.contains(b)))
     {
         return false;
