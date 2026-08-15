@@ -292,10 +292,16 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 // live far from the vacuum solutions and a narrow sweep never
                 // DISCOVERS their stands at all ("strict in the wrong way").
                 // The per-stand refine pass polishes whatever this finds
+                // WIDE yaw (+-60): from most stands the direct line is
+                // walled off and every real throw is a wall bounce or an
+                // off-line lob - +-3 deg found 7 of 178 stands on an
+                // enclosed site while a human improvises throws freely
                 let mut pitch = -25.0f32;
                 while pitch <= 80.0 {
-                    for dy in [-3.0f32, 0.0, 3.0] {
+                    let mut dy = -60.0f32;
+                    while dy <= 60.0 {
                         v.push((yaw0 + dy, pitch));
+                        dy += 5.0;
                     }
                     pitch += 5.0;
                 }
@@ -315,12 +321,12 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     let mut v = Vec::new();
                     let mut pitch = -30.0f32;
                     while pitch <= 85.0 {
-                        let mut dy = -5.0f32;
-                        while dy <= 5.0 {
+                        let mut dy = -60.0f32;
+                        while dy <= 60.0 {
                             v.push((yaw0 + dy, pitch));
-                            dy += 1.25;
+                            dy += 2.5;
                         }
-                        pitch += 2.0;
+                        pitch += 2.5;
                     }
                     v
                 };
