@@ -460,12 +460,23 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     hit(b).cmp(&hit(a)).then(best(a, b)).then(a.err.total_cmp(&b.err))
                 });
                 let lead = order.iter().position(|&i| hit(&out[i]));
+                // polish the leader AND the best near-miss of every LOWER
+                // bounce class: a clean lob confirming a hair off the spike
+                // must get its polish nudge, or a bouncier throw that
+                // happened to confirm on-spike steals the row (Henry's
+                // corner: a working lob lost to a wall-bang)
+                let lead_b = lead.map(|k| out[order[k]].bounces).unwrap_or(u32::MAX);
+                let mut classes_done: Vec<u32> = Vec::new();
                 for (k, &fi) in order.iter().enumerate() {
-                    if finish_all || lead == Some(k) {
-                        let b = &mut out[fi];
-                        if b.covered {
-                            polish(scene, target, tol, cfg, origin, b);
+                    let contender = out[fi].bounces < lead_b
+                        && out[fi].err <= 600.0
+                        && !classes_done.contains(&out[fi].bounces);
+                    if finish_all || lead == Some(k) || contender {
+                        if contender {
+                            classes_done.push(out[fi].bounces);
                         }
+                        let b = &mut out[fi];
+                        polish(scene, target, tol, cfg, origin, b);
                         finish(scene, target, tol, cfg, origin, b);
                     }
                 }
