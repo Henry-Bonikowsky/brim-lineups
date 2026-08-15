@@ -29,10 +29,10 @@ pub struct Cfg {
                      // extracted); calibration knob via --radius.
 }
 
-/// Launch clamp 85 (Henry's intended value): his verified steep lineups
-/// launch at 77.5 (market skylight volley) and ~83 (freeway bridge
-/// bounce), both under 85; aiming higher than ~78 aim throws no steeper.
-pub const LAUNCH_MAX: f32 = 85.0;
+/// Launch clamp 95 per Henry = effectively unbound (the taper curve caps
+/// launch at 90 for a straight-up aim); near-vertical over-the-box tosses
+/// are legal throws.
+pub const LAUNCH_MAX: f32 = 95.0;
 
 /// Crosshair (aim) pitch -> launch pitch. UpwardArc 8 is NOT a constant
 /// offset: it tapers QUADRATICALLY to zero at straight-up - near-full at
@@ -531,7 +531,7 @@ mod tests {
         // no practical clamp: steep launches follow the raw taper curve
         // (Henry's skylight volley at launch 77.5, bridge bounce ~83)
         assert!((launch_pitch(81.3, &cfg) - 82.777).abs() < 0.01, "steep lob unclamped");
-        assert!((launch_pitch(90.0, &cfg) - LAUNCH_MAX).abs() < 1e-4, "clamped at 85");
+        assert!((launch_pitch(90.0, &cfg) - 90.0).abs() < 1e-4, "unbound: straight up stays 90");
         for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6] {
             let back = aim_pitch(launch_pitch(aim, &cfg), &cfg);
             assert!((back - aim).abs() < 1e-3, "roundtrip {aim} -> {back}");

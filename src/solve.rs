@@ -344,13 +344,15 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 // 2 x 2 deg cells; polish() walks the last mile continuously
                 let mut v = Vec::new();
                 let mut pitch = -35.0f32;
-                while pitch <= 85.0 {
+                while pitch <= 89.0 {
                     let mut dy = -60.0f32;
                     while dy <= 60.0 {
                         v.push((yaw0 + dy, pitch));
                         dy += 2.0;
                     }
-                    pitch += 2.0;
+                    // 1 deg pitch: indoor corridors (skylight shafts, over-
+                    // box tosses) are 1-2 deg wide and fell between 2-deg rows
+                    pitch += 1.0;
                 }
                 v
             } else {
@@ -375,7 +377,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 // off-line lob - +-3 deg found 7 of 178 stands on an
                 // enclosed site while a human improvises throws freely
                 let mut pitch = -25.0f32;
-                while pitch <= 80.0 {
+                while pitch <= 88.0 {
                     let mut dy = -60.0f32;
                     while dy <= 60.0 {
                         v.push((yaw0 + dy, pitch));
@@ -398,7 +400,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     }
                     let mut v = Vec::new();
                     let mut pitch = -30.0f32;
-                    while pitch <= 85.0 {
+                    while pitch <= 89.0 {
                         let mut dy = -60.0f32;
                         while dy <= 60.0 {
                             v.push((yaw0 + dy, pitch));
