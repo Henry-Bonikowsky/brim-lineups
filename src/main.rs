@@ -117,6 +117,9 @@ fn main() {
     if let Some(v) = get("--radius") {
         cfg.radius = v.parse().unwrap();
     }
+    if let Some(v) = get("--bounce") {
+        cfg.bounciness = v.parse().unwrap();
+    }
 
     let mut scene = scene::load(&dir);
     let target: V3 = {

@@ -83,12 +83,12 @@ impl Default for Cfg {
             // ~1.5% at these original values
             speed: 3000.0,
             gravity: 1145.0,
-            // file DefaultBounciness is 0.35 but live walk-mode-vs-game
-            // comparison (2026-08-03) shows real rebounds run hotter: the
-            // measured restitution from the frame-timed clip was 0.38-0.40,
-            // and 0.35 left a rebound 80u short of a box the real molly
-            // clears. 0.40 matches both.
-            bounciness: 0.40,
+            // file DefaultBounciness 0.35. The 2026-08-03 clip fit said
+            // 0.38-0.40, but that fit predates swept-sphere flights; with
+            // them, Henry's 2026-08-15 side-by-side verdict is the sim
+            // bounces "way stronger than in game" while the initial arc
+            // looks right - back to the file value. Calibrate via --bounce.
+            bounciness: 0.35,
             friction: 0.65,
             stop_speed: 200.0,
             eye_z: 175.0,

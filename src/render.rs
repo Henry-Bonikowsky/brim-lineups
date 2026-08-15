@@ -259,9 +259,9 @@ pub fn flight_stills(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usiz
     idxs.iter()
         .map(|&i| {
             let m = traj[i];
-            // same camera switch as the video: over-the-shoulder until just
+            // same camera switch as the video: over-the-shoulder until 0.6s
             // before the first bounce, then the verified landing viewpoint
-            let cam = if i + 12 >= fb { lcam } else { traj[0] + V3::new(0.0, 0.0, 90.0) };
+            let cam = if i + 72 >= fb { lcam } else { traj[0] + V3::new(0.0, 0.0, 90.0) };
             let mut look = m - cam;
             if look.norm() < 150.0 {
                 look = traj[(i + 8).min(last)] - cam;

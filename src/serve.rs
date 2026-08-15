@@ -326,7 +326,10 @@ fn flight_video(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, li
         let upto = render::flight_frame_index2(f, FRAMES, 16, traj.len(), first_bounce);
         let i = upto.min(traj.len() - 1);
         let m = traj[i];
-        let cam = if i + 12 >= first_bounce {
+        // switch to the landing cam 0.6s (72 steps at 120Hz) before the
+        // first bounce: Henry needs the pre-bounce arc in the molly cam to
+        // compare bounce strength against the real game
+        let cam = if i + 72 >= first_bounce {
             land_cam // settle phase: fixed, guaranteed-visible viewpoint
         } else {
             // over-the-shoulder: static at the thrower's head, panning with
