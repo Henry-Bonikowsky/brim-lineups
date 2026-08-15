@@ -84,11 +84,12 @@ impl Default for Cfg {
             speed: 3000.0,
             gravity: 1145.0,
             // file DefaultBounciness 0.35. The 2026-08-03 clip fit said
-            // 0.38-0.40, but that fit predates swept-sphere flights; with
-            // them, Henry's 2026-08-15 side-by-side verdict is the sim
-            // bounces "way stronger than in game" while the initial arc
-            // looks right - back to the file value. Calibrate via --bounce.
-            bounciness: 0.35,
+            // 0.38-0.40, but that fit predates swept-sphere flights. After
+            // the friction-floor fix removed the carry error, Henry's
+            // 2026-08-15 roof-bounce comparison still reads the vertical
+            // rebound as too strong: 0.30 is his in-game calibration.
+            // Bisect further with --bounce.
+            bounciness: 0.30,
             friction: 0.65,
             stop_speed: 200.0,
             eye_z: 175.0,

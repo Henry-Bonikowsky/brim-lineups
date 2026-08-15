@@ -485,6 +485,14 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                         .then(best(a, b))
                         .then(a.err.total_cmp(&b.err))
                 });
+                // the stored candidates rarely contain a same-speed forgiving
+                // twin - SEARCH for one: climb the winning row's angle
+                // neighborhood for max forgiveness, constrained to on-target,
+                // <= +0.1s, no extra bounces (Henry: 'still picking hard
+                // lineup' - the 0.1s tie-break had nothing to tie against)
+                if let Some(w) = out.iter_mut().find(|l| hit(l)) {
+                    forgive_climb(scene, target, tol, cfg, origin, w);
+                }
                 return out.into_iter();
             }
             // the ray-discovered angles must survive the real swept-sphere
@@ -747,6 +755,73 @@ fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
             break; // never got on the spot: keep the closest, skip phase 2
         }
     }
+}
+
+/// Count of the 8 standard +-0.75 deg jitters that still cover the target
+/// from (yaw, pitch) - the raw forgiveness score finish() reports as /8.
+fn forgive8(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, yaw: f32, pitch: f32) -> u32 {
+    let mut ok = 0;
+    for (jy, jp) in
+        [(0.75, 0.0), (-0.75, 0.0), (0.0, 0.75), (0.0, -0.75), (0.75, 0.75), (-0.75, 0.75), (0.75, -0.75), (-0.75, -0.75)]
+    {
+        let lp = crate::sim::launch_pitch(pitch + jp, cfg);
+        if let Some(o) = fly(scene, crate::sim::hand_origin(origin, yaw + jy, cfg), dir_from(yaw + jy, lp), cfg) {
+            let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+            let dz = (o.rest.z - target.z).abs();
+            let dev = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
+            if !o.wall_carry && dev < tol && crate::sim::fire_covers(scene, o.rest, target) {
+                ok += 1;
+            }
+        }
+    }
+    ok
+}
+
+/// Hill-climb the angle neighborhood of a picked row for MAX forgiveness,
+/// constrained to: still on target, time <= original + 0.1s, bounces not
+/// increased. Henry's rule: within 0.1s the most forgiving angle wins - and
+/// the winning twin usually isn't among the stored candidates, it must be
+/// searched for. ~2 rounds x 8 neighbors x 9 flights, only on final rows.
+fn forgive_climb(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Lineup) {
+    let t_max = b.time + 0.1;
+    let mut cur = (b.forgive * 8.0).round() as u32;
+    if cur >= 8 {
+        return;
+    }
+    for step in [0.4f32, 0.2] {
+        let mut improved = true;
+        while improved && cur < 8 {
+            improved = false;
+            for (dy, dp) in [(step, 0.0), (-step, 0.0), (0.0, step), (0.0, -step)] {
+                let (y, p) = (b.yaw + dy, b.pitch + dp);
+                let lp = crate::sim::launch_pitch(p, cfg);
+                let Some(o) = fly(scene, crate::sim::hand_origin(origin, y, cfg), dir_from(y, lp), cfg)
+                else {
+                    continue;
+                };
+                let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+                let dz = (o.rest.z - target.z).abs();
+                let err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
+                if o.wall_carry
+                    || err > ON_TARGET
+                    || o.time > t_max
+                    || o.bounces > b.bounces
+                    || !crate::sim::fire_covers(scene, o.rest, target)
+                {
+                    continue;
+                }
+                let f = forgive8(scene, target, tol, cfg, origin, y, p);
+                if f > cur {
+                    (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err) = (y, p, o.rest, o.time, o.bounces, err);
+                    (cur, b.forgive) = (f, f as f32 / 8.0);
+                    improved = true;
+                    break;
+                }
+            }
+        }
+    }
+    // refresh the derived stats at the final angle
+    finish(scene, target, tol, cfg, origin, b);
 }
 
 /// Post-processing shared by both modes: crosshair reference point + aim
