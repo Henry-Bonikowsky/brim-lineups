@@ -599,13 +599,15 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // (misses may still be rescued into on-spike rows by refine).
     // Stand coords break ties so repeat solves order identically (the n-th
     // row must be the same lineup when the picker re-requests it by index)
+    // ONE rule everywhere, browse included (the picker's list IS browse -
+    // err-sorted browse was still leading with 7s lobs after strict was
+    // fixed): on-spike rows first by (bounces, time); browse's near-miss
+    // rows trail sorted by landing distance (strict drops them post-refine)
     let rank = |v: &mut Vec<Lineup>| {
         v.sort_by(|a, b| {
-            if browse {
-                return a.err.total_cmp(&b.err);
-            }
             let (oa, ob) = (a.covered && a.err <= ON_TARGET, b.covered && b.err <= ON_TARGET);
             ob.cmp(&oa)
+                .then(if !oa && !ob { a.err.total_cmp(&b.err) } else { std::cmp::Ordering::Equal })
                 .then(best(a, b))
                 .then(a.stand.x.total_cmp(&b.stand.x))
                 .then(a.stand.y.total_cmp(&b.stand.y))
@@ -622,8 +624,10 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     let mut out: Vec<Lineup> = out
         .par_iter()
         .map(|l| {
-            let (rt, rtol) = if browse { (l.rest, 450.0) } else { (target, tol) };
-            let fams = solve_impl(scene, &[l.stand], rt, rtol, 0.0, false, false, cfg, false);
+            // browse included: every row re-tunes onto the CLICK (the old
+            // self-targeting "optimize your own landing" left the picker's
+            // list full of never-tuned throws while strict looked fine)
+            let fams = solve_impl(scene, &[l.stand], target, tol, 0.0, false, false, cfg, false);
             // rows arrive in Henry's optimal order (closest-landing band,
             // then time) - the first covered row IS the optimal angle
             let mut cov: Vec<Lineup> = fams.into_iter().filter(|f| f.covered).collect();
