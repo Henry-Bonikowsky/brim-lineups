@@ -212,6 +212,13 @@ fn fly_impl(
                 .map(|h| (h.time_of_impact, h.normal))
         };
         if let Some((toi, hn)) = hit {
+            // global grind cap: a wedged sphere can slide in near-zero time
+            // fractions per contact, spinning thousands of casts for one
+            // flight (2s+ per fly call). A 400-contact flight is degenerate,
+            // never a usable lineup - bail
+            if contacts > 400 {
+                return None;
+            }
             let mut n = hn;
             if n.dot(&v) > 0.0 {
                 n = -n; // face the incoming velocity

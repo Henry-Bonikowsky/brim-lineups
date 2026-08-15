@@ -256,15 +256,18 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     .unwrap_or(false)
             };
             let mut sweeps: Vec<(f32, f32)> = if paired {
+                // half-density grid: polish() walks the last mile from any
+                // cell continuously, so 2 x 1.5 deg cells lose nothing but
+                // cost 2.5x less than the old 1.25 x 1.0
                 let mut v = Vec::new();
                 let mut pitch = -35.0f32;
                 while pitch <= 85.0 {
                     let mut dy = -6.0f32;
                     while dy <= 6.0 {
                         v.push((yaw0 + dy, pitch));
-                        dy += 1.0;
+                        dy += 1.5;
                     }
-                    pitch += 1.25;
+                    pitch += 2.0;
                 }
                 v
             } else {
@@ -390,8 +393,21 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 // faster (e.g. a wall-bounce that kills flight time) wins
                 let mut out: Vec<Lineup> = Vec::new();
                 for cands in families.into_values() {
-                    let ok: Vec<Lineup> =
-                        cands.into_iter().filter_map(|mut b| confirm(&mut b).then_some(b)).collect();
+                    // candidates arrive closest-first: once one confirms,
+                    // only later candidates whose RAY landing is still
+                    // within the closeness band can beat it on time - the
+                    // rest are strictly worse, skip their sphere flights
+                    let mut ok: Vec<Lineup> = Vec::new();
+                    for mut b in cands {
+                        if let Some(first) = ok.first() {
+                            if b.err > first.err + ERR_BAND {
+                                break;
+                            }
+                        }
+                        if confirm(&mut b) {
+                            ok.push(b);
+                        }
+                    }
                     let minf = ok.iter().map(|l| l.err).fold(f32::INFINITY, f32::min);
                     out.extend(
                         ok.into_iter()
@@ -645,10 +661,18 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
 /// on (yaw, pitch) at full sphere physics - keep any move that lands CLOSER
 /// and still covers - down to 0.05 deg steps. ~10-30 flights per row.
 fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Lineup) {
+    // hard flight budget: a full-lob sphere flight costs 1-2ms, and chasing
+    // 1u gains forever burned ~1s per row. 40 flights lands within ~10u of
+    // the unconstrained optimum in practice
+    let mut budget = 40u32;
     let mut step = 0.6f32;
-    while step > 0.05 {
+    while step > 0.05 && budget > 0 {
         let mut improved = false;
         for (dy, dp) in [(step, 0.0), (-step, 0.0), (0.0, step), (0.0, -step)] {
+            if budget == 0 {
+                break;
+            }
+            budget -= 1;
             let (y, p) = (b.yaw + dy, b.pitch + dp);
             let launch = crate::sim::launch_pitch(p, cfg);
             let Some(o) = fly(scene, crate::sim::hand_origin(origin, y, cfg), dir_from(y, launch), cfg)
@@ -658,10 +682,11 @@ fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
             let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
             let dz = (o.rest.z - target.z).abs();
             let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
-            if err < b.err && err < tol && crate::sim::fire_covers(scene, o.rest, target) {
+            // only a MEANINGFUL gain (2u+) keeps the step alive
+            if err < b.err - 2.0 && err < tol && crate::sim::fire_covers(scene, o.rest, target) {
                 (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err) = (y, p, o.rest, o.time, o.bounces, err);
                 improved = true;
-                break; // retry the same step size from the better spot
+                break;
             }
         }
         if !improved {
