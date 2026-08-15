@@ -611,14 +611,21 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             if browse {
                 return l.err;
             }
-            ((l.err - minerr) / ERR_BAND).max(0.0).floor() + if l.exposed { 3.0 } else { 0.0 }
+            ((l.err - minerr) / ERR_BAND).max(0.0).floor()
         };
         let key = |l: &Lineup| {
             if browse {
                 return 0.0;
             }
-            let fragile = if l.forgive < 0.25 { 5.0 } else { 0.0 };
-            l.time * 0.35 - l.approach.min(APPROACH_SAFE) / 800.0 - l.pos_grade() as f32 * 10.0 + fragile
+            // within a closeness band: SPEED is king (an 8s lob ranked over
+            // a 1.5s wall throw was the failure this fixes), a near-zero
+            // forgiveness row is barely throwable and must sink below even
+            // a worse position grade, exposure and safety are moderate
+            let fragile = if l.forgive < 0.25 { 15.0 } else { 0.0 };
+            let expo = if l.exposed { 8.0 } else { 0.0 };
+            l.time * 0.7 - l.approach.min(APPROACH_SAFE) / 1500.0 - l.pos_grade() as f32 * 10.0
+                + fragile
+                + expo
         };
         v.sort_by(|a, b| {
             band(a)
