@@ -93,7 +93,13 @@ impl Default for Cfg {
             // quadratic taper (see launch_pitch, fitted to Henry's roof-ledge
             // trace 2026-08-10) reproduces the tuned high-lob carry within
             // ~1.5% at these original values
-            speed: 3000.0,
+            // 2026-08-15 recalibration: Henry's exactly-replicated Sunset
+            // lineup catches the Market roof lip in game; the sim only
+            // reproduces that first contact with speed in [2925, 2960]
+            // (3000 clears the roof entirely - the old +3.5% fudge was
+            // fitted before the arc taper + launch clamp existed). 2945 =
+            // window midpoint; file ProjectileSpeed is 2900.
+            speed: 2945.0,
             gravity: 1145.0,
             // file DefaultBounciness 0.35. The 2026-08-03 clip fit said
             // 0.38-0.40, but that fit predates swept-sphere flights. After
