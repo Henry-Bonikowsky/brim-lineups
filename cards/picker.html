@@ -115,10 +115,9 @@ body.compact #img { width: min(640px, calc(100vw - 110px)) }
       <button id="clearstand" title="back to landing-spot-only search">&times; remove stand spot</button>
     </div>
     <div class="legend" id="legend-sel" style="display:none">
-      <span><span class="chip sq" style="background:#4db8ff"></span><b>stand here</b></span>
-      <span><span class="chip" style="background:#58e07a"></span>molly lands here</span>
+      <span><span class="chip" style="background:#58e07a"></span><b>standing spots</b> - click one to open its lineup</span>
       <span><span class="chip" style="background:var(--gold)"></span>your click</span>
-      <span style="color:var(--dim)">showing <b id="selname" style="color:var(--ink)">#1</b> only - hover a row to peek at another, click it to switch</span>
+      <span style="color:var(--dim)">selected: <b id="selname" style="color:var(--ink)">#1</b></span>
     </div>
     <div id="out">click the map...</div>
   </div>
@@ -313,12 +312,14 @@ function toPx(X, Y) {
   const du = rx * (X - c.cx) + ry * (Y - c.cy), dv = ux * (X - c.cx) + uy * (Y - c.cy);
   return { u: 0.5 + du / c.ortho, v: 0.5 - dv / c.ortho };
 }
+// dots = STANDING spots (landings all cluster on the click anyway); click
+// a dot to open that lineup. Dots never disappear
 function drawRestDots(list) {
   clearSelection();
   document.querySelectorAll('.restdot').forEach(e => e.remove());
   const wrap = document.getElementById('img').parentElement;
   list.forEach(l => {
-    const p = toPx(l.rest[0], l.rest[1]);
+    const p = toPx(l.stand[0], l.stand[1]);
     const d = document.createElement('div');
     d.className = 'restdot'; d.id = 'restdot' + l.idx; d.title = '#' + l.idx;
     d.style.left = (p.u * 100) + '%'; d.style.top = (p.v * 100) + '%';
@@ -327,19 +328,15 @@ function drawRestDots(list) {
   });
 }
 function hiDot(n) { document.querySelectorAll('.restdot').forEach(e => e.classList.toggle('hot', e.id === 'restdot' + n)); }
-// selected option: only ITS landing dot stays, its stand spot appears, and
-// the map key switches to explain the markers
+// selected option: its stand dot lights up; every dot stays visible
 function showSelection(n, l) {
-  document.querySelectorAll('.restdot').forEach(e => e.classList.toggle('faded', e.id !== 'restdot' + n));
-  const sd = document.getElementById('standdot');
-  const p = toPx(l.stand[0], l.stand[1]);
-  sd.style.left = (p.u * 100) + '%'; sd.style.top = (p.v * 100) + '%'; sd.style.display = 'block';
+  hiDot(n);
   document.getElementById('selname').textContent = '#' + n;
   document.getElementById('legend-sel').style.display = '';
   document.getElementById('legend-default').style.display = 'none';
 }
 function clearSelection() {
-  document.querySelectorAll('.restdot').forEach(e => e.classList.remove('faded'));
+  document.querySelectorAll('.restdot').forEach(e => e.classList.remove('hot'));
   document.getElementById('standdot').style.display = 'none';
   document.getElementById('legend-sel').style.display = 'none';
   document.getElementById('legend-default').style.display = '';
