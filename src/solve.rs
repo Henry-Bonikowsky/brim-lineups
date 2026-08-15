@@ -19,6 +19,11 @@ impl Timer {
     }
 }
 
+/// "Just as close": two landings within this of each other count as equally
+/// accurate, and the faster throw wins between them (Henry's optimal-angle
+/// rule: closest to the click first, time only inside the band).
+const ERR_BAND: f32 = 50.0;
+
 #[derive(Clone)]
 pub struct Lineup {
     pub dist: f32, // stand-to-target range (lineups are long throws, not tosses)
@@ -285,9 +290,11 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                             }
                             continue;
                         }
+                        // candidates kept CLOSEST-first: optimal is the angle
+                        // that lands nearest the click, time only breaks ties
                         let key = (pitch / 8.0).round() as i32;
                         let fam = families.entry(key).or_default();
-                        let pos = fam.partition_point(|c| c.time <= cand.time);
+                        let pos = fam.partition_point(|c| c.err <= cand.err);
                         if pos < 5 {
                             fam.insert(pos, cand);
                             fam.truncate(5);
@@ -297,52 +304,61 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             }
             if paired {
                 // families were discovered on the cheap zero-width flight:
-                // sphere-confirm each family's candidates fastest-first; the
-                // first survivor represents the family. Grazes the ray
-                // cleared (box lips, roof edges) block the real molly
+                // sphere-confirm ALL of each family's candidates, then the
+                // family's representative is Henry's optimal - the closest
+                // landing, except a throw within ERR_BAND of it that is
+                // faster (e.g. a wall-bounce that kills flight time) wins
                 let mut out: Vec<Lineup> = Vec::new();
                 for cands in families.into_values() {
-                    for mut b in cands {
-                        if confirm(&mut b) {
-                            out.push(b);
-                            break;
-                        }
-                    }
+                    let ok: Vec<Lineup> =
+                        cands.into_iter().filter_map(|mut b| confirm(&mut b).then_some(b)).collect();
+                    let minf = ok.iter().map(|l| l.err).fold(f32::INFINITY, f32::min);
+                    out.extend(
+                        ok.into_iter()
+                            .filter(|l| l.err <= minf + ERR_BAND)
+                            .min_by(|a, b| a.time.total_cmp(&b.time)),
+                    );
                 }
                 if out.is_empty() {
                     // no throw lands within tolerance: report the closest miss so
                     // the user sees WHY (err > tol labels it)
                     out.extend(best_miss);
                 }
-                // refine (finish_all=false) keeps ONE row - the fastest
-                // covered. Forgiveness for the rest is thrown away, so don't
-                // pay 16 swept-sphere flights per discarded family
+                // walk rows in the caller's preference order (closest band,
+                // then time). refine (finish_all=false) keeps ONE row - the
+                // first covered in this order - so only that row (and the
+                // full paired list) pays the 16-flight forgiveness pass
+                let minerr = out.iter().filter(|l| l.covered).map(|l| l.err).fold(f32::INFINITY, f32::min);
+                let band = |l: &Lineup| ((l.err - minerr) / ERR_BAND).max(0.0).floor();
                 let mut order: Vec<usize> = (0..out.len()).collect();
-                order.sort_by(|&i, &j| out[i].time.total_cmp(&out[j].time));
-                let mut finished_fast = false;
+                order.sort_by(|&i, &j| {
+                    band(&out[i]).total_cmp(&band(&out[j])).then(out[i].time.total_cmp(&out[j].time))
+                });
+                let mut finished_first = false;
                 for fi in order {
                     let b = &mut out[fi];
-                    let pickable = finish_all || (b.covered && !finished_fast);
+                    let pickable = finish_all || (b.covered && !finished_first);
                     if b.covered {
-                        finished_fast = true;
+                        finished_first = true;
                     }
                     if pickable {
                         finish(scene, target, tol, cfg, origin, b);
                     }
                 }
-                out.sort_by(|a, b| a.time.total_cmp(&b.time));
+                out.sort_by(|a, b| band(a).total_cmp(&band(b)).then(a.time.total_cmp(&b.time)));
                 return out.into_iter();
             }
             // the ray-discovered angles must survive the real swept-sphere
-            // flight: walk this stand's families fastest-first, and each
-            // family's candidates fastest-first - a stand only dies when
-            // EVERY discovered angle grazes (a single-angle check was
-            // erasing whole positions)
+            // flight: walk this stand's families closest-landing-first, and
+            // each family's candidates closest-first - a stand only dies
+            // when EVERY discovered angle grazes. The winner is provisional:
+            // refine re-tunes the final angle with the full accuracy-first
+            // rule
             let mut fams: Vec<Vec<Lineup>> = families.into_values().collect();
             if !fams.is_empty() {
                 n_stand_any.fetch_add(1, Relaxed);
             }
-            fams.sort_by(|a, b| a[0].time.total_cmp(&b[0].time));
+            fams.sort_by(|a, b| a[0].err.total_cmp(&b[0].err));
             let mut best: Option<Lineup> = None;
             'fams: for cands in fams.iter_mut() {
                 for b in cands.iter_mut() {
@@ -440,9 +456,17 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
         v.retain(|l| l.forgive >= floor);
     };
     if paired {
-        // angle families from the locked stand, fastest first; easy positions first
+        // angle families from the locked stand: easy positions first, then
+        // closest-landing band, then time (Henry's optimal-angle order)
         sturdy(&mut all);
-        all.sort_by(|a, b| (b.pos_grade(), a.time).partial_cmp(&(a.pos_grade(), b.time)).unwrap());
+        let minerr = all.iter().filter(|l| l.covered).map(|l| l.err).fold(f32::INFINITY, f32::min);
+        let band = |l: &Lineup| ((l.err - minerr) / ERR_BAND).max(0.0).floor();
+        all.sort_by(|a, b| {
+            b.pos_grade()
+                .cmp(&a.pos_grade())
+                .then(band(a).total_cmp(&band(b)))
+                .then(a.time.total_cmp(&b.time))
+        });
         return all;
     }
     // dedup: one lineup per 200u XY cell, keep the fastest
@@ -479,10 +503,11 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             l.err
         } else {
             // fragile rows survive the cull but sink below sturdy ones;
-            // exposed rows sink below everything hidden
+            // exposed rows sink below everything hidden. err weighs in
+            // across stands too - accuracy beats speed
             let fragile = if l.forgive < 0.25 { 5.0 } else { 0.0 };
             let expo = if l.exposed { 30.0 } else { 0.0 };
-            l.dist / 2000.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0 + fragile + expo
+            l.err / 150.0 + l.dist / 2000.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0 + fragile + expo
         }
     };
     out.sort_by(|a, b| {
@@ -500,8 +525,9 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
         .map(|l| {
             let (rt, rtol) = if browse { (l.rest, 450.0) } else { (target, tol) };
             let fams = solve_impl(scene, &[l.stand], rt, rtol, 0.0, false, false, cfg, false);
+            // rows arrive in Henry's optimal order (closest-landing band,
+            // then time) - the first covered row IS the optimal angle
             let mut cov: Vec<Lineup> = fams.into_iter().filter(|f| f.covered).collect();
-            cov.sort_by(|a, b| a.time.total_cmp(&b.time));
             match (!cov.is_empty()).then(|| cov.swap_remove(0)) {
                 Some(mut f) => {
                     // err stays relative to the original click for display/sort
