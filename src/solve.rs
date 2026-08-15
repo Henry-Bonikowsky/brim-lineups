@@ -459,17 +459,22 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 });
                 let lead = order.iter().position(|&i| hit(&out[i]));
                 for (k, &fi) in order.iter().enumerate() {
-                    let in_group = lead.is_some_and(|l| {
-                        k >= l
-                            && hit(&out[fi])
-                            && out[fi].bounces == out[order[l]].bounces
-                            && out[fi].time <= out[order[l]].time + 0.1
-                    });
-                    if finish_all || in_group {
+                    if finish_all || lead == Some(k) {
                         let b = &mut out[fi];
                         if b.covered {
                             polish(scene, target, tol, cfg, origin, b);
                         }
+                        finish(scene, target, tol, cfg, origin, b);
+                    }
+                }
+                // RESCUE: no angle hits the spike, but the discovered pool
+                // is coarse - polish can WALK the closest miss onto the
+                // click (Henry: stands were shown 'landing off' that can
+                // land on; the miss was just never re-tuned toward the
+                // target). Runs once, only when nothing hit
+                if lead.is_none() {
+                    if let Some(b) = out.iter_mut().min_by(|a, b| a.err.total_cmp(&b.err)) {
+                        polish(scene, target, tol, cfg, origin, b);
                         finish(scene, target, tol, cfg, origin, b);
                     }
                 }
@@ -706,14 +711,19 @@ fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
         let dz = (o.rest.z - target.z).abs();
         let err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
+        // covers is only meaningful (and only required) once the rest is
+        // near the click: demanding it on FAR intermediate steps made
+        // phase 1 unable to walk a distant throw closer at all
+        let cov = err < tol && crate::sim::fire_covers(scene, o.rest, target);
         let better = if by_time {
             // never trade extra bounces for speed: fewer bounces outranks
-            err <= ON_TARGET && o.bounces <= b.bounces && o.time < b.time - 0.05
+            err <= ON_TARGET && cov && o.bounces <= b.bounces && o.time < b.time - 0.05
         } else {
-            err < b.err - 2.0 && err < tol
+            err < b.err - 2.0 && err < tol && (err > ON_TARGET || cov)
         };
-        if better && crate::sim::fire_covers(scene, o.rest, target) {
+        if better {
             (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err) = (y, p, o.rest, o.time, o.bounces, err);
+            b.covered = cov;
             return true;
         }
         false
