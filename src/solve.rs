@@ -349,7 +349,14 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                         // lands within tol is re-flown as the real swept sphere
                         // below and scored on THAT outcome (grazes the ray
                         // clears block the real molly)
-                        let thin = crate::sim::Cfg { radius: 0.0, ..*cfg };
+                        // paired (incl. every refine sub-solve): discover at
+                        // FULL radius - some throws exist only as sphere
+                        // flights (a ray misses the container lip whose clip
+                        // ricochet IS the lineup; Henry found one in game the
+                        // thin sweep could never see). Strict's coarse stand
+                        // hunt stays thin: it only proves stands, and refine
+                        // re-derives every kept angle sphere-first
+                        let thin = if paired { *cfg } else { crate::sim::Cfg { radius: 0.0, ..*cfg } };
                         let Some(o) = fly(scene, hand, dir_from(yaw, pitch), &thin) else {
                             n_none.fetch_add(1, Relaxed);
                             continue;
@@ -424,14 +431,13 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 // closest confirmed
                 let mut out: Vec<Lineup> = Vec::new();
                 for cands in families.into_values() {
+                    // confirm EVERY stored candidate (<=5/family): thin-ray
+                    // and sphere flights can land in different places around
+                    // lips/vents, so a candidate whose RAY err looks far can
+                    // be the family's only on-target SPHERE throw (Henry's
+                    // A-corner lineup was skipped by an early break here)
                     let mut ok: Vec<Lineup> = Vec::new();
                     for mut b in cands {
-                        // all on-target candidates are time contenders; past
-                        // them keep confirming only until SOMETHING confirms
-                        // (the closest-miss fallback)
-                        if b.err > ON_TARGET && !ok.is_empty() {
-                            break;
-                        }
                         if confirm(&mut b) {
                             ok.push(b);
                         }
@@ -489,12 +495,42 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     }
                 }
                 // RESCUE: no angle hits the spike, but the discovered pool
-                // is coarse - polish can WALK the closest miss onto the
-                // click (Henry: stands were shown 'landing off' that can
-                // land on; the miss was just never re-tuned toward the
-                // target). Runs once, only when nothing hit
+                // is coarse - polish can WALK a miss onto the click. Multi-
+                // start: the on-target basin is often a NEIGHBOR of the
+                // closest miss (ricochet corridors are non-convex; Henry's
+                // A-corner lineup sat one basin over), so polish every
+                // family rep, they are few and this path is rare
                 if lead.is_none() {
-                    if let Some(b) = out.iter_mut().min_by(|a, b| a.err.total_cmp(&b.err)) {
+                    for b in out.iter_mut() {
+                        // dense local fan first: the on-target basin is often
+                        // a NEIGHBOR of this miss (ricochet corridors are
+                        // non-convex - Henry's A-corner lineup sat 1.4 deg
+                        // from the coarse grid's best, across a roof band no
+                        // hill-climb crosses). 0.5 deg steps, +-3 deg
+                        let (y0, p0) = (b.yaw, b.pitch);
+                        for dy in -6..=6 {
+                            for dp in -6..=6 {
+                                let (y, p) = (y0 + dy as f32 * 0.5, p0 + dp as f32 * 0.5);
+                                let launch = crate::sim::launch_pitch(p, cfg);
+                                let Some(o) =
+                                    fly(scene, crate::sim::hand_origin(origin, y, cfg), dir_from(y, launch), cfg)
+                                else {
+                                    continue;
+                                };
+                                if o.wall_carry {
+                                    continue;
+                                }
+                                let dxy =
+                                    ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+                                let dz = (o.rest.z - target.z).abs();
+                                let err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
+                                if err < b.err && crate::sim::fire_covers(scene, o.rest, target) {
+                                    (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err, b.graze) =
+                                        (y, p, o.rest, o.time, o.bounces, err, o.graze);
+                                    b.covered = err < tol;
+                                }
+                            }
+                        }
                         polish(scene, target, tol, cfg, origin, b);
                         finish(scene, target, tol, cfg, origin, b);
                     }
