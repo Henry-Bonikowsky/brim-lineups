@@ -282,6 +282,7 @@ function lineupHtml(l, n) {
     : l.pos === 1
       ? `<span class='mid'>corner-pinned - press W into the corner shown in the top-down view until you stop</span>`
       : `<span class='warn'>free position - no corner in reach, stand exactly on the dot</span>`;
+  const grz = l.graze ? ` <span class='warn'>UNRELIABLE - the flight scrapes a wall far out; tiny differences change everything</span>.` : '';
   const expo = l.exposed
     ? ` <span class='warn'>EXPOSED - a retaker sees you within ${(l.approach / 100).toFixed(0)}m of leaving the spike</span>.`
     : l.approach >= 4000
@@ -293,7 +294,7 @@ function lineupHtml(l, n) {
     : fg >= 25
       ? `<span class='mid'>moderate aim precision needed (${fg}%)</span>`
       : `<span class='warn'>PRECISE lineup - a hair of aim error misses (${fg}% tolerance)</span>`;
-  let h = `<h3>#${n}: ${verdict}. ${pos}.${expo} ${forg}. Thrown from ${(l.range / 100).toFixed(0)}m, ${l.time.toFixed(1)}s flight, ${bn(l.bounces)}. ${aim}.</h3>`;
+  let h = `<h3>#${n}: ${verdict}. ${pos}.${grz}${expo} ${forg}. Thrown from ${(l.range / 100).toFixed(0)}m, ${l.time.toFixed(1)}s flight, ${bn(l.bounces)}. ${aim}.</h3>`;
   h += imgsHtml(l.imgs);
   const walkbtn = mode === 'wasm' ? '' : ` <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button>`;
   h += `<div id='vid${n}'><button onclick='flightVideo(${n})'>flight ${mode === 'wasm' ? 'path' : 'video'}</button>${walkbtn}</div>`;

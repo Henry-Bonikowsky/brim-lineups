@@ -132,6 +132,12 @@ pub struct Outcome {
     /// not real - the model keeps too much speed off steep wall hits.
     /// A wall TAP near the landing (kills momentum) does not set this.
     pub wall_carry: bool,
+    /// Hard wall contact FAR from the thrower (>25m out): at that range a
+    /// wall-scraping flight needs cm-perfect model accuracy - in game it
+    /// deflects differently and the lineup dies (Henry, Sunset clocktower
+    /// thread). Close-range wall-bangs (the intentional fast class) stay
+    /// unflagged.
+    pub graze: bool,
 }
 
 /// Integrate one throw. `dir` must be normalized. Semi-implicit Euler at 120 Hz
@@ -196,6 +202,7 @@ fn fly_impl(
     let mut bounces = 0u32;
     let mut contacts = 0u32;
     let mut last_wall: Option<V3> = None;
+    let mut graze = false;
     if let Some(r) = record.as_deref_mut() {
         r.push(p);
     }
@@ -294,6 +301,13 @@ fn fly_impl(
             if n.z.abs() < 0.5 && vn.abs() > 600.0 {
                 last_wall = Some(p);
             }
+            // far-out wall scrape: model error compounds with range
+            if n.z.abs() < 0.5 && vn.abs() > 400.0 {
+                let dh = ((p.x - origin.x).powi(2) + (p.y - origin.y).powi(2)).sqrt();
+                if dh > 2500.0 {
+                    graze = true;
+                }
+            }
             let vt = v - n * vn;
             // tangential friction scales with impact steepness: the
             // bBounceAngleAffectsFriction curve is InterpolateRange 0..90 ->
@@ -350,7 +364,7 @@ fn fly_impl(
                 // a steep face - kill the rebound and let gravity take it down
                 if (lat < cfg.stop_speed * 2.0 && n.z > 0.7) || contacts > 120 {
                     let wall_carry = last_wall.map(|w| (p - w).norm() > 1200.0).unwrap_or(false);
-                    return Some(Outcome { rest: p, time: t, bounces, wall_carry });
+                    return Some(Outcome { rest: p, time: t, bounces, wall_carry, graze });
                 }
                 if lat < cfg.stop_speed * 2.0 {
                     v -= n * v.dot(&n);

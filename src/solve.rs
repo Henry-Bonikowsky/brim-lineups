@@ -127,6 +127,7 @@ pub struct Lineup {
     pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
     pub wedged: bool,    // stand is corner-pinned (always true for solver-picked stands)
     pub exposed: bool,   // a retaker sees the thrower within 8m of leaving the spike
+    pub graze: bool,     // flight scrapes a wall >25m out: model-fragile, ranked last
     pub approach: f32,   // walking distance from the spike before the thrower is in view
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
 }
@@ -258,7 +259,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     .map(|o| {
                         let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
                         let dz = (o.rest.z - target.z).abs();
-                        (b.rest, b.time, b.bounces) = (o.rest, o.time, o.bounces);
+                        (b.rest, b.time, b.bounces, b.graze) = (o.rest, o.time, o.bounces, o.graze);
                         b.err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
                         b.covered = b.err < tol && crate::sim::fire_covers(scene, o.rest, target);
                         b.covered || (browse && b.err < tol)
@@ -389,6 +390,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                             pos_forgive: 0.0,
                             wedged,
                             exposed: false,
+                            graze: o.graze,
                             approach: 0.0,
                             aim_ref: None,
                         };
@@ -453,11 +455,17 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 // 0.1s leading group gets polished+finished (forgiveness is
                 // 16 flights/row, contenders only), not just the fastest;
                 // finish_all (top-level paired) still does every row
+                // clean hits before grazy hits before misses: a far-out
+                // wall-scrape "works" only in a cm-perfect model
                 let hit = |l: &Lineup| l.covered && l.err <= ON_TARGET;
                 let mut order: Vec<usize> = (0..out.len()).collect();
                 order.sort_by(|&i, &j| {
                     let (a, b) = (&out[i], &out[j]);
-                    hit(b).cmp(&hit(a)).then(best(a, b)).then(a.err.total_cmp(&b.err))
+                    hit(b)
+                        .cmp(&hit(a))
+                        .then(a.graze.cmp(&b.graze))
+                        .then(best(a, b))
+                        .then(a.err.total_cmp(&b.err))
                 });
                 let lead = order.iter().position(|&i| hit(&out[i]));
                 // polish the leader AND the best near-miss of every LOWER
@@ -637,19 +645,19 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // after every hidden one; tier 2 = browse's near-miss rows by landing
     // distance (strict drops those post-refine)
     let rank = |v: &mut Vec<Lineup>| {
+        // 0 hidden clean, 1 exposed clean, 2 hidden graze, 3 exposed graze,
+        // 9 miss - a grazing thread never outranks any clean lineup
         let tier = |l: &Lineup| {
             if !(l.covered && l.err <= ON_TARGET) {
-                2
-            } else if l.exposed {
-                1
+                9
             } else {
-                0
+                (l.graze as u8) * 2 + l.exposed as u8
             }
         };
         v.sort_by(|a, b| {
             let (ta, tb) = (tier(a), tier(b));
             ta.cmp(&tb)
-                .then(if ta == 2 { a.err.total_cmp(&b.err) } else { best(a, b) })
+                .then(if ta == 9 { a.err.total_cmp(&b.err) } else { best(a, b) })
                 .then(a.stand.x.total_cmp(&b.stand.x))
                 .then(a.stand.y.total_cmp(&b.stand.y))
         });
@@ -734,14 +742,16 @@ fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         // phase 1 unable to walk a distant throw closer at all
         let cov = err < tol && crate::sim::fire_covers(scene, o.rest, target);
         let better = if by_time {
-            // never trade extra bounces for speed: fewer bounces outranks
-            err <= ON_TARGET && cov && o.bounces <= b.bounces && o.time < b.time - 0.05
+            // never trade extra bounces for speed, never trade clean for
+            // grazy: fewer bounces outranks
+            err <= ON_TARGET && cov && o.bounces <= b.bounces && (o.graze <= b.graze) && o.time < b.time - 0.05
         } else {
             err < b.err - 2.0 && err < tol && (err > ON_TARGET || cov)
         };
         if better {
             (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err) = (y, p, o.rest, o.time, o.bounces, err);
             b.covered = cov;
+            b.graze = o.graze;
             return true;
         }
         false
