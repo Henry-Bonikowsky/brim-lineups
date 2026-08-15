@@ -599,16 +599,25 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // (misses may still be rescued into on-spike rows by refine).
     // Stand coords break ties so repeat solves order identically (the n-th
     // row must be the same lineup when the picker re-requests it by index)
-    // ONE rule everywhere, browse included (the picker's list IS browse -
-    // err-sorted browse was still leading with 7s lobs after strict was
-    // fixed): on-spike rows first by (bounces, time); browse's near-miss
-    // rows trail sorted by landing distance (strict drops them post-refine)
+    // ONE rule everywhere, browse included (the picker's list IS browse):
+    // tier 0 = HIDDEN on-spike lineups by (bounces, time) - a real lineup
+    // is thrown from out of view; tier 1 = exposed on-spike rows, labeled,
+    // after every hidden one; tier 2 = browse's near-miss rows by landing
+    // distance (strict drops those post-refine)
     let rank = |v: &mut Vec<Lineup>| {
+        let tier = |l: &Lineup| {
+            if !(l.covered && l.err <= ON_TARGET) {
+                2
+            } else if l.exposed {
+                1
+            } else {
+                0
+            }
+        };
         v.sort_by(|a, b| {
-            let (oa, ob) = (a.covered && a.err <= ON_TARGET, b.covered && b.err <= ON_TARGET);
-            ob.cmp(&oa)
-                .then(if !oa && !ob { a.err.total_cmp(&b.err) } else { std::cmp::Ordering::Equal })
-                .then(best(a, b))
+            let (ta, tb) = (tier(a), tier(b));
+            ta.cmp(&tb)
+                .then(if ta == 2 { a.err.total_cmp(&b.err) } else { best(a, b) })
                 .then(a.stand.x.total_cmp(&b.stand.x))
                 .then(a.stand.y.total_cmp(&b.stand.y))
         });
@@ -642,8 +651,10 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     Some(f)
                 }
                 // even the dense sphere-confirmed re-sweep found no covered
-                // throw from this stand: the position is not real, drop it
-                None => None,
+                // throw at the click from this stand: strict drops it, but
+                // browse keeps the coarse row as a near-miss option (Henry:
+                // fewer rows is never the ask)
+                None => browse.then(|| l.clone()),
             }
         })
         .flatten()
