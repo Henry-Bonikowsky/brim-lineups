@@ -19,14 +19,12 @@ impl Timer {
     }
 }
 
-/// "Just as close": two landings within this of each other count as equally
-/// accurate, and the faster throw wins between them (Henry's optimal-angle
-/// rule: closest to the click first, time only inside the band). 150u: a
-/// skimming wall-bounce throw bottoms out ~1m of scatter where a steep lob
-/// nails 20u - both read as "on the spot" (the fire patch is 450u), and a
-/// 4s bounce beating an 8s lob is the whole point (Henry: "7 seconds is
-/// not optimal, utilize walls").
-const ERR_BAND: f32 = 150.0;
+/// Henry's optimal-angle rule, final form: a throw resting within this of
+/// the click IS "on the spot" (the fire patch is 450u), and among on-spot
+/// throws from a position the FASTEST wins, full stop. Closeness beyond
+/// this threshold buys nothing - a 20u lob never outranks a 100u throw
+/// that gets there 4 seconds sooner.
+const ON_TARGET: f32 = 150.0;
 
 /// Walking distance (from the spike) beyond which a stand counts as fully
 /// safe: nobody retaking will hike 40m+ before they can even see you.
@@ -402,49 +400,48 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             }
             if paired {
                 // families were discovered on the cheap zero-width flight:
-                // sphere-confirm ALL of each family's candidates, then the
-                // family's representative is Henry's optimal - the closest
-                // landing, except a throw within ERR_BAND of it that is
-                // faster (e.g. a wall-bounce that kills flight time) wins
+                // sphere-confirm the candidates, then the family's rep is
+                // Henry's optimal: the FASTEST throw that lands ON the spot
+                // (err <= ON_TARGET); only if none is on the spot, the
+                // closest confirmed
                 let mut out: Vec<Lineup> = Vec::new();
                 for cands in families.into_values() {
-                    // candidates arrive closest-first: once one confirms,
-                    // only later candidates whose RAY landing is still
-                    // within the closeness band can beat it on time - the
-                    // rest are strictly worse, skip their sphere flights
                     let mut ok: Vec<Lineup> = Vec::new();
                     for mut b in cands {
-                        if let Some(first) = ok.first() {
-                            if b.err > first.err + ERR_BAND {
-                                break;
-                            }
+                        // all on-target candidates are time contenders; past
+                        // them keep confirming only until SOMETHING confirms
+                        // (the closest-miss fallback)
+                        if b.err > ON_TARGET && !ok.is_empty() {
+                            break;
                         }
                         if confirm(&mut b) {
                             ok.push(b);
                         }
                     }
-                    let minf = ok.iter().map(|l| l.err).fold(f32::INFINITY, f32::min);
-                    out.extend(
+                    let rep = if ok.iter().any(|l| l.err <= ON_TARGET) {
                         ok.into_iter()
-                            .filter(|l| l.err <= minf + ERR_BAND)
-                            .min_by(|a, b| a.time.total_cmp(&b.time)),
-                    );
+                            .filter(|l| l.err <= ON_TARGET)
+                            .min_by(|a, b| a.time.total_cmp(&b.time))
+                    } else {
+                        ok.into_iter().min_by(|a, b| a.err.total_cmp(&b.err))
+                    };
+                    out.extend(rep);
                 }
                 if out.is_empty() {
                     // no throw lands within tolerance: report the closest miss so
                     // the user sees WHY (err > tol labels it)
                     out.extend(best_miss);
                 }
-                // walk rows in the caller's preference order (closest band,
-                // then time). refine (finish_all=false) keeps ONE row - the
-                // first covered in this order - so only that row (and the
-                // full paired list) pays the 16-flight forgiveness pass
-                let minerr = out.iter().filter(|l| l.covered).map(|l| l.err).fold(f32::INFINITY, f32::min);
-                let band = |l: &Lineup| ((l.err - minerr) / ERR_BAND).max(0.0).floor();
+                // walk rows in the caller's preference order: on-the-spot
+                // rows by TIME, then off-spot rows by closeness. refine
+                // (finish_all=false) keeps ONE row - the first covered in
+                // this order - so only that row (and the full paired list)
+                // pays the 16-flight forgiveness pass
+                let on = |l: &Lineup| {
+                    if l.covered && l.err <= ON_TARGET { l.time } else { 1000.0 + l.err }
+                };
                 let mut order: Vec<usize> = (0..out.len()).collect();
-                order.sort_by(|&i, &j| {
-                    band(&out[i]).total_cmp(&band(&out[j])).then(out[i].time.total_cmp(&out[j].time))
-                });
+                order.sort_by(|&i, &j| on(&out[i]).total_cmp(&on(&out[j])));
                 let mut finished_first = false;
                 for fi in order {
                     let b = &mut out[fi];
@@ -459,7 +456,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                         finish(scene, target, tol, cfg, origin, b);
                     }
                 }
-                out.sort_by(|a, b| band(a).total_cmp(&band(b)).then(a.time.total_cmp(&b.time)));
+                out.sort_by(|a, b| on(a).total_cmp(&on(b)));
                 return out.into_iter();
             }
             // the ray-discovered angles must survive the real swept-sphere
@@ -560,14 +557,9 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             }
         }
         sturdy(&mut all);
-        let minerr = all.iter().filter(|l| l.covered).map(|l| l.err).fold(f32::INFINITY, f32::min);
-        let band = |l: &Lineup| ((l.err - minerr) / ERR_BAND).max(0.0).floor();
-        all.sort_by(|a, b| {
-            b.pos_grade()
-                .cmp(&a.pos_grade())
-                .then(band(a).total_cmp(&band(b)))
-                .then(a.time.total_cmp(&b.time))
-        });
+        // Henry's optimal order: on-the-spot rows by TIME, misses after
+        let on = |l: &Lineup| if l.covered && l.err <= ON_TARGET { l.time } else { 1000.0 + l.err };
+        all.sort_by(|a, b| on(a).total_cmp(&on(b)));
         return all;
     }
     // dedup: one lineup per 200u XY cell, keep the fastest
@@ -605,28 +597,25 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // about the stand - refine re-tunes the angle entirely, and the real gate
     // runs on refine's output. Culling here was erasing rescuable positions
     // rank: browse = nearest landing first (user picks by end location).
-    // else Henry's rule ACROSS stands too: rows that land straight on the
-    // click come FIRST - closeness bands (50u, from the best landing) are
-    // the primary order; safety/position/speed only sort within a band.
-    // Exposure pushes a row 3 bands back, not to the bottom.
+    // else: every row's angle is already the fastest on-target throw from
+    // its stand; across stands, on-target rows lead sorted by speed (with
+    // moderate position/safety/fragility modifiers), misses trail by err.
     // Stand coords break ties so repeat solves order identically (the n-th
     // row must be the same lineup when the picker re-requests it by index)
     let rank = |v: &mut Vec<Lineup>| {
-        let minerr = v.iter().filter(|l| l.covered).map(|l| l.err).fold(f32::INFINITY, f32::min);
-        let band = |l: &Lineup| {
+        let on = |l: &Lineup| {
             if browse {
-                return l.err;
+                l.err
+            } else if l.covered && l.err <= ON_TARGET {
+                0.0
+            } else {
+                1000.0 + l.err
             }
-            ((l.err - minerr) / ERR_BAND).max(0.0).floor()
         };
         let key = |l: &Lineup| {
             if browse {
                 return 0.0;
             }
-            // within a closeness band: SPEED is king (an 8s lob ranked over
-            // a 1.5s wall throw was the failure this fixes), a near-zero
-            // forgiveness row is barely throwable and must sink below even
-            // a worse position grade, exposure and safety are moderate
             let fragile = if l.forgive < 0.25 { 15.0 } else { 0.0 };
             let expo = if l.exposed { 8.0 } else { 0.0 };
             l.time * 0.7 - l.approach.min(APPROACH_SAFE) / 1500.0 - l.pos_grade() as f32 * 10.0
@@ -634,8 +623,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 + expo
         };
         v.sort_by(|a, b| {
-            band(a)
-                .total_cmp(&band(b))
+            on(a).total_cmp(&on(b))
                 .then(key(a).total_cmp(&key(b)))
                 .then(a.stand.x.total_cmp(&b.stand.x))
                 .then(a.stand.y.total_cmp(&b.stand.y))
@@ -689,35 +677,54 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
 /// and still covers - down to 0.05 deg steps. ~10-30 flights per row.
 fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Lineup) {
     // hard flight budget: a full-lob sphere flight costs 1-2ms, and chasing
-    // 1u gains forever burned ~1s per row. 40 flights lands within ~10u of
-    // the unconstrained optimum in practice
+    // 1u gains forever burned ~1s per row. Phase 1 walks the throw ON the
+    // spot; phase 2 spends the rest cutting FLIGHT TIME while staying on it
+    // (Henry's optimal: fastest that lands on it, closeness past ON_TARGET
+    // buys nothing)
     let mut budget = 40u32;
-    let mut step = 0.6f32;
-    while step > 0.05 && budget > 0 {
-        let mut improved = false;
-        for (dy, dp) in [(step, 0.0), (-step, 0.0), (0.0, step), (0.0, -step)] {
-            if budget == 0 {
-                break;
+    let probe = |b: &mut Lineup, y: f32, p: f32, by_time: bool| -> bool {
+        let launch = crate::sim::launch_pitch(p, cfg);
+        let Some(o) = fly(scene, crate::sim::hand_origin(origin, y, cfg), dir_from(y, launch), cfg)
+        else {
+            return false;
+        };
+        let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+        let dz = (o.rest.z - target.z).abs();
+        let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+        let better = if by_time {
+            err <= ON_TARGET && o.time < b.time - 0.05
+        } else {
+            err < b.err - 2.0 && err < tol
+        };
+        if better && crate::sim::fire_covers(scene, o.rest, target) {
+            (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err) = (y, p, o.rest, o.time, o.bounces, err);
+            return true;
+        }
+        false
+    };
+    for by_time in [false, true] {
+        if !by_time && b.err <= ON_TARGET {
+            continue; // already on the spot: all budget goes to speed
+        }
+        let mut step = 0.6f32;
+        while step > 0.05 && budget > 0 {
+            let mut improved = false;
+            for (dy, dp) in [(step, 0.0), (-step, 0.0), (0.0, step), (0.0, -step)] {
+                if budget == 0 {
+                    break;
+                }
+                budget -= 1;
+                if probe(b, b.yaw + dy, b.pitch + dp, by_time) {
+                    improved = true;
+                    break;
+                }
             }
-            budget -= 1;
-            let (y, p) = (b.yaw + dy, b.pitch + dp);
-            let launch = crate::sim::launch_pitch(p, cfg);
-            let Some(o) = fly(scene, crate::sim::hand_origin(origin, y, cfg), dir_from(y, launch), cfg)
-            else {
-                continue;
-            };
-            let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
-            let dz = (o.rest.z - target.z).abs();
-            let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
-            // only a MEANINGFUL gain (2u+) keeps the step alive
-            if err < b.err - 2.0 && err < tol && crate::sim::fire_covers(scene, o.rest, target) {
-                (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err) = (y, p, o.rest, o.time, o.bounces, err);
-                improved = true;
-                break;
+            if !improved {
+                step *= 0.5;
             }
         }
-        if !improved {
-            step *= 0.5;
+        if b.err > ON_TARGET {
+            break; // never got on the spot: keep the closest, skip phase 2
         }
     }
 }
