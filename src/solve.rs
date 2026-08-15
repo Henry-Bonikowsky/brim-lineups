@@ -533,25 +533,14 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     }
     // a lineup the solver itself rates near-zero forgiveness is untrustworthy
     // (tiny aim error cascades, e.g. clipping a sloped roof); prefer sturdy ones
-    // the all-or-nothing forgiveness cliff hides otherwise-valid rows the
-    // moment one sturdy lineup exists; in browse the user picks from a list
-    // with forgiveness shown per row, so show everything there
-    // prefer sturdy rows (forgive >= 0.25) but NEVER cull below MIN_ROWS:
-    // Henry's rule - a click must always offer a handful of positions; a
-    // fragile row (its forgiveness is shown) beats no row at all
-    let sturdy = |v: &mut Vec<Lineup>| {
-        const MIN_ROWS: usize = 6;
-        if browse || v.len() <= MIN_ROWS {
-            return;
-        }
-        let mut fs: Vec<f32> = v.iter().map(|l| l.forgive).collect();
-        fs.sort_by(|a, b| b.total_cmp(a));
-        let floor = fs[MIN_ROWS - 1].min(0.25);
-        v.retain(|l| l.forgive >= floor);
+    // Henry's FINAL ranking rule: fewest bounces (a bouncy fast throw just
+    // means a cleaner lineup exists), then least time. Nothing else ranks -
+    // forgiveness/exposure/distance are labels the player judges. No
+    // forgiveness culling either: every on-spike row shows with its numbers
+    let best = |a: &Lineup, b: &Lineup| {
+        a.bounces.cmp(&b.bounces).then(a.time.total_cmp(&b.time))
     };
     if paired {
-        // angle families from the locked stand: easy positions first, then
-        // closest-landing band, then time (Henry's optimal-angle order)
         if finish_all {
             // top-level paired call (not a refine sub-solve): one stand, one
             // approach lookup for the labels
@@ -563,10 +552,12 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                 }
             }
         }
-        sturdy(&mut all);
-        // Henry's optimal order: on-the-spot rows by TIME, misses after
-        let on = |l: &Lineup| if l.covered && l.err <= ON_TARGET { l.time } else { 1000.0 + l.err };
-        all.sort_by(|a, b| on(a).total_cmp(&on(b)));
+        // on-spike families by (bounces, time); a locked stand still shows
+        // its closest miss (the user asked about THIS spot - explain why)
+        all.sort_by(|a, b| {
+            let (oa, ob) = (a.covered && a.err <= ON_TARGET, b.covered && b.err <= ON_TARGET);
+            ob.cmp(&oa).then(best(a, b))
+        });
         return all;
     }
     // dedup: one lineup per 200u XY cell, keep the fastest
@@ -604,34 +595,18 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // about the stand - refine re-tunes the angle entirely, and the real gate
     // runs on refine's output. Culling here was erasing rescuable positions
     // rank: browse = nearest landing first (user picks by end location).
-    // else: every row's angle is already the fastest on-target throw from
-    // its stand; across stands, on-target rows lead sorted by speed (with
-    // moderate position/safety/fragility modifiers), misses trail by err.
+    // else: (bounces, time) with an on-spike-first ordering pre-refine
+    // (misses may still be rescued into on-spike rows by refine).
     // Stand coords break ties so repeat solves order identically (the n-th
     // row must be the same lineup when the picker re-requests it by index)
     let rank = |v: &mut Vec<Lineup>| {
-        let on = |l: &Lineup| {
-            if browse {
-                l.err
-            } else if l.covered && l.err <= ON_TARGET {
-                0.0
-            } else {
-                1000.0 + l.err
-            }
-        };
-        let key = |l: &Lineup| {
-            if browse {
-                return 0.0;
-            }
-            let fragile = if l.forgive < 0.25 { 15.0 } else { 0.0 };
-            let expo = if l.exposed { 8.0 } else { 0.0 };
-            l.time * 0.7 - l.approach.min(APPROACH_SAFE) / 1500.0 - l.pos_grade() as f32 * 10.0
-                + fragile
-                + expo
-        };
         v.sort_by(|a, b| {
-            on(a).total_cmp(&on(b))
-                .then(key(a).total_cmp(&key(b)))
+            if browse {
+                return a.err.total_cmp(&b.err);
+            }
+            let (oa, ob) = (a.covered && a.err <= ON_TARGET, b.covered && b.err <= ON_TARGET);
+            ob.cmp(&oa)
+                .then(best(a, b))
                 .then(a.stand.x.total_cmp(&b.stand.x))
                 .then(a.stand.y.total_cmp(&b.stand.y))
         });
@@ -670,10 +645,11 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
         .flatten()
         .collect();
     eprintln!("[funnel] refine kept {} rows [t] refine {:.2}s", out.len(), t_refine.secs());
-    // refine replaces angles, so its rows carry fresh forgiveness numbers:
-    // re-apply the sturdiness gate (a 0%-forgive row "works" in the sim and
-    // dies in game to a hair of aim error)
-    sturdy(&mut out);
+    // NO MATTER WHAT: not on the spike = not shown (Henry). Browse is the
+    // deliberate landing-browser and keeps its near-miss rows
+    if !browse {
+        out.retain(|l| l.covered && l.err <= ON_TARGET);
+    }
     rank(&mut out);
     out
 }
@@ -702,7 +678,8 @@ fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         let dz = (o.rest.z - target.z).abs();
         let err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
         let better = if by_time {
-            err <= ON_TARGET && o.time < b.time - 0.05
+            // never trade extra bounces for speed: fewer bounces outranks
+            err <= ON_TARGET && o.bounces <= b.bounces && o.time < b.time - 0.05
         } else {
             err < b.err - 2.0 && err < tol
         };
