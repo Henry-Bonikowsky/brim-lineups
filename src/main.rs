@@ -119,6 +119,9 @@ fn main() {
     if let Some(v) = get("--hand") {
         cfg.hand_left = v.parse().unwrap();
     }
+    if let Some(v) = get("--radius") {
+        cfg.radius = v.parse().unwrap();
+    }
 
     let mut scene = scene::load(&dir);
     let target: V3 = {
@@ -270,6 +273,10 @@ fn main() {
         let aim = match &l.aim_ref {
             Some((p, d)) => format!("({:.0}, {:.0}, {:.0} @ {:.0}u)", p.x, p.y, p.z, d),
             None => "(open sky)".into(),
+        };
+        let aim = match &l.ui_ref {
+            Some((n, ..)) => format!("{aim}  [ref: {n}]"),
+            None => aim,
         };
         println!(
             "{:>28} {:>5.0}u {:>7.1} {:>7.1} {:>5.2}s {:>3} {:>5.0}u {:>6.0}%  {aim}",

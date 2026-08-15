@@ -26,6 +26,10 @@ pub struct Cfg {
     // about bottom-center and shifted; anchors must transform the same way
     pub hud_scale: f32,
     pub hud_dy: f32, // percent of screen height, positive = down
+    pub radius: f32, // projectile collision radius: flights are swept SPHERES,
+                     // not rays - a box lip or roof edge the eye-line clears by
+                     // a hair still blocks the real molly. GUESS (no file value
+                     // extracted); calibration knob via --radius.
 }
 
 /// Crosshair (aim) pitch -> launch pitch. UpwardArc 8 is NOT a constant
@@ -99,6 +103,7 @@ impl Default for Cfg {
             max_time: 8.0,
             hud_scale: 1.0,
             hud_dy: 0.0,
+            radius: 15.0,
         }
     }
 }
@@ -177,16 +182,48 @@ fn fly_impl(
         v.z -= cfg.gravity * DT;
         let step = v * DT;
         let len = step.norm();
-        let ray = Ray::new(Point3::from(p), step / len);
-        if let Some(hit) =
-            scene.mesh.cast_ray_and_get_normal(&nalgebra::Isometry3::identity(), &ray, len, true)
-        {
-            let mut n = hit.normal;
+        // swept SPHERE, not a ray: the real molly has a body - grazing a box
+        // lip or roof edge by less than cfg.radius blocks it in game, and a
+        // zero-width ray sailed through exactly those (Henry: lineups "work"
+        // in sim but clip cover boxes / roofs in game). toi is a distance
+        // because the cast velocity is unit-length. stop_at_penetration=false:
+        // a spawn or post-bounce overlap with separating velocity is not a hit.
+        // radius 0 = plain ray cast: ~6x cheaper, used by the solver's bulk
+        // discovery sweep, whose tol-passers are re-flown at full radius
+        let id = nalgebra::Isometry3::identity();
+        let hit: Option<(f32, V3)> = if cfg.radius > 0.0 {
+            let ball = parry3d::shape::Ball::new(cfg.radius);
+            let opts = parry3d::query::ShapeCastOptions {
+                max_time_of_impact: len,
+                stop_at_penetration: false,
+                ..Default::default()
+            };
+            parry3d::query::cast_shapes(
+                &id,
+                &V3::zeros(),
+                &scene.mesh,
+                &nalgebra::Isometry3::translation(p.x, p.y, p.z),
+                &(step / len),
+                &ball,
+                opts,
+            )
+            .ok()
+            .flatten()
+            .map(|h| (h.time_of_impact, *h.normal1))
+        } else {
+            let ray = Ray::new(Point3::from(p), step / len);
+            scene
+                .mesh
+                .cast_ray_and_get_normal(&id, &ray, len, true)
+                .map(|h| (h.time_of_impact, h.normal))
+        };
+        if let Some((toi, hn)) = hit {
+            let mut n = hn;
             if n.dot(&v) > 0.0 {
                 n = -n; // face the incoming velocity
             }
-            t += DT * hit.time_of_impact / len;
-            p += step * (hit.time_of_impact / len) + n * 0.5;
+            t += DT * toi / len;
+            p += step * (toi / len) + n * 0.5;
             // crevice guard: instant re-contacts (slope/overhang wedges) must
             // not eat the rebound; slide along the surface instead of another
             // energy-shredding reflection
@@ -241,8 +278,15 @@ fn fly_impl(
                 }
             }
             if trace {
-                let owner = match hit.feature {
-                    parry3d::shape::FeatureId::Face(i) => {
+                // debug-only owner lookup: ShapeCastHit carries no feature id,
+                // so probe back into the just-contacted surface with a ray
+                let probe = Ray::new(Point3::from(p), -n);
+                let owner = match scene
+                    .mesh
+                    .cast_ray_and_get_normal(&id, &probe, cfg.radius * 2.0 + 2.0, true)
+                    .map(|h| h.feature)
+                {
+                    Some(parry3d::shape::FeatureId::Face(i)) => {
                         scene.owner_of(i % scene.mesh.indices().len().max(1) as u32)
                     }
                     _ => "?",
@@ -467,6 +511,47 @@ mod tests {
         let open = V3::new(-400.0, 0.0, 1.0);
         assert!(!fire_covers(&scene, rest, behind), "wall must block the spread");
         assert!(fire_covers(&scene, rest, open), "open side must be covered");
+    }
+
+    /// A roof lip the flight line clears by ~5u must still block the molly:
+    /// the projectile is a swept SPHERE (cfg.radius), not a ray. In-game
+    /// failures were exactly this graze class (cover boxes, roof edges).
+    #[test]
+    fn graze_blocks_sphere_not_ray() {
+        let mut verts = vec![
+            Point3::new(-2.0e4, -2.0e4, 0.0),
+            Point3::new(2.0e4, -2.0e4, 0.0),
+            Point3::new(2.0e4, 2.0e4, 0.0),
+            Point3::new(-2.0e4, 2.0e4, 0.0),
+        ];
+        let mut tris = vec![[0u32, 1, 2], [0, 2, 3]];
+        // roof slab, bottom face at z=100, starting at x=500
+        let b = verts.len() as u32;
+        for (x, y) in [(500.0f32, -300.0f32), (2000.0, -300.0), (2000.0, 300.0), (500.0, 300.0)] {
+            verts.push(Point3::new(x, y, 100.0));
+        }
+        tris.push([b, b + 1, b + 2]);
+        tris.push([b, b + 2, b + 3]);
+        let scene = crate::scene::Scene {
+            mesh: TriMesh::new(verts, tris),
+            stands: vec![],
+            min_z: 0.0,
+            sun: V3::new(0.55, 0.45, 0.70),
+            sun_color: [1.0; 3],
+            uvs: vec![],
+            tri_owner: vec![(0, "ground".into())],
+            tri_color: vec![(0, [0.6, 0.6, 0.6])],
+            tri_tex: vec![],
+            tri_foliage: vec![],
+        };
+        // flat throw at z=95: the flight line passes ~5u under the slab lip
+        let cfg = Cfg::default();
+        let o = fly(&scene, V3::new(400.0, 0.0, 95.0), V3::new(1.0, 0.0, 0.0), &cfg).expect("stops");
+        assert!(o.rest.x < 1200.0, "sphere must clip the roof lip, rest.x={}", o.rest.x);
+        let mut thin = cfg;
+        thin.radius = 0.01;
+        let o = fly(&scene, V3::new(400.0, 0.0, 95.0), V3::new(1.0, 0.0, 0.0), &thin).expect("stops");
+        assert!(o.rest.x > 1500.0, "a zero-width flight sails under, rest.x={}", o.rest.x);
     }
 }
 

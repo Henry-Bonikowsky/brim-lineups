@@ -505,7 +505,7 @@ fn launch_angles(s: f32, g: f32, d: f32, h: f32) -> Vec<f32> {
 }
 
 /// strict=true: full-map hunt (covered + hidden-from-site gates, one best per
-/// stand, deduped, ranked by mid-range preference + time). strict=false
+/// stand, deduped, capped at 55m, ranked referenced-first + near + time). strict=false
 /// (paired mode, one locked stand): every distinct working ANGLE FAMILY from
 /// that stand (pitch buckets), ranked by time.
 /// browse=true (strict only): keep every lineup RESTING within tol of the
@@ -560,7 +560,13 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
     let t_sweep = Timer::new();
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
-    let max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
+    // physics ceiling, and for the solver's own hunts Henry's rule: a lineup
+    // further than 55m (5500u) is not worth learning - the hunt never offers
+    // one. A user-locked stand (paired) is his choice and stays uncapped
+    let mut max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
+    if strict {
+        max_range = max_range.min(5500.0);
+    }
     let mut all: Vec<Lineup> = stands
         .par_iter()
         .flat_map_iter(|stand| {
@@ -624,7 +630,13 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                         if pitch <= -89.0 || pitch >= 89.0 {
                             continue;
                         }
-                        let Some(o) = fly(scene, crate::sim::hand_origin(origin, yaw, cfg), dir_from(yaw, pitch), cfg) else {
+                        let hand = crate::sim::hand_origin(origin, yaw, cfg);
+                        // discovery flies a cheap zero-width ray; anything that
+                        // lands within tol is re-flown as the real swept sphere
+                        // below and scored on THAT outcome (grazes the ray
+                        // clears block the real molly)
+                        let thin = crate::sim::Cfg { radius: 0.0, ..*cfg };
+                        let Some(o) = fly(scene, hand, dir_from(yaw, pitch), &thin) else {
                             n_none.fetch_add(1, Relaxed);
                             continue;
                         };
@@ -711,25 +723,41 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
             }
             if paired {
                 let mut out: Vec<Lineup> = families.into_values().collect();
+                // families were discovered on the cheap zero-width flight:
+                // confirm each kept row with the real swept sphere before
+                // alignment - grazes the ray cleared (box lips, roof edges)
+                // block the real molly and die here
+                out.retain_mut(|b| {
+                    let launch = crate::sim::launch_pitch(b.pitch, cfg);
+                    let Some(o) =
+                        fly(scene, crate::sim::hand_origin(origin, b.yaw, cfg), dir_from(b.yaw, launch), cfg)
+                    else {
+                        return false;
+                    };
+                    let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+                    let dz = (o.rest.z - target.z).abs();
+                    (b.rest, b.time, b.bounces) = (o.rest, o.time, o.bounces);
+                    b.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+                    b.covered = b.err < tol && crate::sim::fire_covers(scene, o.rest, target);
+                    b.covered || (browse && b.err < tol)
+                });
                 if out.is_empty() {
                     // no throw lands within tolerance: report the closest miss so
                     // the user sees WHY (err > tol labels it)
                     out.extend(best_miss);
                 }
-                // align_all=false: only the fastest covered family gets the
-                // (expensive) reference alignment - it is the only row the
-                // refine caller keeps
-                let align_idx: Option<usize> = if align_all {
-                    None
-                } else {
-                    out.iter()
-                        .enumerate()
-                        .filter(|(_, l)| l.covered)
-                        .min_by(|a, b| a.1.time.total_cmp(&b.1.time))
-                        .map(|(i, _)| i)
-                };
-                for (fi, b) in out.iter_mut().enumerate() {
-                    let want_ref = b.covered && (align_all || align_idx == Some(fi));
+                // align_all=false (refine): walk covered families FASTEST-FIRST
+                // and stop at the first one that aligns onto a reference - the
+                // refine caller strongly prefers a referenced row, so "only try
+                // the fastest" left rows ref-less whenever that one family
+                // happened to aim at featureless sky
+                let mut order: Vec<usize> = (0..out.len()).collect();
+                order.sort_by(|&i, &j| out[i].time.total_cmp(&out[j].time));
+                let mut got_ref = false;
+                let mut finished_fast = false;
+                for fi in order {
+                    let b = &mut out[fi];
+                    let want_ref = b.covered && (align_all || !got_ref);
                     // snap the aim so the reference point sits exactly on its
                     // feature. A reference is only real when the ANGLE is
                     // perfectly aligned - if the snap fails (or the row is a
@@ -738,11 +766,13 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                     if !refd && want_ref {
                         // no reference at the fastest angle: walk the covered
                         // alternates of this family (nearest time first, max
-                        // +0.5s) until one of them aligns onto a feature
+                        // +1.5s) until one of them aligns onto a feature - a
+                        // slightly slower angle ON a landmark beats a faster
+                        // one aimed at nothing
                         let key = (crate::sim::launch_pitch(b.pitch, cfg) / 8.0).round() as i32;
                         if let Some(a) = alts.get_mut(&key) {
                             a.sort_by(|x, y| x.0.total_cmp(&y.0));
-                            for &(t, y, p) in a.iter().filter(|(t, ..)| *t <= b.time + 0.8).take(16) {
+                            for &(t, y, p) in a.iter().filter(|(t, ..)| *t <= b.time + 1.5).take(16) {
                                 if (y - b.yaw).abs() + (p - b.pitch).abs() < 0.05 {
                                     continue; // the angle we already tried
                                 }
@@ -758,11 +788,40 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                     }
                     if !refd {
                         b.ui_ref = None;
+                    } else {
+                        got_ref = true;
                     }
-                    finish(scene, target, tol, cfg, origin, b);
+                    // refine (align_all=false) keeps ONE row: the fastest
+                    // covered or the referenced one. Forgiveness for the rest
+                    // is thrown away, so don't pay 16 swept-sphere flights per
+                    // discarded family
+                    let pickable = align_all || refd || (b.covered && !finished_fast);
+                    if b.covered {
+                        finished_fast = true;
+                    }
+                    if pickable {
+                        finish(scene, target, tol, cfg, origin, b);
+                    }
                 }
                 out.sort_by(|a, b| a.time.total_cmp(&b.time));
                 return out.into_iter();
+            }
+            // the ray-discovered best must survive the real swept-sphere flight
+            if let Some(b) = &mut best {
+                let launch = crate::sim::launch_pitch(b.pitch, cfg);
+                let ok = fly(scene, crate::sim::hand_origin(origin, b.yaw, cfg), dir_from(b.yaw, launch), cfg)
+                    .map(|o| {
+                        let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+                        let dz = (o.rest.z - target.z).abs();
+                        (b.rest, b.time, b.bounces) = (o.rest, o.time, o.bounces);
+                        b.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+                        b.covered = b.err < tol && crate::sim::fire_covers(scene, o.rest, target);
+                        b.covered || (browse && b.err < tol)
+                    })
+                    .unwrap_or(false);
+                if !ok {
+                    best = None;
+                }
             }
             if let Some(b) = &mut best {
                 // a LINEUP is thrown from cover: nobody standing anywhere around
@@ -790,12 +849,16 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                 }
                 // browse: forgiveness/anchoring are about reliably hitting the
                 // lineup's OWN landing spot (the user picked it by end
-                // location), not about covering the original click
+                // location), not about covering the original click.
+                // Pre-refine forgiveness is only a RANKING signal (172 of 196
+                // stands get truncated before refine, which recomputes it at
+                // full radius) - fly it thin, not 16 swept spheres per stand
+                let thin = crate::sim::Cfg { radius: 0.0, ..*cfg };
                 if browse {
                     let rest = b.rest;
-                    finish(scene, rest, 450.0, cfg, origin, b);
+                    finish(scene, rest, 450.0, &thin, origin, b);
                 } else {
-                    finish(scene, target, tol, cfg, origin, b);
+                    finish(scene, target, tol, &thin, origin, b);
                 }
             }
             best.into_iter().collect::<Vec<_>>().into_iter()
@@ -822,9 +885,14 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
         }
     };
     if paired {
-        // angle families from the locked stand, fastest first; easy positions first
+        // angle families from the locked stand: easy positions first, then
+        // referenced angles before raw ones, then fastest
         sturdy(&mut all);
-        all.sort_by(|a, b| (b.pos_grade(), a.time).partial_cmp(&(a.pos_grade(), b.time)).unwrap());
+        all.sort_by(|a, b| {
+            (b.pos_grade(), a.ui_ref.is_none(), a.time)
+                .partial_cmp(&(a.pos_grade(), b.ui_ref.is_none(), b.time))
+                .unwrap()
+        });
         return all;
     }
     // dedup: one lineup per 200u XY cell, keep the fastest
@@ -841,16 +909,19 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
     let mut out: Vec<Lineup> = by_cell.into_values().collect();
     sturdy(&mut out);
     // rank: browse = nearest landing first (user picks by end location);
-    // else easy positions first, then mid-range preference (~3000u) + speed.
+    // else easy positions first, then NEAR preference (Henry: typical picks
+    // ran too far) + speed; rows with a UI reference outrank all raw-angle
+    // rows (an angle you cannot replicate off a landmark is barely a lineup).
     // Stand coords break ties so repeat solves order identically (the n-th
     // row must be the same lineup when the picker re-requests it by index)
     let key = |l: &Lineup| {
         if browse {
             l.err
         } else {
-            (l.dist - 3000.0).abs() / 1500.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0
+            l.dist / 2000.0 + l.time * 0.35 - l.pos_grade() as f32 * 10.0
         }
     };
+    let refless = |l: &Lineup| !browse && l.ui_ref.is_none();
     out.sort_by(|a, b| {
         key(a).total_cmp(&key(b)).then(a.stand.x.total_cmp(&b.stand.x)).then(a.stand.y.total_cmp(&b.stand.y))
     });
@@ -868,12 +939,13 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
             let fams = solve_impl(scene, vis, &[l.stand], rt, rtol, 0.0, false, false, cfg, false);
             let mut cov: Vec<Lineup> = fams.into_iter().filter(|f| f.covered).collect();
             cov.sort_by(|a, b| a.time.total_cmp(&b.time));
-            // the aligned family (the only one carrying a reference) wins the
-            // usual <=0.4s reference preference over a barely-faster raw row
+            // the aligned family wins over a faster raw row by up to 1.5s:
+            // Henry's rows kept shipping without references, and an angle you
+            // cannot set off a landmark is not replicable in game
             let pick = cov
                 .iter()
                 .position(|f| f.ui_ref.is_some())
-                .filter(|&i| cov[i].time - cov[0].time <= 0.4)
+                .filter(|&i| cov[i].time - cov[0].time <= 1.5)
                 .unwrap_or(0);
             match (!cov.is_empty()).then(|| cov.swap_remove(pick)) {
                 Some(mut f) => {
@@ -888,8 +960,16 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
         })
         .collect();
     eprintln!("[t] refine {:.2}s", t_refine.secs());
+    // refine replaces angles, so its rows carry fresh forgiveness numbers:
+    // re-apply the sturdiness gate (a 0%-forgive row "works" in the sim and
+    // dies in game to a hair of aim error)
+    sturdy(&mut out);
     out.sort_by(|a, b| {
-        key(a).total_cmp(&key(b)).then(a.stand.x.total_cmp(&b.stand.x)).then(a.stand.y.total_cmp(&b.stand.y))
+        refless(a)
+            .cmp(&refless(b))
+            .then(key(a).total_cmp(&key(b)))
+            .then(a.stand.x.total_cmp(&b.stand.x))
+            .then(a.stand.y.total_cmp(&b.stand.y))
     });
     out
 }
