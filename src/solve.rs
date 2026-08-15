@@ -215,12 +215,12 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     let (n_none, n_far, n_near) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
     let (n_stand_any, n_stand_conf) = (AtomicUsize::new(0), AtomicUsize::new(0));
-    // physics ceiling, and for the solver's own hunts Henry's rule: a lineup
-    // further than 55m (5500u) is not worth learning - the hunt never offers
-    // one. A user-locked stand (paired) is his choice and stays uncapped
+    // physics ceiling, and for the solver's own hunts Henry's rule: cap at
+    // 60m (6000u, ~hearing range) - a longer lineup is not worth learning.
+    // A user-locked stand (paired) is his choice and stays uncapped
     let mut max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
     if strict {
-        max_range = max_range.min(5500.0);
+        max_range = max_range.min(6000.0);
     }
     let mut all: Vec<Lineup> = stands
         .par_iter()
@@ -697,15 +697,18 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
 pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
     use parry3d::query::{Ray, RayCast};
     const R: f32 = 42.0; // pawn CapsuleRadius from the files
-    const REACH: f32 = 150.0;
+    // navmesh samples run ~190u apart: corners must be findable from HALF a
+    // sample gap past the midpoint, or the ones between samples vanish
+    // (Henry: "it's not finding all the corners")
+    const REACH: f32 = 260.0;
     let id = nalgebra::Isometry3::identity();
     // wall faces around the stand: (hit point, horizontal unit normal facing
     // the player, probe height)
     let mut walls: Vec<(V3, V3, f32)> = Vec::new();
     for h in [45.0f32, 90.0] {
         let o = stand + V3::new(0.0, 0.0, h);
-        for k in 0..16 {
-            let a = k as f32 / 16.0 * std::f32::consts::TAU;
+        for k in 0..24 {
+            let a = k as f32 / 24.0 * std::f32::consts::TAU;
             let d = V3::new(a.cos(), a.sin(), 0.0);
             let ray = Ray::new(nalgebra::Point3::from(o), d);
             if let Some(hit) = scene.mesh.cast_ray_and_get_normal(&id, &ray, REACH, true) {
@@ -739,7 +742,7 @@ pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
             let m = V3::new((r1 * n2.y - r2 * n1.y) / det, (n1.x * r2 - n2.x * r1) / det, 0.0);
             let shift = V3::new(m.x, m.y, 0.0).norm();
             let key = dot.abs() * 400.0 + shift;
-            if key >= best_key || shift > 140.0 {
+            if key >= best_key || shift > 250.0 {
                 continue;
             }
             // both faces must be substantial and really extend to the touch
