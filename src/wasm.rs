@@ -165,7 +165,7 @@ fn solved(st: &mut St, tx: f32, ty: f32, list: bool, sx: Option<f32>, sy: Option
     };
     let target = V3::new(tx, ty, tz);
     let stands_vec: Vec<V3> = if let Some((sx, sy)) = stand {
-        let Some(sz) = st.cscene.ground_z(sx, sy) else {
+        let Some(sz) = st.cscene.stand_z(sx, sy) else {
             return Err("{\"error\":\"no ground at stand\"}".into());
         };
         vec![V3::new(sx, sy, sz)]

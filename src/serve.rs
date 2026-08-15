@@ -77,7 +77,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             };
             let target = V3::new(tx, ty, tz);
             let stands_vec: Vec<V3> = if let Some((sx, sy)) = stand {
-                let Some(sz) = cscene.ground_z(sx, sy) else {
+                let Some(sz) = cscene.stand_z(sx, sy) else {
                     let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"no ground at stand\"}"));
                     continue;
                 };
@@ -165,7 +165,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             };
             let target = V3::new(tx, ty, tz);
             let stands_vec: Vec<V3> = if let Some((sx, sy)) = stand {
-                let sz = cscene.ground_z(sx, sy).unwrap_or(tz);
+                let sz = cscene.stand_z(sx, sy).unwrap_or(tz);
                 vec![V3::new(sx, sy, sz)]
             } else {
                 cscene.stands.clone()

@@ -243,6 +243,25 @@ impl Scene {
         }
     }
 
+    /// Standing surface under (x, y) for a USER-CHOSEN stand: like ground_z,
+    /// but a right-click ON a climbable box means "I stand on the box", so
+    /// the highest surface within mounting reach (one stepup box + hop,
+    /// ~260u above the navmesh height) wins over the ground beside it.
+    /// Climbable box tops are filtered out of the navmesh samples, so the
+    /// plain nav-snap resolved onto the floor and spawned INSIDE the box.
+    /// Target clicks keep ground_z (clicks under roofs must stay on the
+    /// floor).
+    pub fn stand_z(&self, x: f32, y: f32) -> Option<f32> {
+        let g = self.ground_z(x, y)?;
+        use parry3d::query::{Ray, RayCast};
+        let top = g + 260.0 + 15.0;
+        let ray = Ray::new(Point3::new(x, y, top), V3::new(0.0, 0.0, -1.0));
+        match self.mesh.cast_ray(&nalgebra::Isometry3::identity(), &ray, 260.0, true) {
+            Some(t) => Some(top - t),
+            None => Some(g),
+        }
+    }
+
     pub fn foliage_at(&self, tri: u32) -> bool {
         match self.tri_foliage.binary_search_by_key(&tri, |(s, _)| *s) {
             Ok(i) => self.tri_foliage[i].1,
