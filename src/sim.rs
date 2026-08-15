@@ -106,6 +106,11 @@ pub struct Outcome {
     pub rest: V3,
     pub time: f32,
     pub bounces: u32,
+    /// The flight took a HARD wall impact and then carried far anyway.
+    /// In-game verdict (Henry, Summit B gate bounce): such redirects are
+    /// not real - the model keeps too much speed off steep wall hits.
+    /// A wall TAP near the landing (kills momentum) does not set this.
+    pub wall_carry: bool,
 }
 
 /// Integrate one throw. `dir` must be normalized. Semi-implicit Euler at 120 Hz
@@ -169,6 +174,7 @@ fn fly_impl(
     // game); contacts = every touch incl. slides and micro-hops (runaway guard)
     let mut bounces = 0u32;
     let mut contacts = 0u32;
+    let mut last_wall: Option<V3> = None;
     if let Some(r) = record.as_deref_mut() {
         r.push(p);
     }
@@ -261,6 +267,12 @@ fn fly_impl(
             let bounciness = cfg.bounciness;
             let vz_in = v.z;
             let vn = v.dot(&n);
+            // hard wall impact (near-vertical face, substantial normal
+            // speed): remember where - long carry after one is distrusted.
+            // Thresholds are calibration knobs (no file values)
+            if n.z.abs() < 0.5 && vn.abs() > 600.0 {
+                last_wall = Some(p);
+            }
             let vt = v - n * vn;
             // tangential friction scales with impact steepness (grazing skips
             // barely rub the surface): the bBounceAngleAffectsFriction curve
@@ -311,7 +323,8 @@ fn fly_impl(
                 // BounceStopSurfaceAngle): a molly never sticks mid-slope on
                 // a steep face - kill the rebound and let gravity take it down
                 if (lat < cfg.stop_speed * 2.0 && n.z > 0.7) || contacts > 120 {
-                    return Some(Outcome { rest: p, time: t, bounces });
+                    let wall_carry = last_wall.map(|w| (p - w).norm() > 1200.0).unwrap_or(false);
+                    return Some(Outcome { rest: p, time: t, bounces, wall_carry });
                 }
                 if lat < cfg.stop_speed * 2.0 {
                     v -= n * v.dot(&n);
@@ -351,7 +364,11 @@ pub fn fire_covers(scene: &Scene, rest: V3, target: V3) -> bool {
     const CELL: f32 = 200.0;
     const RADIUS: f32 = 450.0;
     const STEP_UP: f32 = 110.0;
-    const STEP_DOWN: f32 = 210.0;
+    // file value is 210, but in-game reality (Henry, Summit B): a molly
+    // resting on a ~2m crate does NOT pour fire onto the ground beside it -
+    // the tool claimed "covers" for exactly that and it was blatantly wrong.
+    // Symmetric 110 keeps stairs/slopes spreading and blocks sheer drops
+    const STEP_DOWN: f32 = 110.0;
     let id = nalgebra::Isometry3::identity();
     // ground under (x, y) near reference height z_ref, respecting step limits
     let ground_near = |x: f32, y: f32, z_ref: f32| -> Option<f32> {
@@ -413,7 +430,7 @@ pub fn fire_covers(scene: &Scene, rest: V3, target: V3) -> bool {
     if !(0..5).contains(&ti) || !(0..5).contains(&tj) {
         return false;
     }
-    lit[ti as usize][tj as usize] && (target.z - z[ti as usize][tj as usize]).abs() <= 220.0
+    lit[ti as usize][tj as usize] && (target.z - z[ti as usize][tj as usize]).abs() <= 110.0
 }
 
 #[cfg(test)]
@@ -512,6 +529,41 @@ mod tests {
         let open = V3::new(-400.0, 0.0, 1.0);
         assert!(!fire_covers(&scene, rest, behind), "wall must block the spread");
         assert!(fire_covers(&scene, rest, open), "open side must be covered");
+    }
+
+    /// A molly resting ON TOP of a ~2m crate must NOT claim to cover the
+    /// ground beside it (Henry, in game: the fire never reaches down).
+    #[test]
+    fn crate_top_does_not_cover_ground() {
+        let mut verts = vec![
+            Point3::new(-2.0e4, -2.0e4, 0.0),
+            Point3::new(2.0e4, -2.0e4, 0.0),
+            Point3::new(2.0e4, 2.0e4, 0.0),
+            Point3::new(-2.0e4, 2.0e4, 0.0),
+        ];
+        let mut tris = vec![[0u32, 1, 2], [0, 2, 3]];
+        // crate top: 300x300 slab at z=200 centered at origin
+        let b = verts.len() as u32;
+        for (x, y) in [(-150.0f32, -150.0f32), (150.0, -150.0), (150.0, 150.0), (-150.0, 150.0)] {
+            verts.push(Point3::new(x, y, 200.0));
+        }
+        tris.push([b, b + 1, b + 2]);
+        tris.push([b, b + 2, b + 3]);
+        let scene = crate::scene::Scene {
+            mesh: TriMesh::new(verts, tris),
+            stands: vec![],
+            min_z: 0.0,
+            sun: V3::new(0.55, 0.45, 0.70),
+            sun_color: [1.0; 3],
+            uvs: vec![],
+            tri_owner: vec![(0, "ground".into())],
+            tri_color: vec![(0, [0.6, 0.6, 0.6])],
+            tri_tex: vec![],
+            tri_foliage: vec![],
+        };
+        let on_crate = V3::new(0.0, 0.0, 201.0);
+        let ground_beside = V3::new(400.0, 0.0, 1.0);
+        assert!(!fire_covers(&scene, on_crate, ground_beside), "2m crate top must not cover the ground");
     }
 
     /// A roof lip the flight line clears by ~5u must still block the molly:

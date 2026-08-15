@@ -247,11 +247,12 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
             let confirm = |b: &mut Lineup| -> bool {
                 let launch = crate::sim::launch_pitch(b.pitch, cfg);
                 fly(scene, crate::sim::hand_origin(origin, b.yaw, cfg), dir_from(b.yaw, launch), cfg)
+                    .filter(|o| !o.wall_carry)
                     .map(|o| {
                         let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
                         let dz = (o.rest.z - target.z).abs();
                         (b.rest, b.time, b.bounces) = (o.rest, o.time, o.bounces);
-                        b.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+                        b.err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
                         b.covered = b.err < tol && crate::sim::fire_covers(scene, o.rest, target);
                         b.covered || (browse && b.err < tol)
                     })
@@ -343,13 +344,19 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                             n_none.fetch_add(1, Relaxed);
                             continue;
                         };
+                        if o.wall_carry {
+                            // long carry after a hard wall impact: not real
+                            // in game (Henry) - never a candidate
+                            n_far.fetch_add(1, Relaxed);
+                            continue;
+                        }
                         // success = the FIRE covers the clicked spot: rest within
                         // the 450u patch radius horizontally and within the
                         // fire's vertical reach (ZLayerTolerance 200, StepUp 110
                         // / StepDown 210 from the patch files)
                         let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
                         let dz = (o.rest.z - target.z).abs();
-                        let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+                        let err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
                         // distance alone is not success: the fire must SPREAD
                         // to the click (a >110u box between rest and click
                         // blocks it even at 2m)
@@ -650,7 +657,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     // err stays relative to the original click for display/sort
                     let dxy = ((f.rest.x - target.x).powi(2) + (f.rest.y - target.y).powi(2)).sqrt();
                     let dz = (f.rest.z - target.z).abs();
-                    f.err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+                    f.err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
                     // the paired sub-solve never computes exposure/approach
                     (f.exposed, f.approach) = (l.exposed, l.approach);
                     Some(f)
@@ -688,9 +695,12 @@ fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         else {
             return false;
         };
+        if o.wall_carry {
+            return false;
+        }
         let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
         let dz = (o.rest.z - target.z).abs();
-        let err = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+        let err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
         let better = if by_time {
             err <= ON_TARGET && o.time < b.time - 0.05
         } else {
@@ -748,9 +758,9 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         if let Some(o) = fly(scene, crate::sim::hand_origin(origin, b.yaw + jy, cfg), dir_from(b.yaw + jy, launch_pitch), cfg) {
             let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
             let dz = (o.rest.z - target.z).abs();
-            let dev = if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 };
+            let dev = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
             worst = worst.max(dev);
-            if dev < tol && crate::sim::fire_covers(scene, o.rest, target) {
+            if !o.wall_carry && dev < tol && crate::sim::fire_covers(scene, o.rest, target) {
                 ok += 1;
             }
         } else {
@@ -765,7 +775,8 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
     let covers = |o: &crate::sim::Outcome| {
         let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
         let dz = (o.rest.z - target.z).abs();
-        (if dz <= 220.0 { dxy } else { dxy + (dz - 220.0) * 3.0 }) < tol
+        !o.wall_carry
+            && (if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 }) < tol
             && crate::sim::fire_covers(scene, o.rest, target)
     };
     let launch = dir_from(b.yaw, crate::sim::launch_pitch(b.pitch, cfg));
