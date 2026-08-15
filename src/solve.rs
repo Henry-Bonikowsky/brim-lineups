@@ -21,8 +21,12 @@ impl Timer {
 
 /// "Just as close": two landings within this of each other count as equally
 /// accurate, and the faster throw wins between them (Henry's optimal-angle
-/// rule: closest to the click first, time only inside the band).
-const ERR_BAND: f32 = 50.0;
+/// rule: closest to the click first, time only inside the band). 150u: a
+/// skimming wall-bounce throw bottoms out ~1m of scatter where a steep lob
+/// nails 20u - both read as "on the spot" (the fire patch is 450u), and a
+/// 4s bounce beating an 8s lob is the whole point (Henry: "7 seconds is
+/// not optimal, utilize walls").
+const ERR_BAND: f32 = 150.0;
 
 /// Walking distance (from the spike) beyond which a stand counts as fully
 /// safe: nobody retaking will hike 40m+ before they can even see you.
@@ -256,16 +260,17 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                     .unwrap_or(false)
             };
             let mut sweeps: Vec<(f32, f32)> = if paired {
-                // half-density grid: polish() walks the last mile from any
-                // cell continuously, so 2 x 1.5 deg cells lose nothing but
-                // cost 2.5x less than the old 1.25 x 1.0
+                // WIDE yaw scan: wall-bounce throws aim at a WALL, up to
+                // 60 deg off the direct line - a narrow +-6 window never
+                // even discovered the fast bounce lineups Henry wants.
+                // 2 x 2 deg cells; polish() walks the last mile continuously
                 let mut v = Vec::new();
                 let mut pitch = -35.0f32;
                 while pitch <= 85.0 {
-                    let mut dy = -6.0f32;
-                    while dy <= 6.0 {
+                    let mut dy = -60.0f32;
+                    while dy <= 60.0 {
                         v.push((yaw0 + dy, pitch));
-                        dy += 1.5;
+                        dy += 2.0;
                     }
                     pitch += 2.0;
                 }
@@ -374,8 +379,12 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
                             continue;
                         }
                         // candidates kept CLOSEST-first: optimal is the angle
-                        // that lands nearest the click, time only breaks ties
-                        let key = (pitch / 8.0).round() as i32;
+                        // that lands nearest the click, time only breaks ties.
+                        // Families split by pitch bucket AND bounce count: a
+                        // wall-bounce throw (the class that kills flight time)
+                        // must not be swallowed by a direct lob sharing its
+                        // pitch bucket
+                        let key = (pitch / 8.0).round() as i32 + o.bounces.min(3) as i32 * 1000;
                         let fam = families.entry(key).or_default();
                         let pos = fam.partition_point(|c| c.err <= cand.err);
                         if pos < 5 {
@@ -589,30 +598,37 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // no sturdiness cull BEFORE refine: coarse-angle forgiveness says nothing
     // about the stand - refine re-tunes the angle entirely, and the real gate
     // runs on refine's output. Culling here was erasing rescuable positions
-    // rank: browse = nearest landing first (user picks by end location);
-    // else easy positions first, then NEAR preference (Henry: typical picks
-    // ran too far) + speed.
+    // rank: browse = nearest landing first (user picks by end location).
+    // else Henry's rule ACROSS stands too: rows that land straight on the
+    // click come FIRST - closeness bands (50u, from the best landing) are
+    // the primary order; safety/position/speed only sort within a band.
+    // Exposure pushes a row 3 bands back, not to the bottom.
     // Stand coords break ties so repeat solves order identically (the n-th
     // row must be the same lineup when the picker re-requests it by index)
-    let key = |l: &Lineup| {
-        if browse {
-            l.err
-        } else {
-            // accuracy first, then SAFETY: the longer a retaker must walk
-            // from the spike before seeing you, the better the position
-            // (replaces the crow-flies distance preference - Henry: it says
-            // nothing). Fragile rows sink below sturdy; exposed below all
+    let rank = |v: &mut Vec<Lineup>| {
+        let minerr = v.iter().filter(|l| l.covered).map(|l| l.err).fold(f32::INFINITY, f32::min);
+        let band = |l: &Lineup| {
+            if browse {
+                return l.err;
+            }
+            ((l.err - minerr) / ERR_BAND).max(0.0).floor() + if l.exposed { 3.0 } else { 0.0 }
+        };
+        let key = |l: &Lineup| {
+            if browse {
+                return 0.0;
+            }
             let fragile = if l.forgive < 0.25 { 5.0 } else { 0.0 };
-            let expo = if l.exposed { 30.0 } else { 0.0 };
-            l.err / 150.0 + l.time * 0.35 - l.approach.min(APPROACH_SAFE) / 800.0
-                - l.pos_grade() as f32 * 10.0
-                + fragile
-                + expo
-        }
+            l.time * 0.35 - l.approach.min(APPROACH_SAFE) / 800.0 - l.pos_grade() as f32 * 10.0 + fragile
+        };
+        v.sort_by(|a, b| {
+            band(a)
+                .total_cmp(&band(b))
+                .then(key(a).total_cmp(&key(b)))
+                .then(a.stand.x.total_cmp(&b.stand.x))
+                .then(a.stand.y.total_cmp(&b.stand.y))
+        });
     };
-    out.sort_by(|a, b| {
-        key(a).total_cmp(&key(b)).then(a.stand.x.total_cmp(&b.stand.x)).then(a.stand.y.total_cmp(&b.stand.y))
-    });
+    rank(&mut out);
     // REFINE: the coarse per-stand sweep proves a stand WORKS, not that its
     // angle is optimal (walk mode found better angles from the same spot in
     // seconds). Re-run the exhaustive paired sweep from each surviving stand
@@ -650,9 +666,7 @@ fn solve_impl(scene: &Scene, stands: &[V3], target: V3, tol: f32, min_dist: f32,
     // re-apply the sturdiness gate (a 0%-forgive row "works" in the sim and
     // dies in game to a hair of aim error)
     sturdy(&mut out);
-    out.sort_by(|a, b| {
-        key(a).total_cmp(&key(b)).then(a.stand.x.total_cmp(&b.stand.x)).then(a.stand.y.total_cmp(&b.stand.y))
-    });
+    rank(&mut out);
     out
 }
 
