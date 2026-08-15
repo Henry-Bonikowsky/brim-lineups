@@ -603,6 +603,14 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
     .clone();
 
     let allowed = allowed_umaps(dir);
+    // game-file collision truth (valo_dump colmesh): mesh -> "complex"
+    // (render tris ARE the collision), "simple" (use meshes_col hull), or
+    // "none" (does not block - the canopy/decor class real mollies fly
+    // through). Absent file = old behavior for that map
+    let colinfo: HashMap<String, String> = std::fs::read_to_string(dir.join("colinfo.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
     let mut objs: HashMap<String, Option<ObjMesh>> = HashMap::new();
     // textures deduped by usemtl key (one diffuse per material, shared by
     // every mesh section that uses it)
@@ -624,10 +632,17 @@ fn load_ex(dir: &Path, mode: Mode) -> Scene {
         }
         let mesh = i["mesh"].as_str().unwrap_or("");
         let umap = i["umap"].as_str().unwrap_or("");
+        let cmode = colinfo.get(mesh).map(String::as_str);
+        if mode == Mode::Collision && cmode == Some("none") {
+            skipped_inst += 1;
+            continue;
+        }
+        let simple = mode == Mode::Collision && cmode == Some("simple");
         let obj_name = mesh.replace('/', "_").replace('.', "_") + ".obj";
-        let entry = objs
-            .entry(obj_name.clone())
-            .or_insert_with(|| load_obj(&dir.join("meshes").join(&obj_name)));
+        let cache_key = if simple { format!("col:{obj_name}") } else { obj_name.clone() };
+        let entry = objs.entry(cache_key).or_insert_with(|| {
+            load_obj(&dir.join(if simple { "meshes_col" } else { "meshes" }).join(&obj_name))
+        });
         let Some(om) = entry else { continue };
         let base = tris.len() as u32;
         tri_owner.push((base, format!("{umap}:{}", mesh.rsplit('/').next().unwrap_or("?"))));

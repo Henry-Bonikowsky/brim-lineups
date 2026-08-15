@@ -943,7 +943,13 @@ pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
             if !touch_ok {
                 continue;
             }
-            let Some(gz) = scene.ground_z(pxy.x, pxy.y) else { continue };
+            // ground at the pin, resolved RELATIVE TO THE STAND's level: the
+            // navmesh snap picks the floor beside a climbable box and vetoed
+            // every pin on its top (server paired mode lost box lineups the
+            // CLI found)
+            let down = Ray::new(nalgebra::Point3::new(pxy.x, pxy.y, stand.z + 50.0), V3::new(0.0, 0.0, -1.0));
+            let Some(t) = scene.mesh.cast_ray(&id, &down, 170.0, true) else { continue };
+            let gz = stand.z + 50.0 - t;
             if (gz - stand.z).abs() > 60.0 {
                 continue;
             }
