@@ -947,6 +947,16 @@ pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
             if (gz - stand.z).abs() > 60.0 {
                 continue;
             }
+            // HEADROOM: a pin under an overhang (electrical box tops) put
+            // the player inside geometry - aim views rendered black and
+            // every throw died on the ceiling. A standing capsule needs
+            // ~200u of clear air above the floor
+            {
+                let up = Ray::new(nalgebra::Point3::new(pxy.x, pxy.y, gz + 10.0), V3::new(0.0, 0.0, 1.0));
+                if scene.mesh.cast_ray(&id, &up, 210.0, true).is_some() {
+                    continue;
+                }
+            }
             best_key = key;
             best = Some(V3::new(pxy.x, pxy.y, gz));
         }
