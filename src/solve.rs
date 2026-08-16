@@ -714,7 +714,11 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                     }
                     let (mut lo, mut hi, mut rlo) = (p1, p2, r1);
                     let _ = (p2, r2);
-                    for _ in 0..5 {
+                    // narrow to ~0.03 deg whatever the sweep step was: refine
+                    // sub-solves start from 2-deg rows and 5 fixed levels
+                    // stopped a whole step above Henry's 0.05-deg tap window
+                    let levels = (((hi - lo) / 0.03).log2().ceil() as usize).clamp(1, 8);
+                    for _ in 0..levels {
                         probes += 1;
                         let mid = (lo + hi) * 0.5;
                         match eval(y1, mid) {
@@ -1031,22 +1035,49 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
             // rows arrive in Henry's optimal order (closest-landing band,
             // then time) - the first covered row IS the optimal angle
             let mut cov: Vec<Lineup> = fams.into_iter().filter(|f| f.covered).collect();
-            match (!cov.is_empty()).then(|| cov.swap_remove(0)) {
-                Some(mut f) => {
+            let mut keep: Vec<Lineup> = Vec::new();
+            if !cov.is_empty() {
+                let rep = cov.swap_remove(0);
+                // the sub-solve's order sinks razor-labeled rows, so a
+                // FASTER throw (Henry's core rule: fewest bounces, then
+                // time) can lose the stand's slot purely to its label -
+                // his flat Sunset edge-tap vanished behind the clean lob
+                // from the same spot. Keep such a row as a second row for
+                // this stand: labeled, ranked below clean by the tiers,
+                // but visible
+                let extra = cov
+                    .into_iter()
+                    .filter(|c| {
+                        c.bounces < rep.bounces
+                            || (c.bounces == rep.bounces && c.time < rep.time - 0.05)
+                    })
+                    .min_by(|a, b| a.bounces.cmp(&b.bounces).then(a.time.total_cmp(&b.time)));
+                keep.push(rep);
+                if let Some(mut e) = extra {
+                    // non-leader sub-solve rows skip polish/finish
+                    // (finish_all=false): give the promoted row its real
+                    // forgiveness + razor label before showing it
+                    let o2 = e.stand + V3::new(0.0, 0.0, cfg.eye_z);
+                    polish(scene, target, tol, cfg, o2, &mut e);
+                    finish(scene, target, tol, cfg, o2, &mut e);
+                    keep.push(e);
+                }
+                for f in keep.iter_mut() {
                     // err stays relative to the original click for display/sort
                     let dxy = ((f.rest.x - target.x).powi(2) + (f.rest.y - target.y).powi(2)).sqrt();
                     let dz = (f.rest.z - target.z).abs();
                     f.err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
                     // the paired sub-solve never computes exposure/approach
                     (f.exposed, f.approach) = (l.exposed, l.approach);
-                    Some(f)
                 }
+            } else if browse {
                 // even the dense sphere-confirmed re-sweep found no covered
                 // throw at the click from this stand: strict drops it, but
                 // browse keeps the coarse row as a near-miss option (Henry:
                 // fewer rows is never the ask)
-                None => browse.then(|| l.clone()),
+                keep.push(l.clone());
             }
+            keep
         })
         .flatten()
         .collect();
