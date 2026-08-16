@@ -293,7 +293,9 @@ function lineupHtml(l, n) {
     ? `<span class='good'>forgiving aim (${fg}% of slightly-off throws still land)</span>`
     : fg >= 25
       ? `<span class='mid'>moderate aim precision needed (${fg}%)</span>`
-      : `<span class='warn'>PRECISE lineup - a hair of aim error misses (${fg}% tolerance)</span>`;
+      : fg > 15
+        ? `<span class='warn'>PRECISE lineup - a hair of aim error misses (${fg}% tolerance)</span>`
+        : `<span class='warn' style='display:block;font-size:1.6em;font-weight:bold'>&#9888; INCONSISTENT - only ${fg}% of near-identical throws land; likely not replicable</span>`;
   let h = `<h3>#${n}: ${verdict}. ${pos}.${grz}${expo} ${forg}. Thrown from ${(l.range / 100).toFixed(0)}m, ${l.time.toFixed(1)}s flight, ${bn(l.bounces)}. ${aim}.</h3>`;
   h += imgsHtml(l.imgs);
   const walkbtn = mode === 'wasm' ? '' : ` <button onclick='walkTo(${l.stand[0]}, ${l.stand[1]}, ${l.yaw}, ${l.pitch})'>walk here</button>`;
