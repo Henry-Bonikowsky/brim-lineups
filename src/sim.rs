@@ -102,8 +102,17 @@ impl Default for Cfg {
             //     in game than the 2945-sim's angle - the sim reproduces
             //     that exactly at 2955-2960.
             // 2955 satisfies both. File ProjectileSpeed is 2900.
-            speed: 2955.0,
-            gravity: 1145.0,
+            // 2026-08-16 FILE TRUTH (valo_dump out/sarge_q +
+            // DefaultEngine.ini, Henry: "do proper research, export from
+            // valorant"): ProjectileSpeed 2900 exactly, gravity =
+            // DefaultGravityZ 2500 x ProjectileGravityScale 0.45 = 1125
+            // exactly. The old fitted 2955/1145 was ~2% hotter - fit through
+            // a launch-curve that lacked UpwardShift, and Henry's controlled
+            // 5m + 13m wall tests read the sim as "stronger" in exactly this
+            // direction. s^2/g of the file pair sits inside the Sunset
+            // lip-catch anchor's bound.
+            speed: 2900.0,
+            gravity: 1125.0,
             // file DefaultBounciness 0.35. The 2026-08-03 clip fit said
             // 0.38-0.40, but that fit predates swept-sphere flights. After
             // the friction-floor fix removed the carry error, Henry's
@@ -118,7 +127,10 @@ impl Default for Cfg {
             // ZERO: Henry confirmed in-game the molly launches from screen
             // center, straight, above the crosshair. No lateral hand offset.
             hand_left: 0.0,
-            hand_down: 25.0,
+            // 25 (the 2026-08-15 TEST fit) minus the file's ProjectileTuning
+            // UpwardShift 8.0 (read as a release-height lift; semantics are
+            // native code - if it's really degrees this needs redoing)
+            hand_down: 17.0,
             max_time: 8.0,
             radius: 15.0,
         }
