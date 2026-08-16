@@ -194,7 +194,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             let vs = vscene.clone();
             let live2 = live.clone();
             std::thread::spawn(move || {
-                let body = flight_video(&vs, target, &traj, first_bounce, &live2);
+                let body = flight_video(&vs, target, &traj, first_bounce, &live2, None);
                 let _ = req.respond(
                     tiny_http::Response::from_string(body)
                         .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap()),
@@ -286,7 +286,7 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 render::render_marked(&vs, eye, yaw, pitch, &format!("{live2}/{run}_impact.bmp"), c);
                 format!("live/{run}_impact.bmp")
             });
-            let vid_body = flight_video(&vs, out.rest, &traj, first_bounce, &live2);
+            let vid_body = flight_video(&vs, out.rest, &traj, first_bounce, &live2, Some((eye, yaw, pitch)));
             let vid = vid_body
                 .strip_prefix("{\"video\":")
                 .and_then(|s| s.strip_suffix('}'))
@@ -357,7 +357,11 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
 /// or {"error": ...}). The bounce/settle phase switches to a FIXED camera
 /// with verified line of sight to the rest point (the chase cam clips into
 /// geometry exactly when the landing gets interesting).
-fn flight_video(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, live: &str) -> String {
+/// pov = Some((eye, yaw, pitch)): every frame from that FIXED first-person
+/// camera - walk-mode shots are the player standing still watching their
+/// throw; the chase/landing cams point at the floor on short wall tests
+/// ("the video fucked up") and make game-vs-sim comparison impossible.
+fn flight_video(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, live: &str, pov: Option<(V3, f32, f32)>) -> String {
     use rayon::prelude::*;
     let land_cam = render::land_cam(vscene, target, traj, first_bounce);
     let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
@@ -368,6 +372,14 @@ fn flight_video(vscene: &Scene, target: V3, traj: &[V3], first_bounce: usize, li
         let upto = render::flight_frame_index2(f, FRAMES, 16, traj.len(), first_bounce);
         let i = upto.min(traj.len() - 1);
         let m = traj[i];
+        if let Some((eye, pyaw, ppitch)) = pov {
+            render::render_flight_sized(
+                vscene, eye, pyaw, ppitch,
+                fdir.join(format!("f{f:04}.bmp")).to_str().unwrap(),
+                target, traj, i, 640, 400,
+            );
+            return;
+        }
         // switch to the landing cam 1.6s (192 steps at 120Hz) before the
         // first bounce: Henry needs the pre-bounce arc in the molly cam to
         // compare bounce strength against the real game
