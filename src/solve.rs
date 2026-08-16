@@ -128,6 +128,8 @@ pub struct Lineup {
     pub wedged: bool,    // stand is corner-pinned (always true for solver-picked stands)
     pub exposed: bool,   // a retaker sees the thrower within 8m of leaving the spike
     pub graze: bool,     // flight scrapes a wall >25m out: model-fragile, ranked last
+    pub razor: bool,     // >=2 aim jitters change the flight's bounce structure AND
+                         // land far: the throw threads geometry (dropped outright)
     pub approach: f32,   // walking distance from the spike before the thrower is in view
     pub aim_ref: Option<(V3, f32)>, // crosshair reference: first geometry the aim ray hits
 }
@@ -184,7 +186,17 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
     if !strict && stands.len() == 1 {
         sv.extend(press_candidates(scene, vis, stands[0]));
     }
-    solve_impl(scene, vis, &sv, target, tol, min_dist, strict, browse, cfg, true)
+    let mut out = solve_impl(scene, vis, &sv, target, tol, min_dist, strict, browse, cfg, true);
+    // HARD drop, not a label (Henry 2026-08-16: "the lineup shown in the
+    // video is impossible in game"): a row that CLAIMS success but fails the
+    // inflated-radius clearance re-fly never appears. Near-miss explanation
+    // rows (covered=false) stay - they promise nothing
+    let n0 = out.len();
+    out.retain(|l| !(l.razor && l.covered));
+    if out.len() < n0 {
+        eprintln!("[razor] dropped {} geometry-threading rows", n0 - out.len());
+    }
+    out
 }
 
 /// Capsule-pressed positions against each distinct wall within reach of a
@@ -551,6 +563,7 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                             wedged,
                             exposed: false,
                             graze: o.graze,
+                            razor: false,
                             approach: 0.0,
                             aim_ref: None,
                         };
@@ -994,6 +1007,12 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         .map(|t| (origin + aim_dir * t, t));
     let mut ok = 0;
     let mut worst = 0.0f32;
+    // razor evidence: a jitter that changes WHICH geometry the flight hits
+    // (bounce structure differs) and lands far is not aim drift - the throw
+    // threads geometry the model can't promise (Henry 2026-08-16: roof-skim
+    // and facade-graze lineups, both impossible in game, both >=2 such
+    // jitters; legit precise lineups only drift, same bounce structure)
+    let mut ncat = 0;
     for (jy, jp) in
         [(0.75, 0.0), (-0.75, 0.0), (0.0, 0.75), (0.0, -0.75), (0.75, 0.75), (-0.75, 0.75), (0.75, -0.75), (-0.75, -0.75)]
     {
@@ -1003,15 +1022,20 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
             let dz = (o.rest.z - target.z).abs();
             let dev = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
             worst = worst.max(dev);
+            if o.bounces != b.bounces && dev > 800.0 {
+                ncat += 1;
+            }
             if !o.wall_carry && dev < tol && crate::sim::fire_covers(scene, o.rest, target) {
                 ok += 1;
             }
         } else {
             worst = worst.max(9999.0);
+            ncat += 1;
         }
     }
     b.forgive = ok as f32 / 8.0;
     b.spread = worst;
+    b.razor = ncat >= 2;
 
     // POSITION forgiveness: shift the stand ~75u with the SAME aim; if the fire
     // still covers, exact positioning does not matter ("easy position")
@@ -1023,6 +1047,17 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
             && crate::sim::fire_covers(scene, o.rest, target)
     };
     let launch = dir_from(b.yaw, crate::sim::launch_pitch(b.pitch, cfg));
+    // spatial clearance: re-fly the nominal throw with the radius fattened by
+    // the model's error budget (30u). Clearing real geometry by less than that
+    // is not a promise the model can keep (Henry's Foxtrot roof-skim
+    // 2026-08-16: sim cleared a ridge by ~15u at 1km, the real molly hits the
+    // roof every time). Start 60u out along the launch so the wall a pressed
+    // stand leans on does not false-trip the fat sphere at the hand
+    if !b.razor && b.covered {
+        let fat = crate::sim::Cfg { radius: cfg.radius + 30.0, ..*cfg };
+        let o0 = crate::sim::hand_origin(origin, b.yaw, cfg) + launch * 60.0;
+        b.razor = !fly(scene, o0, launch, &fat).as_ref().map(&covers).unwrap_or(false);
+    }
     let mut pok = 0;
     for (ox, oy) in [(75.0f32, 0.0), (-75.0, 0.0), (0.0, 75.0), (0.0, -75.0), (55.0, 55.0), (-55.0, 55.0), (55.0, -55.0), (-55.0, -55.0)] {
         let o2 = crate::sim::hand_origin(origin, b.yaw, cfg) + V3::new(ox, oy, 0.0);
