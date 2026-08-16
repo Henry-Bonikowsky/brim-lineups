@@ -10,7 +10,8 @@ pub fn row_indices(nsel: Option<usize>, list_mode: bool, nlineups: usize) -> Vec
     match nsel {
         Some(k) if k >= 1 && k <= nlineups => vec![k - 1],
         Some(_) => vec![],
-        None if list_mode => (0..nlineups.min(20)).collect(),
+        // browse shows EVERY row (Henry: all reachable positions, period)
+        None if list_mode => (0..nlineups).collect(),
         None => (0..nlineups.min(5)).collect(),
     }
 }

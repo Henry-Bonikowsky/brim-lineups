@@ -444,10 +444,10 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
     // physics ceiling, and for the solver's own hunts Henry's rule: cap at
     // 60m (6000u, ~hearing range) - a longer lineup is not worth learning.
     // A user-locked stand (paired) is his choice and stays uncapped
-    let mut max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
-    if strict {
-        max_range = max_range.min(6000.0);
-    }
+    let max_range = cfg.speed * cfg.speed / cfg.gravity * 1.05;
+    // no artificial range cap (Henry 2026-08-16: "ALL POSITIONS THAT CAN
+    // REACH" - the old 60m not-worth-learning cap hid real far stands);
+    // only the physics ceiling above remains
     let mut all: Vec<Lineup> = stands
         .par_iter()
         .flat_map_iter(|&(stand, wedged)| {
@@ -1052,13 +1052,19 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                 .then(a.stand.y.total_cmp(&b.stand.y))
         });
     };
+    // Henry's completeness rule (2026-08-16, caps his): "ALL POSITIONS THAT
+    // CAN REACH THE SPIKE SHOULD BE SHOWN WITH THE MOST OPTIMAL ANGLE.
+    // PERIOD." The only exclusions: can't reach, obviously in view of the
+    // spike, too close (min_dist). So: exposed stands are DROPPED here (not
+    // labeled - he never wants them offered), and the old 24-stand refine
+    // truncation is gone - every surviving stand gets its refine pass
+    out.retain(|l| !l.exposed);
     rank(&mut out);
     // REFINE: the coarse per-stand sweep proves a stand WORKS, not that its
     // angle is optimal (walk mode found better angles from the same spot in
     // seconds). Re-run the exhaustive paired sweep from each surviving stand
     // and keep its true fastest covered throw; browse rows optimize hitting
     // their OWN landing spot
-    out.truncate(24);
     let t_refine = Timer::new();
     let mut out: Vec<Lineup> = out
         .par_iter()
