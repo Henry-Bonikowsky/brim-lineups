@@ -627,6 +627,12 @@ fn render_ex(
                     }
                 }
             }
+            // exact point: single magenta center dot (a ring alone reads a
+            // whole circle wide - Henry needs THE pixel for calibration)
+            if mx >= 0 && mx < W as i32 && my >= 0 && my < H as i32 {
+                let o = ((H - 1 - my as usize) * W + mx as usize) * 3;
+                (px[o], px[o + 1], px[o + 2]) = (255, 0, 255);
+            }
         }
     }
 

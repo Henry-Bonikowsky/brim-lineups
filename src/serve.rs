@@ -295,8 +295,22 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             let impact_json = impact_img
                 .map(|r| format!("\"{r}\""))
                 .unwrap_or("null".into());
+            // measured calibration delta: where the crosshair ray lands vs
+            // where the molly first strikes, as a vertical cm offset - Henry
+            // compares this number to his in-game observation directly, no
+            // image reading needed (walls without detail textures render flat)
+            let aim_delta = contact.and_then(|c| {
+                use parry3d::query::{Ray, RayCast};
+                let (sp0, cp0) = pitch.to_radians().sin_cos();
+                let ad = V3::new(cp0 * cy2, cp0 * sy2, sp0);
+                let ray = Ray::new(nalgebra::Point3::from(eye), ad);
+                cs.mesh
+                    .cast_ray(&nalgebra::Isometry3::identity(), &ray, 5000.0, true)
+                    .map(|t| c.z - (eye.z + ad.z * t))
+            });
+            let delta_json = aim_delta.map(|d| format!("{:.0}", d)).unwrap_or("null".into());
             let body = format!(
-                "{{\"rest\":[{:.0},{:.0},{:.0}],\"time\":{:.2},\"bounces\":{},\"stand\":[{x:.0},{y:.0},{gz:.0}],\"impact\":{impact_json},\"video\":{vid}}}",
+                "{{\"rest\":[{:.0},{:.0},{:.0}],\"time\":{:.2},\"bounces\":{},\"stand\":[{x:.0},{y:.0},{gz:.0}],\"impact\":{impact_json},\"impact_above_aim_cm\":{delta_json},\"video\":{vid}}}",
                 out.rest.x, out.rest.y, out.rest.z, out.time, out.bounces
             );
             let _ = req.respond(
