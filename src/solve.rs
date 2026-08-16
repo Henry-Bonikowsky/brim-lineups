@@ -186,15 +186,38 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
     if !strict && stands.len() == 1 {
         sv.extend(press_candidates(scene, vis, stands[0]));
     }
-    let mut out = solve_impl(scene, vis, &sv, target, tol, min_dist, strict, browse, cfg, true);
-    // HARD drop, not a label (Henry 2026-08-16: "the lineup shown in the
-    // video is impossible in game"): a row that CLAIMS success but fails the
-    // inflated-radius clearance re-fly never appears. Near-miss explanation
-    // rows (covered=false) stay - they promise nothing
-    let n0 = out.len();
-    out.retain(|l| !(l.razor && l.covered));
-    if out.len() < n0 {
-        eprintln!("[razor] dropped {} geometry-threading rows", n0 - out.len());
+    let razor = |mut rows: Vec<Lineup>| -> Vec<Lineup> {
+        // HARD drop, not a label (Henry 2026-08-16: "the lineup shown in the
+        // video is impossible in game"): a row that CLAIMS success but fails
+        // the inflated-radius clearance re-fly never appears. Near-miss
+        // explanation rows (covered=false) stay - they promise nothing
+        let n0 = rows.len();
+        rows.retain(|l| !(l.razor && l.covered));
+        if rows.len() < n0 {
+            eprintln!("[razor] dropped {} geometry-threading rows", n0 - rows.len());
+        }
+        rows
+    };
+    if strict {
+        return razor(solve_impl(scene, vis, &sv, target, tol, min_dist, strict, browse, cfg, true, true));
+    }
+    // paired: a right-click resolves to CORNERS (Henry's design; corners are
+    // the reproducible stands) - EVERY corner in reach of the click and its
+    // press variants, not just the geometrically best one (the squarest
+    // corner near Henry's C-site click sits under the mid-birdhouse roof
+    // where the lob dies, while the open ground beside it has it). Only when
+    // no corner produces a working throw does the EXACT clicked spot run as
+    // the pos-0 free stand, so a lineup that exists nowhere else still shows
+    let mut pins: Vec<V3> = sv.iter().flat_map(|s| wedge_stands(scene, *s)).collect();
+    let mut seen = std::collections::HashSet::new();
+    pins.retain(|p| seen.insert(((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64)));
+    let mut out = if pins.is_empty() {
+        Vec::new()
+    } else {
+        razor(solve_impl(scene, vis, &pins, target, tol, min_dist, strict, browse, cfg, true, true))
+    };
+    if !out.iter().any(|l| l.covered) {
+        out.extend(razor(solve_impl(scene, vis, &sv, target, tol, min_dist, strict, browse, cfg, true, false)));
     }
     out
 }
@@ -330,7 +353,7 @@ fn wall_pattern(vis: &Scene, press: V3, nh: V3, ground_z: f32) -> bool {
 /// row) runs only for the fastest covered family per stand, since the caller
 /// keeps just that one. Everything else identical.
 #[allow(clippy::too_many_arguments)]
-fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg, finish_all: bool) -> Vec<Lineup> {
+fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol: f32, min_dist: f32, strict: bool, browse: bool, cfg: &Cfg, finish_all: bool, pinned: bool) -> Vec<Lineup> {
     let paired = !strict;
     // POSITION RULE (strict/solver-picked stands only): a lineup stand must
     // sit against TWO faces (wall corner, angled walls, object against wall)
@@ -364,25 +387,9 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
         }
         out.into_iter().map(|s| (s, true)).collect()
     } else {
-        // the click is the user's choice: sweep it AS CLICKED, and ALSO from
-        // its corner pin when one is in reach (a free repeatability upgrade).
-        // Replacing the click with the pin lost real lineups outright - the
-        // pin reaches 260u and Henry's C-site lob only exists at his exact
-        // spot, not under the overhang the pin dragged it to
-        let mut v: Vec<(V3, bool)> = Vec::new();
-        for s in stands {
-            match wedge_stand(scene, *s) {
-                Some(w) if (w - *s).norm() > 25.0 => {
-                    v.push((*s, false));
-                    v.push((w, true));
-                }
-                Some(w) => v.push((w, true)),
-                None => v.push((*s, false)),
-            }
-        }
-        let mut seen = std::collections::HashSet::new();
-        v.retain(|(p, _)| seen.insert(((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64)));
-        v
+        // paired stands arrive resolved: solve() passes corner pins
+        // (pinned=true) or the exact clicked spots as the pos-0 fallback
+        stands.iter().map(|s| (*s, pinned)).collect()
     };
     if strict {
         eprintln!("[t] pin {:.2}s", t_pin.secs());
@@ -896,7 +903,7 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
             // browse included: every row re-tunes onto the CLICK (the old
             // self-targeting "optimize your own landing" left the picker's
             // list full of never-tuned throws while strict looked fine)
-            let fams = solve_impl(scene, vis, &[l.stand], target, tol, 0.0, false, false, cfg, false);
+            let fams = solve_impl(scene, vis, &[l.stand], target, tol, 0.0, false, false, cfg, false, true);
             // rows arrive in Henry's optimal order (closest-landing band,
             // then time) - the first covered row IS the optimal angle
             let mut cov: Vec<Lineup> = fams.into_iter().filter(|f| f.covered).collect();
@@ -1084,6 +1091,14 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
 /// every time, preferring the corner closest to 90 deg; None = no corner in
 /// reach, so not a valid lineup stand.
 pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
+    wedge_stands(scene, stand).into_iter().next()
+}
+
+/// EVERY valid corner pin in reach, best (squarest, closest) first. Paired
+/// mode sweeps them all: the geometric best corner can sit under a roof
+/// (Haven mid birdhouse) that kills the very lob the user right-clicked
+/// for, while a neighboring corner in the open has it.
+pub fn wedge_stands(scene: &Scene, stand: V3) -> Vec<V3> {
     use parry3d::query::{Ray, RayCast};
     const R: f32 = 42.0; // pawn CapsuleRadius from the files
     // navmesh samples run ~190u apart: corners must be findable from HALF a
@@ -1113,9 +1128,8 @@ pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
             }
         }
     }
-    // best corner = closest to 90 deg (|dot| ~ 0), then closest to the stand
-    let mut best: Option<V3> = None;
-    let mut best_key = f32::MAX;
+    // corner rank = closest to 90 deg (|dot| ~ 0), then closest to the stand
+    let mut pins: Vec<(f32, V3)> = Vec::new();
     for (i, (p1, n1, h1)) in walls.iter().enumerate() {
         for (p2, n2, h2) in &walls[i + 1..] {
             let dot = n1.dot(n2);
@@ -1131,7 +1145,7 @@ pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
             let m = V3::new((r1 * n2.y - r2 * n1.y) / det, (n1.x * r2 - n2.x * r1) / det, 0.0);
             let shift = V3::new(m.x, m.y, 0.0).norm();
             let key = dot.abs() * 400.0 + shift;
-            if key >= best_key || shift > 250.0 {
+            if shift > 250.0 {
                 continue;
             }
             // both faces must be substantial and really extend to the touch
@@ -1169,11 +1183,15 @@ pub fn wedge_stand(scene: &Scene, stand: V3) -> Option<V3> {
                     continue;
                 }
             }
-            best_key = key;
-            best = Some(V3::new(pxy.x, pxy.y, gz));
+            pins.push((key, V3::new(pxy.x, pxy.y, gz)));
         }
     }
-    best
+    // many wall-pair combos resolve to the same physical corner: keep the
+    // best-ranked pin per 25u cell, best corners first
+    pins.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut seen = std::collections::HashSet::new();
+    pins.retain(|(_, p)| seen.insert(((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64)));
+    pins.into_iter().map(|(_, p)| p).collect()
 }
 
 #[cfg(test)]
