@@ -339,9 +339,8 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
     // with no wedge in reach is out. A RIGHT-CLICKED stand is the user's
     // choice: snap to a corner when one is in reach (repeatability for free),
     // otherwise take the exact spot and label it pos 0.
-    let mut free_stand = false;
     let t_pin = Timer::new();
-    let stands: Vec<V3> = if strict {
+    let stands: Vec<(V3, bool)> = if strict {
         let n_in = stands.len();
         // corner pins PLUS anchored wall presses: pressing against a box or
         // wall with a feature to line up with is just as repeatable as a
@@ -363,19 +362,28 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
         if n_in > 1 {
             eprintln!("stands: {n_in} candidates -> {} pinned/pressed", out.len());
         }
-        out
+        out.into_iter().map(|s| (s, true)).collect()
     } else {
-        stands
-            .iter()
-            .map(|s| {
-                wedge_stand(scene, *s).unwrap_or_else(|| {
-                    free_stand = true;
-                    *s
-                })
-            })
-            .collect()
+        // the click is the user's choice: sweep it AS CLICKED, and ALSO from
+        // its corner pin when one is in reach (a free repeatability upgrade).
+        // Replacing the click with the pin lost real lineups outright - the
+        // pin reaches 260u and Henry's C-site lob only exists at his exact
+        // spot, not under the overhang the pin dragged it to
+        let mut v: Vec<(V3, bool)> = Vec::new();
+        for s in stands {
+            match wedge_stand(scene, *s) {
+                Some(w) if (w - *s).norm() > 25.0 => {
+                    v.push((*s, false));
+                    v.push((w, true));
+                }
+                Some(w) => v.push((w, true)),
+                None => v.push((*s, false)),
+            }
+        }
+        let mut seen = std::collections::HashSet::new();
+        v.retain(|(p, _)| seen.insert(((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64)));
+        v
     };
-    let wedged = !free_stand;
     if strict {
         eprintln!("[t] pin {:.2}s", t_pin.secs());
     }
@@ -392,7 +400,7 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
     }
     let mut all: Vec<Lineup> = stands
         .par_iter()
-        .flat_map_iter(|stand| {
+        .flat_map_iter(|&(stand, wedged)| {
             let origin = stand + V3::new(0.0, 0.0, cfg.eye_z);
             let delta = target - origin;
             let d = (delta.x * delta.x + delta.y * delta.y).sqrt();
@@ -549,7 +557,7 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                         if covered { &n_near } else { &n_far }.fetch_add(1, Relaxed);
                         let cand = Lineup {
                             dist: d,
-                            stand: *stand,
+                            stand,
                             rest: o.rest,
                             yaw,
                             pitch: crate::sim::aim_pitch(pitch, cfg),
