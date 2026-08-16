@@ -396,24 +396,34 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
     // choice: snap to a corner when one is in reach (repeatability for free),
     // otherwise take the exact spot and label it pos 0.
     let t_pin = Timer::new();
+    // 25u cells that hold a CORNER pin: the stand dedupe prefers corners
+    // over wall presses (see below)
+    let mut corner_cells: std::collections::HashSet<(i64, i64)> = Default::default();
     let stands: Vec<(V3, bool)> = if strict {
         let n_in = stands.len();
         // corner pins PLUS anchored wall presses: pressing against a box or
         // wall with a feature to line up with is just as repeatable as a
         // corner (Henry's rule), and corner-only hunting never OFFERED the
         // behind-a-box stances he uses
-        let pinned: Vec<V3> = stands
+        let pinned: Vec<(V3, bool)> = stands
             .par_iter()
             .flat_map_iter(|s| {
-                let mut v: Vec<V3> = wedge_stand(scene, *s).into_iter().collect();
-                v.extend(press_candidates(scene, vis, *s));
+                let mut v: Vec<(V3, bool)> = wedge_stand(scene, *s).into_iter().map(|w| (w, true)).collect();
+                v.extend(press_candidates(scene, vis, *s).into_iter().map(|p| (p, false)));
                 v.into_iter()
             })
             .collect();
+        let cell25 = |p: &V3| ((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64);
+        for (p, corner) in &pinned {
+            if *corner {
+                corner_cells.insert(cell25(p));
+            }
+        }
         let mut seen = std::collections::HashSet::new();
         let out: Vec<V3> = pinned
             .into_iter()
-            .filter(|p| seen.insert(((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64)))
+            .filter(|(p, _)| seen.insert(cell25(p)))
+            .map(|(p, _)| p)
             .collect();
         if n_in > 1 {
             eprintln!("stands: {n_in} candidates -> {} pinned/pressed", out.len());
@@ -705,12 +715,26 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                 };
                 outs.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
                 let dxyf = |r: &V3| ((r.x - target.x).powi(2) + (r.y - target.y).powi(2)).sqrt();
+                // most promising transitions first (closest rest to the
+                // click): a flat probe cap was exhausted by far-yaw junk
+                // transitions before ever reaching the column holding
+                // Henry's tap window
+                let mut pairs: Vec<((f32, f32, V3), (f32, f32, V3))> = outs
+                    .windows(2)
+                    .filter(|w| {
+                        let ((y1, _, r1), (y2, _, r2)) = (w[0], w[1]);
+                        y1 == y2 && (r1 - r2).norm() >= 600.0 && dxyf(&r1).min(dxyf(&r2)) <= 800.0
+                    })
+                    .map(|w| (w[0], w[1]))
+                    .collect();
+                pairs.sort_by(|a, b| {
+                    dxyf(&a.0 .2).min(dxyf(&a.1 .2)).total_cmp(&dxyf(&b.0 .2).min(dxyf(&b.1 .2)))
+                });
                 // ponytail: 400-probe cap per stand, raise if real windows get cut
                 let mut probes = 0;
-                for w in outs.windows(2) {
-                    let ((y1, p1, r1), (y2, p2, r2)) = (w[0], w[1]);
-                    if y1 != y2 || (r1 - r2).norm() < 600.0 || dxyf(&r1).min(dxyf(&r2)) > 800.0 || probes >= 400 {
-                        continue;
+                for ((y1, p1, r1), (_, p2, r2)) in pairs {
+                    if probes >= 400 {
+                        break;
                     }
                     let (mut lo, mut hi, mut rlo) = (p1, p2, r1);
                     let _ = (p2, r2);
@@ -955,13 +979,24 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
         });
         return all;
     }
-    // dedup: one lineup per 200u XY cell, keep the fastest
+    // dedup: one lineup per 200u XY cell - CORNERS beat wall presses, then
+    // fastest wins. The coarse sweep cannot see what makes a corner special
+    // (Henry's flat Sunset tap lives in a 0.05-deg window invisible at 5-deg
+    // steps), so a press stance 30cm away must not evict the corner - the
+    // corner is the gold-standard stand and its fine search runs in refine
+    let cell25 = |p: &V3| ((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64);
     let mut by_cell: std::collections::HashMap<(i64, i64), Lineup> = Default::default();
     for l in all.drain(..) {
         let key = ((l.stand.x / 200.0) as i64, (l.stand.y / 200.0) as i64);
+        let lc = corner_cells.contains(&cell25(&l.stand));
         match by_cell.get(&key) {
-            Some(cur) if cur.time <= l.time => {}
-            _ => {
+            Some(cur) => {
+                let cc = corner_cells.contains(&cell25(&cur.stand));
+                if (lc && !cc) || (lc == cc && l.time < cur.time) {
+                    by_cell.insert(key, l);
+                }
+            }
+            None => {
                 by_cell.insert(key, l);
             }
         }
