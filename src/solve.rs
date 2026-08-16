@@ -127,7 +127,8 @@ pub struct Lineup {
     pub pos_forgive: f32, // fraction of ~75u stand shifts (same aim) still covering
     pub wedged: bool,    // stand is corner-pinned (always true for solver-picked stands)
     pub exposed: bool,   // a retaker sees the thrower within 8m of leaving the spike
-    pub graze: bool,     // flight scrapes a wall >25m out: model-fragile, ranked last
+    pub graze: bool,     // scrape with >600u carry after: model-fragile, ranked last
+    pub scrape: bool,    // ANY late wall contact (internal polish/refine brake)
     pub razor: bool,     // >=2 aim jitters change the flight's bounce structure AND
                          // land far: the throw threads geometry (dropped outright)
     pub approach: f32,   // walking distance from the spike before the thrower is in view
@@ -186,15 +187,15 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
     if !strict && stands.len() == 1 {
         sv.extend(press_candidates(scene, vis, stands[0]));
     }
-    let razor = |mut rows: Vec<Lineup>| -> Vec<Lineup> {
-        // HARD drop, not a label (Henry 2026-08-16: "the lineup shown in the
-        // video is impossible in game"): a row that CLAIMS success but fails
-        // the inflated-radius clearance re-fly never appears. Near-miss
-        // explanation rows (covered=false) stay - they promise nothing
-        let n0 = rows.len();
-        rows.retain(|l| !(l.razor && l.covered));
-        if rows.len() < n0 {
-            eprintln!("[razor] dropped {} geometry-threading rows", n0 - rows.len());
+    // razor is a LABEL + ranking sink everywhere, never a drop (Henry
+    // 2026-08-16, reversing the earlier hard gate after it hid over half of
+    // real row lists: "too many lineups are being hidden for no reason").
+    // The badge + aim-region wash + forgive tell the risk story; ranking
+    // sinks razor rows below clean ones (see the tier calcs)
+    let razor = |rows: Vec<Lineup>| -> Vec<Lineup> {
+        let n = rows.iter().filter(|l| l.razor && l.covered).count();
+        if n > 0 {
+            eprintln!("[razor] {n} geometry-threading rows labeled");
         }
         rows
     };
@@ -466,7 +467,7 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                     .map(|o| {
                         let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
                         let dz = (o.rest.z - target.z).abs();
-                        (b.rest, b.time, b.bounces, b.graze) = (o.rest, o.time, o.bounces, o.graze);
+                        (b.rest, b.time, b.bounces, b.graze, b.scrape) = (o.rest, o.time, o.bounces, o.graze, o.scrape);
                         b.err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
                         b.covered = b.err < tol && crate::sim::fire_covers(scene, o.rest, target);
                         b.covered || (browse && b.err < tol)
@@ -616,6 +617,7 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                             wedged,
                             exposed: false,
                             graze: o.graze,
+                        scrape: o.scrape,
                             razor: false,
                             approach: 0.0,
                             aim_ref: None,
@@ -683,6 +685,7 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                         wedged,
                         exposed: false,
                         graze: o.graze,
+                        scrape: o.scrape,
                         razor: false,
                         approach: 0.0,
                         aim_ref: None,
@@ -826,8 +829,8 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                                 let dz = (o.rest.z - target.z).abs();
                                 let err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
                                 if err < b.err && crate::sim::fire_covers(scene, o.rest, target) {
-                                    (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err, b.graze) =
-                                        (y, p, o.rest, o.time, o.bounces, err, o.graze);
+                                    (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err, b.graze, b.scrape) =
+                                        (y, p, o.rest, o.time, o.bounces, err, o.graze, o.scrape);
                                     b.covered = err < tol;
                                 }
                             }
@@ -836,11 +839,12 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                         finish(scene, target, tol, cfg, origin, b);
                     }
                 }
-                // final order: on-spot by (bounces, 0.1s time bucket,
-                // forgiveness desc, time); misses trail by closeness
+                // final order: on-spot by (razor sink, bounces, 0.1s time
+                // bucket, forgiveness desc, time); misses trail by closeness
                 out.sort_by(|a, b| {
                     hit(b)
                         .cmp(&hit(a))
+                        .then(a.razor.cmp(&b.razor))
                         .then(best(a, b))
                         .then(a.err.total_cmp(&b.err))
                 });
@@ -998,7 +1002,7 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
             if !(l.covered && l.err <= ON_TARGET) {
                 9
             } else {
-                (l.graze as u8) * 2 + l.exposed as u8
+                (l.razor as u8) * 4 + (l.graze as u8) * 2 + l.exposed as u8
             }
         };
         v.sort_by(|a, b| {
@@ -1091,7 +1095,7 @@ fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         let better = if by_time {
             // never trade extra bounces for speed, never trade clean for
             // grazy: fewer bounces outranks
-            err <= ON_TARGET && cov && o.bounces <= b.bounces && (o.graze <= b.graze) && o.time < b.time - 0.05
+            err <= ON_TARGET && cov && o.bounces <= b.bounces && (o.scrape <= b.scrape) && o.time < b.time - 0.05
         } else {
             err < b.err - 2.0 && err < tol && (err > ON_TARGET || cov)
         };
@@ -1099,6 +1103,7 @@ fn polish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
             (b.yaw, b.pitch, b.rest, b.time, b.bounces, b.err) = (y, p, o.rest, o.time, o.bounces, err);
             b.covered = cov;
             b.graze = o.graze;
+            b.scrape = o.scrape;
             return true;
         }
         false

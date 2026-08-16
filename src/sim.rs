@@ -140,6 +140,12 @@ pub struct Outcome {
     /// thread). Close-range wall-bangs (the intentional fast class) stay
     /// unflagged.
     pub graze: bool,
+    /// ANY late hard wall contact (the old graze meaning). Internal brake:
+    /// polish/refine won't trade a scrape-free angle for a scraping one -
+    /// without this they walk onto tight wall-hug angles that then fail the
+    /// razor and kill whole rows. `graze` (the user-facing UNRELIABLE flag)
+    /// additionally requires >600u of carry AFTER the contact.
+    pub scrape: bool,
 }
 
 /// Integrate one throw. `dir` must be normalized. Semi-implicit Euler at 120 Hz
@@ -204,7 +210,7 @@ fn fly_impl(
     let mut bounces = 0u32;
     let mut contacts = 0u32;
     let mut last_wall: Option<V3> = None;
-    let mut graze = false;
+    let mut graze_p: Option<V3> = None;
     if let Some(r) = record.as_deref_mut() {
         r.push(p);
     }
@@ -306,9 +312,14 @@ fn fly_impl(
             // LATE wall scrape: aim/model error compounds with flight time,
             // so a hard wall contact deep into the flight (>2.5s) is a
             // razor thread in game. Early wall-bangs - the intentional
-            // fast class, including banks near a far target - stay clean
-            if n.z.abs() < 0.5 && vn.abs() > 400.0 && t > 2.5 {
-                graze = true;
+            // fast class - stay clean. Only the FIRST such contact is
+            // remembered: whether it was a scrape is judged at rest by how
+            // far the molly still traveled (a wall tap in the landing area
+            // that settles right there is part of the lineup, not a hazard
+            // - flagging those painted UNRELIABLE over half of Henry's
+            // legit lob list, 2026-08-16)
+            if graze_p.is_none() && n.z.abs() < 0.5 && vn.abs() > 400.0 && t > 2.5 {
+                graze_p = Some(p);
             }
             let vt = v - n * vn;
             // tangential friction scales with impact angle: the
@@ -370,7 +381,9 @@ fn fly_impl(
                 // a steep face - kill the rebound and let gravity take it down
                 if (lat < cfg.stop_speed * 2.0 && n.z > 0.7) || contacts > 120 {
                     let wall_carry = last_wall.map(|w| (p - w).norm() > 1200.0).unwrap_or(false);
-                    return Some(Outcome { rest: p, time: t, bounces, wall_carry, graze });
+                    // ponytail: 600u post-scrape travel threshold, retune with anchors
+                    let graze = graze_p.map(|g| (p - g).norm() > 600.0).unwrap_or(false);
+                    return Some(Outcome { rest: p, time: t, bounces, wall_carry, graze, scrape: graze_p.is_some() });
                 }
                 if lat < cfg.stop_speed * 2.0 {
                     v -= n * v.dot(&n);
