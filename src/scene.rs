@@ -438,8 +438,17 @@ pub(crate) fn keep_instance(
             || comp == "GameObjectMesh"
             || comp.starts_with("StaticMesh_Glow")
             || comp.contains("TargetViewMode")
-            || mesh.contains("Bombsite_")
-            || mesh.contains("BombSite")
+            // marker meshes only, anchored at the basename (Bombsite_0_*
+            // planes, BombsiteMarker_*, BombSite_Decal): the old bare
+            // "BombSite"/"Bombsite_" substrings also ate real architecture -
+            // Haven's C floor (Floor_13_CBombSite), Ascent's ABombsite_0_Arch,
+            // Plummet's BombSite_ buildings - leaving "no ground at target"
+            // holes across whole sites. A path anchor is not enough either:
+            // Ascent's real B props live in a /Props/BombsiteB/ folder
+            || {
+                let base = mesh.rsplit('/').next().unwrap_or("");
+                base.starts_with("Bombsite_") || base.starts_with("BombsiteMarker") || base.starts_with("BombSite_")
+            }
             || mesh.contains("BVS_Bomb")
             || mesh.contains("Box_For_Volumes")
             // Vista sublevels DO collide: Sunset's A-alley freeway (an
