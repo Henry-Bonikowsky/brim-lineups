@@ -452,11 +452,12 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                         v.push((yaw0 + dy, pitch));
                         dy += 2.0;
                     }
-                    // 1 deg pitch when the USER locked this stand (indoor
-                    // corridors are 1-2 deg wide and fell between 2-deg
-                    // rows); refine sub-solves keep 2 deg - they run per
-                    // stand for every strict click and 1 deg tripled solves
-                    pitch += if finish_all { 1.0 } else { 2.0 };
+                    // 0.5 deg pitch when the USER locked this stand: indoor
+                    // corridors are 1-2 deg wide and fell between 2-deg rows,
+                    // and Henry's Sunset tarp-drop window (aim 67.7-68.4) sat
+                    // BETWEEN the 1-deg launch rows. Refine sub-solves keep
+                    // 2 deg - they run per stand for every strict click
+                    pitch += if finish_all { 0.5 } else { 2.0 };
                 }
                 v
             } else {
@@ -1072,6 +1073,27 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
         let fat = crate::sim::Cfg { radius: cfg.radius + 30.0, ..*cfg };
         let o0 = crate::sim::hand_origin(origin, b.yaw, cfg) + launch * 60.0;
         b.razor = !fly(scene, o0, launch, &fat).as_ref().map(&covers).unwrap_or(false);
+        // DEAD-DROP exception (Henry's Sunset tarp-drop, in-game verified):
+        // a lineup whose first contact IS the throw - it kills the molly on
+        // an angled surface and drops it near-straight down (post-contact
+        // travel < 150u horizontal). If the fat flight makes the SAME first
+        // contact (within 150u), there is no hidden skim; +30u shifting a
+        // dead bounce's outcome proves nothing the jitter loop hasn't
+        // already vetted. Roof-skims stay dead: their nominal flight either
+        // never touches the ridge (fat's contact is NEW) or carries far
+        // past it after contact. Thresholds are knobs; retune with anchors.
+        if b.razor {
+            if let (Some((no, ntraj, nfb)), Some((fo, ftraj, ffb))) =
+                (crate::sim::fly_path(scene, o0, launch, cfg), crate::sim::fly_path(scene, o0, launch, &fat))
+            {
+                let nb1 = ntraj.get(nfb).copied().unwrap_or(no.rest);
+                let fb1 = ftraj.get(ffb).copied().unwrap_or(fo.rest);
+                let drop = ((no.rest.x - nb1.x).powi(2) + (no.rest.y - nb1.y).powi(2)).sqrt() < 150.0;
+                if drop && (nb1 - fb1).norm() < 150.0 {
+                    b.razor = false;
+                }
+            }
+        }
     }
     let mut pok = 0;
     for (ox, oy) in [(75.0f32, 0.0), (-75.0, 0.0), (0.0, 75.0), (0.0, -75.0), (55.0, 55.0), (-55.0, 55.0), (55.0, -55.0), (-55.0, -55.0)] {
