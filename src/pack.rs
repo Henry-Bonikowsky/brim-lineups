@@ -42,51 +42,89 @@ pub fn pack(dir: &Path, out: &Path) {
     // placements in instances.json order: (flags, mesh, loc, rot, scale, subinsts)
     let mut places: Vec<(u8, u32, [f32; 3], [f32; 3], [f32; 3], scene::SubInsts)> = Vec::new();
 
+    // game-truth collision (colinfo.json), mirroring scene::load_ex: "none"
+    // = mesh does not block (collision skips it), "simple" = collision uses
+    // the meshes_col hull while visual keeps the render obj. The pack format
+    // needs no change: a "simple" instance emits TWO placements, a
+    // collision-only hull and a visual-only render mesh, adjacent so both
+    // scenes keep the native loaders' instance order
+    let colinfo: HashMap<String, String> = std::fs::read_to_string(dir.join("colinfo.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
+    fn get_mesh(
+        dir: &Path,
+        subdir: &str,
+        obj_name: &str,
+        mesh_ids: &mut HashMap<String, Option<u32>>,
+        meshes: &mut Vec<PackMesh>,
+        tex_ids: &mut HashMap<String, i32>,
+        textures: &mut Vec<scene::TexImg>,
+    ) -> Option<u32> {
+        let cache_key = if subdir == "meshes_col" { format!("col:{obj_name}") } else { obj_name.to_string() };
+        *mesh_ids.entry(cache_key).or_insert_with(|| {
+            let om = scene::load_obj(&dir.join(subdir).join(obj_name))?;
+            let secs: Vec<(u32, i32)> = om
+                .sections
+                .iter()
+                .map(|(ff, key)| {
+                    let id = *tex_ids.entry(key.clone()).or_insert_with(|| {
+                        if key == "none" {
+                            return -1;
+                        }
+                        match scene::load_bmp(&dir.join("textures").join(format!("{key}.bmp"))) {
+                            Some(t) => {
+                                textures.push(t);
+                                textures.len() as i32 - 1
+                            }
+                            None => -1,
+                        }
+                    });
+                    (*ff, id)
+                })
+                .collect();
+            meshes.push((om.vs, om.uvs, om.fs, secs));
+            Some(meshes.len() as u32 - 1)
+        })
+    }
+
     for i in &inst {
-        let kc = scene::keep_instance(i, &allowed, Mode::Collision);
         let kv = scene::keep_instance(i, &allowed, Mode::Visual);
+        let mesh_name = i["mesh"].as_str().unwrap_or("");
+        let cmode = colinfo.get(mesh_name).map(String::as_str);
+        let kc = scene::keep_instance(i, &allowed, Mode::Collision) && cmode != Some("none");
         if !kc && !kv {
             continue;
         }
-        let mesh_name = i["mesh"].as_str().unwrap_or("");
+        let simple = kc && cmode == Some("simple");
         let obj_name = mesh_name.replace('/', "_").replace('.', "_") + ".obj";
-        let id = mesh_ids
-            .entry(obj_name.clone())
-            .or_insert_with(|| {
-                let om = scene::load_obj(&dir.join("meshes").join(&obj_name))?;
-                let secs: Vec<(u32, i32)> = om
-                    .sections
-                    .iter()
-                    .map(|(ff, key)| {
-                        let id = *tex_ids.entry(key.clone()).or_insert_with(|| {
-                            if key == "none" {
-                                return -1;
-                            }
-                            match scene::load_bmp(&dir.join("textures").join(format!("{key}.bmp"))) {
-                                Some(t) => {
-                                    textures.push(t);
-                                    textures.len() as i32 - 1
-                                }
-                                None => -1,
-                            }
-                        });
-                        (*ff, id)
-                    })
-                    .collect();
-                meshes.push((om.vs, om.uvs, om.fs, secs));
-                Some(meshes.len() as u32 - 1)
-            })
-            .clone();
-        let Some(id) = id else { continue }; // obj missing: native loader skips too
-        let flags = (kc as u8) | ((kv as u8) << 1) | ((scene::is_foliage_mesh(mesh_name) as u8) << 2);
-        places.push((
-            flags,
-            id,
-            scene::xyz(&i["location"], 0.0),
-            scene::rot3(&i["rotation"]),
-            scene::xyz(&i["scale"], 1.0),
-            scene::parse_subinsts(i),
-        ));
+        let fol = (scene::is_foliage_mesh(mesh_name) as u8) << 2;
+        let place = |id: u32, flags: u8| {
+            (
+                flags,
+                id,
+                scene::xyz(&i["location"], 0.0),
+                scene::rot3(&i["rotation"]),
+                scene::xyz(&i["scale"], 1.0),
+                scene::parse_subinsts(i),
+            )
+        };
+        if simple {
+            // collision half: the hull obj (missing hull = native collision
+            // loader skips the instance too)
+            if let Some(id) = get_mesh(dir, "meshes_col", &obj_name, &mut mesh_ids, &mut meshes, &mut tex_ids, &mut textures) {
+                places.push(place(id, 1 | fol));
+            }
+            // visual half: the render obj
+            if kv {
+                if let Some(id) = get_mesh(dir, "meshes", &obj_name, &mut mesh_ids, &mut meshes, &mut tex_ids, &mut textures) {
+                    places.push(place(id, 2 | fol));
+                }
+            }
+        } else if let Some(id) = get_mesh(dir, "meshes", &obj_name, &mut mesh_ids, &mut meshes, &mut tex_ids, &mut textures) {
+            places.push(place(id, (kc as u8) | ((kv as u8) << 1) | fol));
+        }
     }
 
     // the fully gated stand list (navmesh + targeting fallback + reachability
