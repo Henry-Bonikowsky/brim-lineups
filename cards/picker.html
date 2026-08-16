@@ -612,6 +612,7 @@ async function throwHere() {
     const mtr = v => (v / 100).toFixed(1) + 'm';
     const d = targetPt ? ` - <span class='good'>${mtr(Math.hypot(j.rest[0] - targetPt.X, j.rest[1] - targetPt.Y))} from your yellow click</span>` : '';
     slot.innerHTML = `<p>rests at (${j.rest.join(', ')}) after ${j.time}s, ${j.bounces} bounces${d}</p>`
+      + (j.impact ? `<p>first impact (ring, your exact view):</p><img src='${j.impact}' style='width:960px;max-width:100%'>` : '')
       + (j.video ? `<video autoplay loop muted playsinline controls src='${j.video}' style='width:640px'></video>` : '');
   } catch (e) { slot.innerHTML = '<p>throw failed: ' + e + '</p>'; }
 }

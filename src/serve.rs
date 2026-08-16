@@ -269,14 +269,34 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"flight never settled\"}"));
                 return;
             };
+            // FIRST CONTACT still: the flight video is too soft to judge WHERE
+            // the sim molly strikes (Henry's wall calibration test) - render a
+            // full-res POV from the shooter's eye with a ring on the first
+            // point where the flight direction breaks (= first surface hit)
+            let contact = traj
+                .windows(3)
+                .find(|w| {
+                    let (a, b) = (w[1] - w[0], w[2] - w[1]);
+                    let (na, nb) = (a.norm(), b.norm());
+                    na > 1e-3 && nb > 1e-3 && a.dot(&b) / (na * nb) < 0.94
+                })
+                .map(|w| w[1]);
+            let impact_img = contact.map(|c| {
+                let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+                render::render_marked(&vs, eye, yaw, pitch, &format!("{live2}/{run}_impact.bmp"), c);
+                format!("live/{run}_impact.bmp")
+            });
             let vid_body = flight_video(&vs, out.rest, &traj, first_bounce, &live2);
             let vid = vid_body
                 .strip_prefix("{\"video\":")
                 .and_then(|s| s.strip_suffix('}'))
                 .unwrap_or("null")
                 .to_string();
+            let impact_json = impact_img
+                .map(|r| format!("\"{r}\""))
+                .unwrap_or("null".into());
             let body = format!(
-                "{{\"rest\":[{:.0},{:.0},{:.0}],\"time\":{:.2},\"bounces\":{},\"stand\":[{x:.0},{y:.0},{gz:.0}],\"video\":{vid}}}",
+                "{{\"rest\":[{:.0},{:.0},{:.0}],\"time\":{:.2},\"bounces\":{},\"stand\":[{x:.0},{y:.0},{gz:.0}],\"impact\":{impact_json},\"video\":{vid}}}",
                 out.rest.x, out.rest.y, out.rest.z, out.time, out.bounces
             );
             let _ = req.respond(
