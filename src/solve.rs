@@ -201,25 +201,57 @@ pub fn solve(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol:
     if strict {
         return razor(solve_impl(scene, vis, &sv, target, tol, min_dist, strict, browse, cfg, true, true));
     }
-    // paired: a right-click resolves to CORNERS (Henry's design; corners are
-    // the reproducible stands) - EVERY corner in reach of the click and its
-    // press variants, not just the geometrically best one (the squarest
-    // corner near Henry's C-site click sits under the mid-birdhouse roof
-    // where the lob dies, while the open ground beside it has it). Only when
-    // no corner produces a working throw does the EXACT clicked spot run as
-    // the pos-0 free stand, so a lineup that exists nowhere else still shows
+    // paired: a right-click resolves to CORNERS first (Henry's design;
+    // corners are the reproducible stands) - EVERY corner in reach of the
+    // click and its press variants, not just the geometrically best one
+    // (the squarest corner near Henry's C-site click sits under the
+    // mid-birdhouse roof where the lob dies, while the corner beside it in
+    // the open has it). The EXACT clicked spot ALWAYS sweeps too, as pos-0
+    // rows after the corner rows: Henry's flat Sunset edge-tap exists only
+    // at his precise spot while the corners nearby carry unrelated lobs -
+    // a covered corner row must not hide a click-only lineup
     let mut pins: Vec<V3> = sv.iter().flat_map(|s| wedge_stands(scene, *s)).collect();
     let mut seen = std::collections::HashSet::new();
     pins.retain(|p| seen.insert(((p.x / 25.0).round() as i64, (p.y / 25.0).round() as i64)));
+    // paired rows are NEVER razor-dropped, only labeled (Henry: "instead of
+    // it just cutting something out it shows..."): his flat Sunset edge-tap
+    // is real in game yet fails both razor heuristics - on a user-locked
+    // stand the aim-region wash + forgive + razor label tell the story and
+    // the human judges. Solver-picked lists (strict/browse) keep the hard
+    // drop: nobody vets those rows before the video plays
     let mut out = if pins.is_empty() {
         Vec::new()
     } else {
-        razor(solve_impl(scene, vis, &pins, target, tol, min_dist, strict, browse, cfg, true, true))
+        solve_impl(scene, vis, &pins, target, tol, min_dist, strict, browse, cfg, true, true)
     };
-    if !out.iter().any(|l| l.covered) {
-        out.extend(razor(solve_impl(scene, vis, &sv, target, tol, min_dist, strict, browse, cfg, true, false)));
-    }
+    out.extend(solve_impl(scene, vis, &sv, target, tol, min_dist, strict, browse, cfg, true, false));
     out
+}
+
+/// Aim-region grid for the yellow wash on aim cards: every (dyaw, dpitch)
+/// AIM offset (deg, relative to the row's angle, +-3 deg at 0.15 steps)
+/// whose full-radius throw still covers the target. Henry's reference
+/// finder: any texture or edge inside the wash on the aim render is a
+/// usable lineup reference for SOME working angle - including angles the
+/// solver did not pick.
+pub fn aim_region(scene: &Scene, stand: V3, yaw: f32, pitch: f32, target: V3, tol: f32, cfg: &Cfg) -> Vec<(f32, f32)> {
+    const STEP: f32 = 0.15;
+    const N: i32 = 20;
+    let origin = stand + V3::new(0.0, 0.0, cfg.eye_z);
+    let offs: Vec<(f32, f32)> = (-N..=N)
+        .flat_map(|iy| (-N..=N).map(move |ip| (iy as f32 * STEP, ip as f32 * STEP)))
+        .collect();
+    offs.par_iter()
+        .filter_map(|&(dy, dp)| {
+            let (y, p) = (yaw + dy, pitch + dp);
+            let launch = crate::sim::launch_pitch(p, cfg);
+            let o = fly(scene, crate::sim::hand_origin(origin, y, cfg), dir_from(y, launch), cfg)?;
+            let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+            let dz = (o.rest.z - target.z).abs();
+            let err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
+            (!o.wall_carry && err < tol && crate::sim::fire_covers(scene, o.rest, target)).then_some((dy, dp))
+        })
+        .collect()
 }
 
 /// Capsule-pressed positions against each distinct wall within reach of a
@@ -423,6 +455,8 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
             // sphere confirm walks them in order - a single angle that drifts
             // under the sphere must not kill a family whose neighbors pass
             let mut families: std::collections::HashMap<i32, Vec<Lineup>> = Default::default();
+            // paired: every settled sweep flight, for transition bisection
+            let mut outs: Vec<(f32, f32, V3)> = Vec::new();
             // swept-sphere confirmation: re-fly at full radius, rescore
             // against the click; true = this row is real
             let confirm = |b: &mut Lineup| -> bool {
@@ -548,6 +582,9 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                             n_far.fetch_add(1, Relaxed);
                             continue;
                         }
+                        if paired {
+                            outs.push((yaw, pitch, o.rest));
+                        }
                         // success = the FIRE covers the clicked spot: rest within
                         // the 450u patch radius horizontally and within the
                         // fire's vertical reach (ZLayerTolerance 200, StepUp 110
@@ -606,6 +643,88 @@ fn solve_impl(scene: &Scene, vis: Option<&Scene>, stands: &[V3], target: V3, tol
                 }
             }
             if paired {
+                // TRANSITION BISECTION (Henry's flat machinery tap - hit
+                // window ~0.05 deg): edge-tap lineups live BETWEEN sweep
+                // rows. Where two adjacent pitches at one yaw land in very
+                // different places with at least one near the target, the
+                // boundary throw between them is often a tap-and-drop -
+                // binary-search it; every probe is a normal full-radius
+                // candidate. Pitch only - edge taps are pitch-critical
+                // (ponytail: yaw transitions unbisected; add if a real
+                // lineup demands it). Candidate logic mirrors the sweep
+                // body above - keep them in step.
+                let mut eval = |yaw: f32, pitch: f32| -> Option<V3> {
+                    if pitch <= -89.0 || pitch > crate::sim::LAUNCH_MAX {
+                        return None;
+                    }
+                    let hand = crate::sim::hand_origin(origin, yaw, cfg);
+                    let o = fly(scene, hand, dir_from(yaw, pitch), cfg)?;
+                    if o.wall_carry {
+                        return None;
+                    }
+                    let dxy = ((o.rest.x - target.x).powi(2) + (o.rest.y - target.y).powi(2)).sqrt();
+                    let dz = (o.rest.z - target.z).abs();
+                    let err = if dz <= 110.0 { dxy } else { dxy + (dz - 110.0) * 3.0 };
+                    let covered = err < tol && crate::sim::fire_covers(scene, o.rest, target);
+                    let rest = o.rest;
+                    let cand = Lineup {
+                        dist: d,
+                        stand,
+                        rest: o.rest,
+                        yaw,
+                        pitch: crate::sim::aim_pitch(pitch, cfg),
+                        time: o.time,
+                        bounces: o.bounces,
+                        err,
+                        covered,
+                        forgive: 0.0,
+                        spread: 0.0,
+                        pos_forgive: 0.0,
+                        wedged,
+                        exposed: false,
+                        graze: o.graze,
+                        razor: false,
+                        approach: 0.0,
+                        aim_ref: None,
+                    };
+                    if covered || (browse && err < tol) {
+                        let key = (pitch / 8.0).round() as i32 + o.bounces.min(3) as i32 * 1000;
+                        let fam = families.entry(key).or_default();
+                        let pos = fam.partition_point(|c| c.err <= cand.err);
+                        if pos < 5 {
+                            fam.insert(pos, cand);
+                            fam.truncate(5);
+                        }
+                    } else if best_miss.as_ref().is_none_or(|b| cand.err < b.err) {
+                        best_miss = Some(cand);
+                    }
+                    Some(rest)
+                };
+                outs.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+                let dxyf = |r: &V3| ((r.x - target.x).powi(2) + (r.y - target.y).powi(2)).sqrt();
+                // ponytail: 400-probe cap per stand, raise if real windows get cut
+                let mut probes = 0;
+                for w in outs.windows(2) {
+                    let ((y1, p1, r1), (y2, p2, r2)) = (w[0], w[1]);
+                    if y1 != y2 || (r1 - r2).norm() < 600.0 || dxyf(&r1).min(dxyf(&r2)) > 800.0 || probes >= 400 {
+                        continue;
+                    }
+                    let (mut lo, mut hi, mut rlo) = (p1, p2, r1);
+                    let _ = (p2, r2);
+                    for _ in 0..5 {
+                        probes += 1;
+                        let mid = (lo + hi) * 0.5;
+                        match eval(y1, mid) {
+                            Some(rest) if (rest - rlo).norm() < 600.0 => {
+                                lo = mid;
+                                rlo = rest;
+                            }
+                            _ => hi = mid,
+                        }
+                    }
+                    let _ = (lo, hi, rlo);
+                }
+                drop(eval);
                 // families were discovered on the cheap zero-width flight:
                 // sphere-confirm the candidates, then the family's rep is
                 // Henry's optimal: the FASTEST throw that lands ON the spot
@@ -1069,19 +1188,23 @@ fn finish(scene: &Scene, target: V3, tol: f32, cfg: &Cfg, origin: V3, b: &mut Li
     // 2026-08-16: sim cleared a ridge by ~15u at 1km, the real molly hits the
     // roof every time). Start 60u out along the launch so the wall a pressed
     // stand leans on does not false-trip the fat sphere at the hand
-    if !b.razor && b.covered {
+    if b.covered {
         let fat = crate::sim::Cfg { radius: cfg.radius + 30.0, ..*cfg };
         let o0 = crate::sim::hand_origin(origin, b.yaw, cfg) + launch * 60.0;
-        b.razor = !fly(scene, o0, launch, &fat).as_ref().map(&covers).unwrap_or(false);
-        // DEAD-DROP exception (Henry's Sunset tarp-drop, in-game verified):
-        // a lineup whose first contact IS the throw - it kills the molly on
-        // an angled surface and drops it near-straight down (post-contact
-        // travel < 150u horizontal). If the fat flight makes the SAME first
-        // contact (within 150u), there is no hidden skim; +30u shifting a
-        // dead bounce's outcome proves nothing the jitter loop hasn't
-        // already vetted. Roof-skims stay dead: their nominal flight either
-        // never touches the ridge (fat's contact is NEW) or carries far
-        // past it after contact. Thresholds are knobs; retune with anchors.
+        if !b.razor {
+            b.razor = !fly(scene, o0, launch, &fat).as_ref().map(&covers).unwrap_or(false);
+        }
+        // DEAD-DROP exception (Henry's Sunset tarp-drop + flat machinery tap,
+        // both in-game verified), rescuing from BOTH gates: a lineup whose
+        // first contact IS the throw - it kills the molly on an angled
+        // surface and drops it near-straight down (post-contact travel
+        // < 150u horizontal). Jitter instability there is PRECISION (Henry:
+        // "most good lineups sadly work like that" - the reference makes
+        // them repeatable; forgive labels it), and if the fat flight makes
+        // the SAME first contact (within 150u) there is no hidden skim.
+        // Roof-skims stay dead: their nominal flight either never touches
+        // the ridge (fat's contact is NEW) or carries far past it after
+        // contact. Thresholds are knobs; retune with anchors.
         if b.razor {
             if let (Some((no, ntraj, nfb)), Some((fo, ftraj, ffb))) =
                 (crate::sim::fly_path(scene, o0, launch, cfg), crate::sim::fly_path(scene, o0, launch, &fat))

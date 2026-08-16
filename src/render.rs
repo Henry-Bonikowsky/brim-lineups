@@ -127,6 +127,55 @@ pub fn render_grid_bytes(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32) -
     render_ex(scene, eye, yaw_deg, pitch_deg, true, None, None, DEF_W, DEF_H)
 }
 
+/// Translucent yellow wash over a finished aim BMP: each (dyaw, dpitch) in
+/// `hits` (deg, relative to the render's yaw/pitch) is an aim that still
+/// lands the throw on the target - drawn as a step-sized cell so the wash
+/// tiles without gaps. The player hunts references INSIDE the wash: any
+/// texture or edge it covers lines up some working angle.
+pub fn stamp_aim_region(bmp: &mut [u8], yaw_deg: f32, pitch_deg: f32, hits: &[(f32, f32)], step: f32) {
+    if bmp.len() < 54 || hits.is_empty() {
+        return;
+    }
+    let w = u32::from_le_bytes(bmp[18..22].try_into().unwrap()) as usize;
+    let h = u32::from_le_bytes(bmp[22..26].try_into().unwrap()) as usize;
+    let (sy, cy) = yaw_deg.to_radians().sin_cos();
+    let (sp, cp) = pitch_deg.to_radians().sin_cos();
+    let fwd = V3::new(cp * cy, cp * sy, sp);
+    let right = V3::new(-sy, cy, 0.0);
+    let up = fwd.cross(&right).normalize();
+    let (tan_h, tan_v) = tan_vh(w, h);
+    // cell half-size in px from the sample step (center-of-screen scale)
+    let half = ((step.to_radians() * w as f32 / (2.0 * tan_h)) * 0.5).ceil() as i32;
+    let mut mask = vec![false; w * h];
+    for &(dy, dp) in hits {
+        let (jsy, jcy) = (yaw_deg + dy).to_radians().sin_cos();
+        let (jsp, jcp) = (pitch_deg + dp).to_radians().sin_cos();
+        let dir = V3::new(jcp * jcy, jcp * jsy, jsp);
+        let cz = dir.dot(&fwd);
+        if cz <= 0.01 {
+            continue;
+        }
+        let px = ((dir.dot(&right) / cz / tan_h + 1.0) * 0.5 * w as f32) as i32;
+        let py = ((1.0 - dir.dot(&up) / cz / tan_v) * 0.5 * h as f32) as i32;
+        for yy in (py - half).max(0)..=(py + half).min(h as i32 - 1) {
+            for xx in (px - half).max(0)..=(px + half).min(w as i32 - 1) {
+                mask[yy as usize * w + xx as usize] = true;
+            }
+        }
+    }
+    for y in 0..h {
+        for x in 0..w {
+            if mask[y * w + x] {
+                let o = 54 + ((h - 1 - y) * w + x) * 3;
+                // 45% yellow (BGR), texture stays visible under the wash
+                bmp[o] = (bmp[o] as f32 * 0.55) as u8;
+                bmp[o + 1] = (bmp[o + 1] as f32 * 0.55 + 255.0 * 0.45) as u8;
+                bmp[o + 2] = (bmp[o + 2] as f32 * 0.55 + 255.0 * 0.45) as u8;
+            }
+        }
+    }
+}
+
 /// Wide context shot with a ring marking a world point (the stand spot).
 pub fn render_marked(scene: &Scene, eye: V3, yaw_deg: f32, pitch_deg: f32, path: &str, mark: V3) {
     std::fs::write(path, render_marked_bytes(scene, eye, yaw_deg, pitch_deg, mark)).expect("write bmp")

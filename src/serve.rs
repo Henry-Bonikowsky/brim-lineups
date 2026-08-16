@@ -102,7 +102,13 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                     let eye = l.stand + V3::new(0.0, 0.0, cfg.eye_z);
                     let base = format!("live/{run}_{}", i + 1);
                     let aim_path = format!("{cards_dir}/{base}_r.bmp");
-                    render::render(vscene, eye, l.yaw, l.pitch, &aim_path);
+                    // aim card gets the yellow hit-region wash: which aims
+                    // around this angle still land the throw (the player's
+                    // reference finder)
+                    let mut aim = render::render_bytes(vscene, eye, l.yaw, l.pitch);
+                    let hits = crate::solve::aim_region(cscene, l.stand, l.yaw, l.pitch, target, tol, &cfg);
+                    render::stamp_aim_region(&mut aim, l.yaw, l.pitch, &hits, 0.15);
+                    let _ = std::fs::write(&aim_path, aim);
                     render::render_grid(vscene, l.stand + V3::new(0.0, 0.0, 350.0), l.yaw, -89.0, &format!("{cards_dir}/{base}_s.bmp"));
                     let (wide_eye, wyaw, wpitch) = render::wide_cam(vscene, l.stand, l.yaw);
                     render::render_marked(vscene, wide_eye, wyaw, wpitch, &format!("{cards_dir}/{base}_w.bmp"), l.stand + V3::new(0.0, 0.0, 40.0));
@@ -251,6 +257,8 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
             }
             // /shoot: simulate the molly from EXACTLY here with EXACTLY this
             // crosshair aim (launch = crosshair + arc), like standing in game
+            // logged like clicks: walk-mode bug reports need the exact shot
+            eprintln!("[shoot] {map} x={x:.0} y={y:.0} yaw={yaw:.2} pitch={pitch:.2}");
             let live2 = live.clone();
             std::thread::spawn(move || {
             let lp = crate::sim::launch_pitch(pitch, &cfg);
