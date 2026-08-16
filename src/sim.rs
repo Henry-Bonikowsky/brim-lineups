@@ -322,19 +322,19 @@ fn fly_impl(
                 graze_p = Some(p);
             }
             let vt = v - n * vn;
-            // tangential friction scales with impact angle: the
-            // bBounceAngleAffectsFriction curve is InterpolateRange 0..90 ->
-            // 0.5..1.0 with the domain read as angle FROM THE NORMAL - FULL
-            // friction at grazing, half head-on (Henry's Sunset vent graze
-            // 2026-08-16: sim kept 68% skimming the curved vent top and
-            // "glided" to the site; in game that graze kills the molly -
-            // "loses so much speed". The earlier half-at-grazing reading
-            // under-braked every skim; scaling from 0 was worse still,
-            // 2026-08-15 "doesn't even get close"). Head-on the tangential
-            // part is tiny, so this stays consistent with the ground-bounce
-            // and roof-bounce restitution anchors.
-            let steep = (vn.abs() / v.norm().max(1.0)).clamp(0.0, 1.0);
-            v = vt * (1.0 - cfg.friction * (1.0 - 0.5 * steep)) - n * vn * bounciness;
+            // tangential friction is FLAT full friction at every impact
+            // angle. Two in-game anchors pin BOTH ends at ~(1-friction)
+            // retention: (1) grazing - Henry's Sunset vent skim 2026-08-16,
+            // sim kept 68% under the half-at-grazing reading and "glided"
+            // to the site while the real molly dies; (2) steep - Henry's
+            // Bonsai roof lob 2026-08-16, the angle-scaled 64% retention
+            // made the sim clear a ledge in one roof bounce where the real
+            // molly bounces twice and lands meters short (the old formula's
+            // ~35-40% steep retention matched, and bounciness 0.30 was
+            // calibrated under it). The bytecode 0.5..1.0 curve evidently
+            // does not scale tangential friction the way either linear
+            // reading assumed - both readings failed one anchor each.
+            v = vt * (1.0 - cfg.friction) - n * vn * bounciness;
             contacts += 1;
             // a reported bounce = a NEW ARC a viewer can count: falling in,
             // rising out by >=15u (vz 180). Wall clips mid-ascent and settle
