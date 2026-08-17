@@ -17,6 +17,10 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
     // LRU of the 3 most recent maps' scenes (collision + visual), shared so
     // POV frames and long renders run on threads without blocking movement
     let mut cache_lru: Vec<(String, Arc<Scene>, Arc<Scene>)> = Vec::new();
+    // last solve, keyed by everything that determines its result: row clicks
+    // (n=K) re-request the identical solve just to render one row - without
+    // this each row click re-paid the full browse solve (~16s)
+    let mut solve_cache: Option<((String, u32, u32, Option<(u32, u32)>, u32, bool), Vec<solve::Lineup>)> = None;
     let live = format!("{cards_dir}/live");
     std::fs::create_dir_all(&live).ok();
 
@@ -86,7 +90,22 @@ pub fn serve(dumps_root: &str, cards_dir: &str, port: u16) {
                 cscene.stands.clone()
             };
             let (min_dist, strict) = if stand.is_some() { (0.0, false) } else { (1800.0, true) };
-            let lineups = solve::solve(cscene, Some(vscene), &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
+            let key = (
+                map.clone(),
+                tx.to_bits(),
+                ty.to_bits(),
+                stand.map(|(a, b)| (a.to_bits(), b.to_bits())),
+                tol.to_bits(),
+                list_mode,
+            );
+            let lineups = match &solve_cache {
+                Some((k, l)) if *k == key => l.clone(),
+                _ => {
+                    let l = solve::solve(cscene, Some(vscene), &stands_vec, target, tol, min_dist, strict, list_mode, &cfg);
+                    solve_cache = Some((key, l.clone()));
+                    l
+                }
+            };
 
             // fresh renders for the top few; unique run id to defeat caching
             let run = std::time::SystemTime::now()

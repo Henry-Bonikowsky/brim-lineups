@@ -111,7 +111,18 @@ impl Default for Cfg {
             // 5m + 13m wall tests read the sim as "stronger" in exactly this
             // direction. s^2/g of the file pair sits inside the Sunset
             // lip-catch anchor's bound.
-            speed: 2900.0,
+            // 2026-08-17 THIRD anchor (Foxtrot A ship-hull "dome", Henry's
+            // click #12: stand (851,2886) aim yaw 46.0 pitch 61.9 recovered
+            // by pov-matching his aim card): in game the molly strikes high
+            // on the ShipDeck hull; the sim at 2900 misses it under the rim
+            // across +-0.2 deg of aim, and hits it (z~2100-2450) at every
+            // speed >= 2915. File 2900 is a LOWER bound - native SpeedScale
+            // (ProjectileThrowTuning, bytecode) plausibly supplies the rest.
+            // Rescaling the two 2026-08-15 Sunset anchors (fit at g=1145)
+            // to the file gravity 1125 via constant s^2/g arc shape:
+            // lip-catch [2925,2960] -> [2899,2934], B-long 2955-2960 ->
+            // ~2930-2935. 2930 satisfies all three anchors at g=1125.
+            speed: 2930.0,
             gravity: 1125.0,
             // file DefaultBounciness 0.35. The 2026-08-03 clip fit said
             // 0.38-0.40, but that fit predates swept-sphere flights. After
