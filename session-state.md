@@ -1,67 +1,61 @@
 # Session state
 
-_Last updated: 2026-08-16 (end of session, automated)_
+_Last updated: 2026-08-17 (end of session, automated)_
 
 ## Branch state
-- Working branch: `web-stills`, clean, fully pushed to `origin/web-stills`.
-- `master` is 1 commit behind `web-stills` (only `d5f4384` "browse completeness" not yet merged).
-- Do NOT auto-merge `web-stills` -> `master`: Henry asked to hold that last commit until he's
-  verified the "show every reaching stand" behavior feels right in the picker. Every other
-  commit from this session is already merged to `master` and deployed to GitHub Pages.
-- Public site (henry-bonikowsky.github.io/brim-lineups) is live with everything through
-  `1af9a5e` (pack cache bumped to v9, all 13 packs repacked and verified).
+- Working branch: `web-stills`, clean, fully pushed to `origin/web-stills` (HEAD `f32ec5a`).
+- `master` is 2 commits behind `web-stills` (`d5f4384` completeness ruling + `f32ec5a` speed/cache
+  fix, neither merged yet).
+- Do NOT auto-merge `web-stills` -> `master`: the completeness-ruling hold from last session
+  still applies, and today's speed change (2900 -> 2930) has not been through a full in-game
+  verification pass beyond the one anchor that motivated it. Public site is unaffected either
+  way (still serving the last merged `master`, through `1af9a5e`).
 
 ## What happened this session (chronological)
-1. **Bombsite marker filter bug**: `keep_instance`'s bare `"BombSite"`/`"Bombsite_"` substring
-   match was deleting real architecture (Haven's C-site floor, Ascent's B-site props, Plummet
-   buildings) -> "no ground at target" holes. Fixed to a basename-prefix match.
-2. **Paired-stand wedge bug**: right-clicking a stand replaced the click with its nearest
-   corner pin (up to 260u away), losing real lineups. Fixed twice: first to sweep both, then
-   per Henry's correction ("the corner IS where I want it") to sweep ALL corners in reach
-   (not just the geometric best) with the exact click as fallback only when no corner works.
-3. **Razor gate (geometry-threading filter)**: originally added `THREADS GEOMETRY` hard-drop
-   two sessions ago; today it was found to be dropping 20 of 24 browse rows and mislabeling
-   legitimate landing-area wall taps as `UNRELIABLE`. Now razor/graze are labels + ranking
-   sinks everywhere, never drops. `graze` narrowed to require >600u carry after contact
-   (`scrape` field keeps the old broad meaning as an internal polish/refine brake).
-4. **Bounce friction physics**: two rounds of correction from Henry's in-game reports (a slope
-   graze that glides too far, then a roof lob that carries too far) converged on FLAT full
-   friction at every impact angle (not angle-scaled) - `v_t *= 1 - friction`, no curve.
-5. **File-truth physics**: pulled exact values from `ValoBoard/tools/valo_dump/out/sarge_q/`
-   (already-exported ability JSON) - speed 2900, gravity 1125 exactly, discovered a second
-   `UpwardShift 8.0` tuning param modeled as release-height lift. Verified against Henry's
-   controlled 5m wall-shot test (sim 37->44cm above crosshair vs his in-game ~49cm).
-6. **Walk-mode diagnostics added**: `/shoot` now renders a full-res first-impact still with a
-   precise magenta dot + prints the impact-vs-crosshair vertical offset in cm (no more
-   eyeballing a soft flight video). Flight videos in walk mode now use a fixed first-person
-   POV camera instead of the chase/landing cams (which pointed at the floor on short shots).
-7. **Reference-finder feature**: aim-region "yellow wash" - every aim angle within +-3deg that
-   still lands the throw gets painted translucent yellow on the aim card, so players can hunt
-   a visual reference inside the wash. Native-server only (not in the wasm/web build - too
-   many extra flights for single-threaded wasm).
-8. **Pack format bug found + fixed**: repacking for deploy revealed `pack.rs` was never
-   updated when `colinfo.json` (game-truth collision) shipped two days ago - EVERY map failed
-   its bit-exact round-trip check. This meant the public site had been serving pre-colinfo
-   collision the whole time. Fixed `pack.rs` to mirror `load_ex`'s colinfo handling; all 13
-   packs rebuilt and verified, cache version bumped so browsers refetch.
-9. **Completeness ruling (latest, unmerged)**: Henry: "ALL POSITIONS THAT CAN REACH THE SPIKE
-   SHOULD BE SHOWN WITH THE MOST OPTIMAL ANGLE. PERIOD." Removed the 24-stand refine
-   truncation, the 60m/6000u range cap, and the 20-row browse display cap. Exposed stands are
-   now dropped outright in strict/browse (was: labeled and ranked last). Verified: one browse
-   click went from 24 shown rows to 70, max range 7715u, ~16s solve time.
+1. **Bug report investigated**: Henry said his sim molly on Foxtrot A ("click #12") threw
+   noticeably shorter than in game - his real throw smacked high into the ship-hull "dome"
+   that the sim's arc passed under. Click #12's exact coordinates were unrecoverable from the
+   live log (see item 3), so the aim was reconstructed forensically: brute-force `/pov`
+   render matching against Henry's saved aim-card BMP in `cards/live/`, narrowing stand +
+   yaw/pitch to sub-0.1deg (stand (851,2886), yaw 46.00, pitch 61.90).
+2. **Speed recalibrated to 2930** (`src/sim.rs`, commit `f32ec5a`): replaying the recovered
+   throw proved the file value 2900 misses the ship-hull dome across the full +-0.2deg aim
+   window Henry could plausibly have used, while >=2915 hits it exactly like his report. 2930
+   is the two 2026-08-15 Sunset anchors (originally fit at gravity 1145) rescaled to the
+   file-truth gravity 1125 at constant `s^2/g`; it satisfies all three now-independent
+   in-game anchors. This is a real physics change - lineup outputs shift slightly; any client
+   holding an open browse list needs to re-click to pick up new rows.
+3. **Root-caused why the click was unrecoverable**: the previous session's "clean up
+   `serve_dbg.log`" deleted the file serve was actively writing `[click]`/`[shoot]` lines to
+   (stderr redirect), silently killing all future click logging with no error. Documented as
+   a standing pitfall in memory: only delete that log when serve is not running.
+4. **Serve solve cache added** (`src/serve.rs`, commit `f32ec5a`): opening any row in the
+   picker (`n=K`) was re-running the entire browse solve from scratch just to render that
+   one row's images - every row click cost the full ~16s solve. Added a single-entry cache
+   keyed on `(map, tx, ty, stand, tol, list_mode)`; verified deterministic (two identical
+   solves diffed byte-for-byte, 82/82 rows matched) before trusting the cache. Measured: row
+   click 15.7s -> 1.35s. This was in direct response to Henry flagging picker slowness
+   mid-session ("takes way too long... don't make it worse, just make it faster").
+5. Rebuilt release binary, ran `cargo test --release` (7/7 pass), restarted serve, verified
+   both the dome-hit reproduction and the row-click speedup live before committing.
 
 ## Open items / not yet resolved
-- **13m beam lineup** (Triad/Haven-style long lob threading a construction I-beam, ~9cm sim
-  clearance): still unverified against the new file-truth physics. Henry was asked to re-throw
-  it in game; no result yet.
-- **~45-degree bounce impacts have no in-game anchor.** Both ends of the friction curve (flat
-  friction) are anchored by real throws; the middle angle range is untested. Flag any report
-  of a mid-angle bounce carrying visibly wrong.
-- **`master` merge for the completeness-ruling commit** (`d5f4384`) is intentionally pending
-  Henry's approval after trying the new picker behavior. Do not merge/deploy without his OK.
-- Solve time on wide-open browse clicks is now ~16s (up from a faster truncated search) since
-  every reaching stand refines. Not flagged as a problem yet, but worth watching if a future
-  session gets a "too slow" complaint.
+- **Henry has not yet re-verified 2930 in-game.** It's derived from one new anchor plus two
+  rescaled old ones, all self-consistent, but the fix was made and shipped to the branch
+  without a fresh in-game throw confirming the new number feels right. Ask for a follow-up
+  throw report before considering this closed.
+- **13m beam lineup** (Triad/Haven-style long lob threading a construction I-beam): still
+  unverified against file-truth physics, now further unverified against the 2930 speed bump.
+  No result from Henry yet.
+- **~45-degree bounce impacts have no in-game anchor** (carried over, unrelated to this
+  session's changes).
+- **`master` merge** for both the completeness-ruling commit and today's speed/cache commit
+  is intentionally pending Henry's approval. Do not merge/deploy without his OK.
+- Solve time on wide-open browse clicks is still ~16s for the FIRST click on a spot (the
+  cache only helps repeat/row clicks on the same click). Not flagged as a problem, but the
+  next lever if Henry complains about first-click latency specifically.
 
 ## Debt / cleanup
-- None outstanding. `serve_dbg.log` (stray debug output file) was deleted at session end.
+- `serve_dbg.log` exists (serve is running, actively writing to it as of session end) - do
+  NOT delete it while `brim-lineups.exe serve` is running (see item 3 above); safe to delete
+  once serve is stopped and Henry doesn't need the click history.
