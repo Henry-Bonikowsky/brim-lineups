@@ -1,10 +1,10 @@
 # Session state
 
-_Last updated: 2026-08-17 (end of session, automated)_
+_Last updated: 2026-08-18 (end of session, automated)_
 
 ## Branch state
-- Working branch: `web-stills`, clean, fully pushed to `origin/web-stills` (HEAD `f32ec5a`).
-- `master` is 2 commits behind `web-stills` (`d5f4384` completeness ruling + `f32ec5a` speed/cache
+- Working branch: `web-stills`, clean, fully pushed to `origin/web-stills` (HEAD `ece44ce`).
+- `master` is behind `web-stills` (`d5f4384` completeness ruling + `f32ec5a` speed/cache
   fix, neither merged yet).
 - Do NOT auto-merge `web-stills` -> `master`: the completeness-ruling hold from last session
   still applies, and today's speed change (2900 -> 2930) has not been through a full in-game
@@ -56,6 +56,11 @@ _Last updated: 2026-08-17 (end of session, automated)_
   next lever if Henry complains about first-click latency specifically.
 
 ## Debt / cleanup
-- `serve_dbg.log` exists (serve is running, actively writing to it as of session end) - do
-  NOT delete it while `brim-lineups.exe serve` is running (see item 3 above); safe to delete
-  once serve is stopped and Henry doesn't need the click history.
+- `serve_dbg.log` exists but serve is NOT currently running (it died with the prior session's
+  process exit, as background tasks do) - safe to delete now if Henry doesn't need the click
+  history; otherwise `brim-lineups.exe serve` needs restarting before the picker works again.
+
+## 2026-08-18 session
+- No-op session: Henry asked to "start server", it was started and verified (200 on
+  `/picker.html`), but the background process was tied to that session and died when it
+  ended - confirmed not responding at session close. No code or git changes this session.
