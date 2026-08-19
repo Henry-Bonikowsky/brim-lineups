@@ -1,6 +1,6 @@
 # Session state
 
-_Last updated: 2026-08-18 (end of session, automated)_
+_Last updated: 2026-08-18 (end of second same-day session, automated)_
 
 ## Branch state
 - Working branch: `web-stills`, clean, fully pushed to `origin/web-stills` (HEAD `ece44ce`).
@@ -64,3 +64,12 @@ _Last updated: 2026-08-18 (end of session, automated)_
 - No-op session: Henry asked to "start server", it was started and verified (200 on
   `/picker.html`), but the background process was tied to that session and died when it
   ended - confirmed not responding at session close. No code or git changes this session.
+
+## 2026-08-18 session (second, automated end-of-session)
+- Same "start server" request, same outcome: started, verified 200 on `/picker.html`, then
+  confirmed dead (curl to :8777 got no response) at automated session-close - process is tied
+  to the session/shell and does not survive it. This is now twice in one day; if Henry wants
+  the picker reachable outside an active Claude session, `serve` needs to run as a persistent
+  background process (e.g. detached/Task Scheduler) instead of a session-scoped background
+  Bash task. No code or git changes this session (only untracked `serve_dbg.log` present,
+  stale from a prior dead process).
