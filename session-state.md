@@ -1,6 +1,6 @@
 # Session state
 
-_Last updated: 2026-08-18 (end of second same-day session, automated)_
+_Last updated: 2026-08-20 (automated end-of-session)_
 
 ## Branch state
 - Working branch: `web-stills`, clean, fully pushed to `origin/web-stills` (HEAD `ece44ce`).
@@ -73,3 +73,11 @@ _Last updated: 2026-08-18 (end of second same-day session, automated)_
   background process (e.g. detached/Task Scheduler) instead of a session-scoped background
   Bash task. No code or git changes this session (only untracked `serve_dbg.log` present,
   stale from a prior dead process).
+
+## 2026-08-20 session (automated end-of-session)
+- "start server" again, but this time started via PowerShell `Start-Process` (own detached
+  process, hidden window) instead of a session-tracked Bash background task. Verified 200 on
+  `/picker.html` at start AND still 200 at automated session-close - first time serve has
+  survived a session end. Detached `Start-Process` looks like the fix for the recurring
+  "server dies at session close" issue; worth using by default for future "start server"
+  requests instead of session-scoped background tasks. No code or git changes this session.
