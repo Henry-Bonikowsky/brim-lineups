@@ -23,9 +23,14 @@ pub struct Cfg {
                           // and nailing the real lineup. Fit knob.
     pub max_time: f32,
     pub hand_down: f32, // launch origin BELOW the eye (muzzle height); TEST knob
-    /// Launch model. false = legacy (rotate aim up by a hand-fitted tapered
-    /// angle, magnitude pinned to `speed`). true = UpwardShift as a velocity
-    /// added to the aim vector, which changes direction AND magnitude.
+    /// FALSIFIED 2026-08-21, kept only so the null result stays runnable.
+    /// The idea was that UpwardShift is a VELOCITY added to the aim vector
+    /// (v = speed*aimDir + U*up), which would make the launch pitch-dependently
+    /// faster and explain both the hand-fitted arc taper and the old x1.15
+    /// high-lob hack. It predicts a vertical launch at speed*(1+tan arc) =
+    /// 3307 and a 5.88s flight; Henry's vertical throw came back at 5.3s,
+    /// i.e. ~2951. There is no magnitude term. The arc really is an angle.
+    /// Leave false. See tests::vector_launch_model for the arithmetic.
     pub vector_launch: bool,
     pub radius: f32, // projectile collision radius: flights are swept SPHERES,
                      // not rays - a box lip or roof edge the eye-line clears by
@@ -157,8 +162,25 @@ impl Default for Cfg {
             // to the file gravity 1125 via constant s^2/g arc shape:
             // lip-catch [2925,2960] -> [2899,2934], B-long 2955-2960 ->
             // ~2930-2935. 2930 satisfies all three anchors at g=1125.
-            speed: 2930.0,
-            gravity: 1125.0,
+            // 2026-08-21 VERTICAL THROW (Henry, straight up, timed to FIRST
+            // floor contact: 5.3s). At a vertical aim the launch direction is
+            // 90 deg under every candidate model, so flight time measures
+            // launch SPEED alone, with no geometry and no aim recovery. It
+            // reads v ~ 2951 at g=1125 - i.e. essentially the file speed, and
+            // nowhere near the 3307 a velocity-style UpwardShift would give.
+            // The Valorant Wiki's datamined projectile table independently
+            // lists Incendiary as Class 3 = Speed 2900 / GravityScale 0.45,
+            // matching the file dump exactly. So speed is 2900, full stop:
+            // 2930 was compensating for the gravity error below.
+            speed: 2900.0,
+            // Holding speed at the confirmed 2900, the same 5.3s solves to
+            // g = 1105.6 (world 2457), and is insensitive to release height
+            // (1094 at h=0, 1116 at h=300). This is the SECOND independent
+            // frame-timed agreement: the 2026-08-03 clip fit 1100 (world
+            // ~2440) off a completely different throw. 1125 came from
+            // assuming world gravity is exactly 2500 - the measurements say
+            // ~2450. Two clean timings beat one round number.
+            gravity: 1105.0,
             // file DefaultBounciness 0.35. The 2026-08-03 clip fit said
             // 0.38-0.40, but that fit predates swept-sphere flights. After
             // the friction-floor fix removed the carry error, Henry's
