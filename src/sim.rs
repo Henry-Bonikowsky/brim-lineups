@@ -23,6 +23,10 @@ pub struct Cfg {
                           // and nailing the real lineup. Fit knob.
     pub max_time: f32,
     pub hand_down: f32, // launch origin BELOW the eye (muzzle height); TEST knob
+    /// Launch model. false = legacy (rotate aim up by a hand-fitted tapered
+    /// angle, magnitude pinned to `speed`). true = UpwardShift as a velocity
+    /// added to the aim vector, which changes direction AND magnitude.
+    pub vector_launch: bool,
     pub radius: f32, // projectile collision radius: flights are swept SPHERES,
                      // not rays - a box lip or roof edge the eye-line clears by
                      // a hair still blocks the real molly. GUESS (no file value
@@ -43,8 +47,33 @@ pub const LAUNCH_MAX: f32 = 95.0;
 /// linear-taper-minus-6%-power carry, which this curve reproduces within
 /// ~1.5% at the file-validated speed/gravity. Clamped at LAUNCH_MAX.
 pub fn launch_pitch(aim: f32, cfg: &Cfg) -> f32 {
+    if cfg.vector_launch {
+        // v = speed*aimDir + U*worldUp, U = speed*tan(arc). The offset is a
+        // VELOCITY, not a rotation: it bends the launch most at flat aims and
+        // not at all straight-up (the taper this file used to fit by hand),
+        // and it also makes the launch FASTER than `speed` - see launch_speed.
+        let (s, c) = aim.to_radians().sin_cos();
+        let k = cfg.arc_deg.to_radians().tan();
+        return (s + k).atan2(c).to_degrees().min(LAUNCH_MAX);
+    }
     let a = aim.clamp(0.0, 90.0) / 90.0;
     (aim + cfg.arc_deg * (1.0 - a * a)).min(LAUNCH_MAX)
+}
+
+/// Launch SPEED for a given launch direction. Under the vector model the
+/// magnitude is pitch-dependent: |speed*d + U*up| = speed*sqrt(1+2k*sin(aim)+k^2),
+/// running from ~1.01x at a flat aim to 1+k (~1.14x) straight up. The old
+/// model held it at exactly `speed` for every pitch, which is why high lobs
+/// needed a hand-applied x1.15 and low ones did not.
+pub fn launch_speed(dir: V3, cfg: &Cfg) -> f32 {
+    if !cfg.vector_launch {
+        return cfg.speed;
+    }
+    let k = cfg.arc_deg.to_radians().tan();
+    let launch = dir.z.clamp(-1.0, 1.0).asin();
+    // invert launch->aim: sin(aim - launch) = -k*cos(launch)
+    let aim = launch - (k * launch.cos()).clamp(-1.0, 1.0).asin();
+    cfg.speed * (1.0 + 2.0 * k * aim.sin() + k * k).max(0.0).sqrt()
 }
 
 /// Inverse of launch_pitch (what to aim so the launch comes out at `launch`).
@@ -53,6 +82,12 @@ pub fn launch_pitch(aim: f32, cfg: &Cfg) -> f32 {
 /// LOWEST aim that reaches it.
 pub fn aim_pitch(launch: f32, cfg: &Cfg) -> f32 {
     let launch = launch.min(LAUNCH_MAX);
+    if cfg.vector_launch {
+        // sin(aim - launch) = -k*cos(launch)  =>  aim = launch - asin(k*cos launch)
+        let k = cfg.arc_deg.to_radians().tan();
+        let l = launch.to_radians();
+        return (l - (k * l.cos()).clamp(-1.0, 1.0).asin()).to_degrees();
+    }
     if launch <= cfg.arc_deg {
         launch - cfg.arc_deg // downward/flat branch: full arc applies
     } else {
@@ -143,6 +178,9 @@ impl Default for Cfg {
             // native code - if it's really degrees this needs redoing)
             hand_down: 17.0,
             max_time: 8.0,
+            // OFF by default: flip with --vector-launch until the in-game
+            // anchors say which model is right. See tests::vector_vs_legacy.
+            vector_launch: false,
             radius: 15.0,
         }
     }
@@ -224,7 +262,7 @@ fn fly_impl(
 ) -> Option<Outcome> {
     const DT: f32 = 1.0 / 120.0;
     let mut p = origin;
-    let mut v = dir * cfg.speed;
+    let mut v = dir * launch_speed(dir, cfg);
     let mut t = 0.0f32;
     let mut steps_since_bounce = 1000u32;
     let mut crevice = 0u32;
@@ -575,6 +613,40 @@ mod tests {
         for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6] {
             let back = aim_pitch(launch_pitch(aim, &cfg), &cfg);
             assert!((back - aim).abs() < 1e-3, "roundtrip {aim} -> {back}");
+        }
+    }
+
+    /// Vector launch: aim_pitch still inverts launch_pitch, the deviation
+    /// vanishes straight-up (that taper is now derived, not fitted), and the
+    /// launch is FASTER than `speed` by a pitch-dependent amount - the thing
+    /// the legacy model could not express and hand-patched with x1.15.
+    #[test]
+    fn vector_launch_model() {
+        let cfg = Cfg { vector_launch: true, ..Cfg::default() };
+        let k: f32 = cfg.arc_deg.to_radians().tan();
+        // flat aim: full deviation, magnitude sqrt(1+k^2)
+        assert!((launch_pitch(0.0, &cfg) - cfg.arc_deg).abs() < 1e-3, "flat aim keeps the full arc");
+        // straight up: no deviation at all, speed is exactly speed*(1+k)
+        assert!((launch_pitch(90.0, &cfg) - 90.0).abs() < 1e-3, "no bend straight up");
+        let up = V3::new(0.0, 0.0, 1.0);
+        assert!(
+            (launch_speed(up, &cfg) - cfg.speed * (1.0 + k)).abs() < 1.0,
+            "straight-up launch speed is speed*(1+k), got {}",
+            launch_speed(up, &cfg)
+        );
+        // the high-lob anchor: ~12% hot, which is what the reverted x1.15 was for
+        let lp = launch_pitch(58.6, &cfg);
+        let (sp, cp) = lp.to_radians().sin_cos();
+        let ratio = launch_speed(V3::new(cp, 0.0, sp), &cfg) / cfg.speed;
+        assert!((1.10..1.14).contains(&ratio), "high lob runs ~12% hot, got {ratio}");
+        // legacy stays exactly as it was
+        let legacy = Cfg::default();
+        assert!(!legacy.vector_launch, "vector model must stay opt-in");
+        assert!((launch_speed(up, &legacy) - legacy.speed).abs() < 1e-3, "legacy speed is pitch-flat");
+        // roundtrip both ways
+        for aim in [-30.0f32, -5.0, 0.0, 10.0, 45.0, 58.6, 80.0] {
+            let back = aim_pitch(launch_pitch(aim, &cfg), &cfg);
+            assert!((back - aim).abs() < 1e-2, "roundtrip {aim} -> {back}");
         }
     }
 
